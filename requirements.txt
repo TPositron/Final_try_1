@@ -1,0 +1,7 @@
+pyside6>=6.0.0
+numpy
+scipy
+pillow
+scikit-image>=0.19.0
+opencv-python
+gdspy
