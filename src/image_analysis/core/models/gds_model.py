@@ -3,6 +3,7 @@ import numpy as np
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple, Union
 import warnings
+from PIL import Image, ImageDraw
 
 
 class GDSModelError(Exception):
@@ -19,6 +20,8 @@ class GDSModel:
         self._bounds = None
         self._file_path = None
         self._is_loaded = False
+        self._structures = {}
+        self._structure_images = {}
     
     @classmethod
     def from_gds(cls, path: Union[str, Path]) -> 'GDSModel':
@@ -44,12 +47,15 @@ class GDSModel:
             
             self._units = gds_lib.unit
             self._db_units = gds_lib.precision
-            self._file_path = path
+            self._file_path = Path(path)
+            if self._file_path.is_absolute():
+                self._file_path = self._file_path.relative_to(Path.cwd())
             
-            top_cell = gds_lib.top_level()[0] if gds_lib.top_level() else list(gds_lib.cells.values())[0]
+            cell = list(gds_lib.cells.values())[0]
             
-            self._extract_geometry(top_cell)
+            self._extract_geometry(cell)
             self._compute_bounds()
+            self._extract_structures_and_generate_images(cell)
             self._is_loaded = True
             
         except Exception as e:
@@ -60,7 +66,7 @@ class GDSModel:
         self._layer_info = {}
         
         polygons = cell.get_polygons(by_spec=True)
-        paths = cell.get_paths()  # Removed by_spec=True for compatibility
+        paths = cell.get_paths()
         
         for (layer, datatype), polys in polygons.items():
             if layer not in self._shapes:
@@ -76,7 +82,6 @@ class GDSModel:
                 self._shapes[layer].append(poly_nm)
                 self._layer_info[layer]['shape_count'] += 1
         
-        # Handle paths as a flat list, grouping by layer
         for path in paths:
             layer = path.layers[0] if hasattr(path, 'layers') and path.layers else 0
             datatype = path.datatypes[0] if hasattr(path, 'datatypes') and path.datatypes else 0
@@ -92,6 +97,55 @@ class GDSModel:
                 poly_nm = self._convert_to_nanometers(poly)
                 self._shapes[layer].append(poly_nm)
                 self._layer_info[layer]['shape_count'] += 1
+    
+    def _extract_structures_and_generate_images(self, cell) -> None:
+        img_width, img_height = 1024, 666
+        xmin, ymin, xmax, ymax = self._bounds
+        scale_x = img_width / (xmax - xmin) if xmax > xmin else 1.0
+        scale_y = img_height / (ymax - ymin) if ymax > ymin else 1.0
+        
+        structure_idx = 0
+        all_elements = []
+        
+        if hasattr(cell, 'polygons'):
+            all_elements.extend(cell.polygons)
+        if hasattr(cell, 'paths'):
+            all_elements.extend(cell.paths)
+        
+        for element in all_elements:
+            structure_image = np.zeros((img_height, img_width), dtype=np.uint8)
+            
+            if hasattr(element, 'polygons'):
+                polygons = element.polygons
+            elif hasattr(element, 'points'):
+                polygons = [element.points]
+            else:
+                polygons = [element.get_polygons()[0]] if element.get_polygons() else []
+            
+            element_coords = []
+            for poly in polygons:
+                poly_nm = self._convert_to_nanometers(poly)
+                element_coords.append(poly_nm)
+                
+                px = ((poly_nm[:, 0] - xmin) * scale_x).astype(int)
+                py = (img_height - (poly_nm[:, 1] - ymin) * scale_y).astype(int)
+                
+                points = [(int(x), int(y)) for x, y in zip(px, py)]
+                
+                img = Image.fromarray(structure_image)
+                draw = ImageDraw.Draw(img)
+                draw.polygon(points, fill=255)
+                structure_image = np.array(img)
+            
+            if element_coords:
+                all_element_coords = np.vstack(element_coords)
+                shape_xmin, shape_ymin = np.min(all_element_coords, axis=0)
+                shape_xmax, shape_ymax = np.max(all_element_coords, axis=0)
+                
+                structure_name = f"structure_{structure_idx}"
+                self._structures[structure_name] = (shape_xmin, shape_ymin, shape_xmax, shape_ymax)
+                self._structure_images[structure_name] = structure_image
+                structure_idx += 1
     
     def _convert_to_nanometers(self, coordinates: np.ndarray) -> np.ndarray:
         conversion_factor = self._units * 1e9
@@ -115,6 +169,22 @@ class GDSModel:
         xmin, ymin = np.min(combined, axis=0)
         xmax, ymax = np.max(combined, axis=0)
         self._bounds = (float(xmin), float(ymin), float(xmax), float(ymax))
+    
+    def get_structures(self) -> Dict[str, Tuple[float, float, float, float]]:
+        if not self._is_loaded:
+            raise GDSModelError("GDS file not loaded")
+        return self._structures.copy()
+    
+    def get_structure_images(self) -> Dict[str, np.ndarray]:
+        if not self._is_loaded:
+            raise GDSModelError("GDS file not loaded")
+        return {name: img.copy() for name, img in self._structure_images.items()}
+    
+    def extract_structures_from_gds(self, gds_path: Union[str, Path]) -> Dict[str, Tuple[np.ndarray, Tuple[float, float, float, float]]]:
+        model = GDSModel.from_gds(gds_path)
+        images = model.get_structure_images()
+        coordinates = model.get_structures()
+        return {name: (images[name], coordinates[name]) for name in images.keys()}
     
     def get_shapes(self, layer: Optional[int] = None) -> Union[Dict[int, List[np.ndarray]], List[np.ndarray]]:
         if not self._is_loaded:
@@ -189,7 +259,8 @@ class GDSModel:
             'bounds': self._bounds,
             'layer_count': len(self._shapes),
             'total_shapes': sum(len(shapes) for shapes in self._shapes.values()),
-            'layers': list(self._shapes.keys())
+            'layers': list(self._shapes.keys()),
+            'structure_count': len(self._structures)
         }
     
     def filter_by_bounds(self, bounds: Tuple[float, float, float, float], 
@@ -240,10 +311,6 @@ class GDSModel:
                 f"bounds={self._bounds}, file='{self._file_path.name if self._file_path else 'None'}')")
     
     def render_structure_to_image(self, bounds, layers, out_path, img_size=(1024, 666), metadata_path=None, fallback_all=False):
-        """
-        Extracts polygons within bounds and layers, renders to an image, and saves it.
-        If fallback_all is True and no polygons are found, renders all polygons in the GDS file for initial alignment.
-        """
         import matplotlib.pyplot as plt
         import json
         width, height = img_size
@@ -251,7 +318,6 @@ class GDSModel:
         scale_x = width / (xmax - xmin) if xmax > xmin else 1.0
         scale_y = height / (ymax - ymin) if ymax > ymin else 1.0
 
-        # Collect all polygons in bounds for the specified layers
         polys = []
         for layer in layers:
             shapes = self.filter_by_bounds(bounds, layer=layer)
@@ -261,7 +327,6 @@ class GDSModel:
             print("No polygons found in requested bounds/layers. Rendering all polygons for initial alignment.")
             for layer, shapes in self._shapes.items():
                 polys.extend(shapes)
-            # Adjust bounds to fit all polygons
             if polys:
                 all_coords = np.vstack(polys)
                 xmin, ymin = np.min(all_coords, axis=0)
@@ -281,14 +346,16 @@ class GDSModel:
 
         for poly in polys:
             px = (poly[:, 0] - xmin) * scale_x
-            py = height - (poly[:, 1] - ymin) * scale_y  # y axis inverted for image
+            py = height - (poly[:, 1] - ymin) * scale_y
             ax.fill(px, py, color='black')
 
-        plt.savefig(out_path, bbox_inches='tight', pad_inches=0)
+        out_path = Path(out_path)
+        if out_path.is_absolute():
+            out_path = out_path.relative_to(Path.cwd())
+        plt.savefig(str(out_path), bbox_inches='tight', pad_inches=0)
         plt.close(fig)
         print(f"Saved {out_path}")
 
-        # Save metadata if requested
         if metadata_path:
             center_x = (xmin + xmax) / 2
             center_y = (ymin + ymax) / 2
@@ -301,8 +368,11 @@ class GDSModel:
                 "delta_y": delta_y,
                 "bounds": [xmin, ymin, xmax, ymax],
                 "layers": layers,
-                "image_path": out_path
+                "image_path": str(out_path)
             }
+            metadata_path = Path(metadata_path)
+            if metadata_path.is_absolute():
+                metadata_path = metadata_path.relative_to(Path.cwd())
             with open(metadata_path, 'w') as f:
                 json.dump(meta, f, indent=2)
             print(f"Saved metadata to {metadata_path}")
@@ -320,6 +390,13 @@ class GDSModel:
 
 def load_gds_model(path: Union[str, Path]) -> GDSModel:
     return GDSModel.from_gds(path)
+
+
+def extract_structures_from_gds(gds_path: Union[str, Path]) -> Dict[str, Tuple[np.ndarray, Tuple[float, float, float, float]]]:
+    model = GDSModel.from_gds(gds_path)
+    images = model.get_structure_images()
+    coordinates = model.get_structures()
+    return {name: (images[name], coordinates[name]) for name in images.keys()}
 
 
 def create_test_gds_model() -> GDSModel:
@@ -345,6 +422,8 @@ def create_test_gds_model() -> GDSModel:
     model._bounds = (0.0, 0.0, 300.0, 300.0)
     model._file_path = Path("test.gds")
     model._is_loaded = True
+    model._structures = {}
+    model._structure_images = {}
     
     return model
 

@@ -18,11 +18,13 @@ class FileManager:
         self.sem_dir = self.base_dir / "Data" / "SEM"
         self.gds_dir = self.base_dir / "Data" / "GDS"
         self.results_dir = self.base_dir / "Results"
+        self.extracted_structures_dir = self.base_dir / "Extracted_Structures"
         
         self._ensure_directories()
     
     def _ensure_directories(self):
         self.results_dir.mkdir(parents=True, exist_ok=True)
+        self.extracted_structures_dir.mkdir(parents=True, exist_ok=True)
         
         if not self.sem_dir.exists():
             self.sem_dir.mkdir(parents=True, exist_ok=True)
@@ -69,6 +71,48 @@ class FileManager:
             raise FileNotFoundError(f"GDS file not found: {file_path}")
         
         return GDSModel.from_gds(file_path)
+    
+    def load_and_extract_gds_structures(self, filename: str) -> Dict[str, tuple]:
+        """
+        Load GDS file and extract all structures using the new extraction method.
+        Returns dict mapping structure names to (binary_image, coordinates) tuples.
+        """
+        gds_model = self.load_gds_file(filename)
+        return gds_model.extract_structures_from_gds()
+    
+    def save_extracted_structures(self, structures: Dict[str, tuple], prefix: str = "") -> Dict[str, Path]:
+        """
+        Save extracted structures as PNG images with corresponding JSON metadata.
+        Args:
+            structures: Dict mapping structure names to (binary_image, coordinates) tuples
+            prefix: Optional prefix for filenames
+        Returns:
+            Dict mapping structure names to saved image paths
+        """
+        saved_paths = {}
+        
+        for struct_name, (binary_image, coordinates) in structures.items():
+            # Create filename with prefix if provided
+            base_filename = f"{prefix}_{struct_name}" if prefix else struct_name
+            
+            # Save binary image as PNG
+            image_path = self.extracted_structures_dir / f"{base_filename}.png"
+            imageio.imwrite(image_path, (binary_image * 255).astype(np.uint8))
+            
+            # Save metadata as JSON
+            metadata = {
+                "structure_name": struct_name,
+                "coordinates": coordinates,
+                "image_path": str(image_path.relative_to(self.base_dir))
+            }
+            metadata_path = self.extracted_structures_dir / f"{base_filename}_meta.json"
+            
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                json.dump(metadata, f, indent=2, ensure_ascii=False)
+            
+            saved_paths[struct_name] = image_path
+        
+        return saved_paths
     
     def save_image(self, img: Union[np.ndarray, SEMImage], path: str, 
                    subdir: Optional[str] = None) -> Path:
@@ -230,6 +274,14 @@ class FileManager:
                 files.append(file_path.name)
         return sorted(files)
     
+    def list_extracted_structures(self) -> List[str]:
+        """List all extracted structure files."""
+        files = []
+        if self.extracted_structures_dir.exists():
+            for file_path in self.extracted_structures_dir.glob("*.png"):
+                files.append(file_path.name)
+        return sorted(files)
+    
     def create_result_subdir(self, subdir: str) -> Path:
         result_path = self.results_dir / subdir
         result_path.mkdir(parents=True, exist_ok=True)
@@ -243,6 +295,9 @@ class FileManager:
     
     def get_results_dir(self) -> Path:
         return self.results_dir
+    
+    def get_extracted_structures_dir(self) -> Path:
+        return self.extracted_structures_dir
     
     def export_overlay_image(self, overlay_array: np.ndarray, filename: str, 
                            subdir: Optional[str] = None) -> Path:
@@ -272,28 +327,6 @@ class FileManager:
                     file_path.unlink()
                 except Exception as e:
                     print(f"Failed to delete {file_path}: {e}")
-    
-    def extract_all_structures(self, structures, output_dir="Extracted_Structures"):
-        """
-        Extracts and renders all defined structures from the main GDS file using relative paths.
-        Args:
-            structures: dict of structure definitions (bounds, layers, name)
-            output_dir: directory to save images and metadata
-        """
-        import os
-        # Use only the filename for GDS file loading to avoid duplicate paths
-        gds_filename = "Institute_Project_GDS1.gds"
-        os.makedirs(output_dir, exist_ok=True)
-        gds_model = self.load_gds_file(gds_filename)
-        for idx, struct in structures.items():
-            out_path = os.path.join(output_dir, f"{idx}_{struct['name']}.png")
-            meta_path = os.path.join(output_dir, f"{idx}_{struct['name']}_meta.json")
-            # Try normal extraction, fallback to all polygons if none found
-            result = gds_model.render_structure_to_image(
-                struct['bounds'], struct['layers'], out_path, metadata_path=meta_path, fallback_all=True
-            )
-            if not result:
-                print(f"Warning: No polygons found for structure {struct['name']} (idx={idx}) even after fallback.")
 
 
 def create_file_manager(base_dir: str = ".") -> FileManager:

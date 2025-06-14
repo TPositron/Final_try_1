@@ -1,6 +1,6 @@
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
                                QSpinBox, QDoubleSpinBox, QPushButton, QLabel,
-                               QSlider, QCheckBox, QComboBox)  # Added QComboBox
+                               QSlider, QCheckBox, QComboBox)
 from PySide6.QtCore import Qt, Signal, QTimer
 from PySide6.QtGui import QFont
 import numpy as np
@@ -9,7 +9,7 @@ import numpy as np
 class AlignmentPanel(QWidget):
     alignment_changed = Signal(dict)
     reset_requested = Signal()
-    structure_selected = Signal(int)  # New signal for structure selection
+    structure_selected = Signal(str)  # Changed from int to str for structure name
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -18,6 +18,7 @@ class AlignmentPanel(QWidget):
         self.update_timer = QTimer()
         self.update_timer.setSingleShot(True)
         self.update_timer.timeout.connect(self._emit_alignment_changed)
+        self.structure_data = {}  # Store structure name -> (binary_image, coordinates)
         
         self.setup_ui()
         self.connect_signals()
@@ -29,7 +30,7 @@ class AlignmentPanel(QWidget):
 
         # Structure selection dropdown
         self.structure_combo = QComboBox()
-        self.structure_combo.addItem("Select Structure", -1)
+        self.structure_combo.addItem("Select Structure", "")
         self.structure_combo.currentIndexChanged.connect(self._on_structure_selected)
         layout.addWidget(QLabel("GDS Structure for Alignment:"))
         layout.addWidget(self.structure_combo)
@@ -270,8 +271,17 @@ class AlignmentPanel(QWidget):
     def _on_live_update_toggled(self, enabled):
         self.live_update_enabled = enabled
         
+    def _on_structure_selected(self, index):
+        if index > 0:  # Skip the "Select Structure" item
+            structure_name = self.structure_combo.currentData()
+            if structure_name:
+                self.structure_selected.emit(structure_name)
+        
     def _emit_alignment_changed(self):
         parameters = self.get_parameters()
+        selected_structure = self.structure_combo.currentData()
+        if selected_structure:
+            parameters['selected_structure'] = selected_structure
         self.alignment_changed.emit(parameters)
         
     def get_parameters(self):
@@ -305,10 +315,30 @@ class AlignmentPanel(QWidget):
         
     def set_gds_overlay(self, gds_overlay):
         self.gds_overlay = gds_overlay
+    
+    def set_structure_data(self, structure_data):
+        """Update the structure data dictionary and populate the dropdown."""
+        self.structure_data = structure_data
+        
+        # Clear existing items except the first one
+        self.structure_combo.clear()
+        self.structure_combo.addItem("Select Structure", "")
+        
+        # Add structure names to dropdown
+        for structure_name in structure_data.keys():
+            self.structure_combo.addItem(structure_name, structure_name)
+    
+    def get_selected_structure_data(self):
+        """Get the binary image and coordinates for the currently selected structure."""
+        selected_structure = self.structure_combo.currentData()
+        if selected_structure and selected_structure in self.structure_data:
+            return self.structure_data[selected_structure]
+        return None, None
         
     def get_transformation_matrix(self):
         params = self.get_parameters()
         
+        # Use the standard 1024x666 image dimensions
         center_x, center_y = 512, 333
         
         scale_matrix = np.array([[params['scale'], 0, 0], [0, params['scale'], 0], [0, 0, 1]])
@@ -340,7 +370,7 @@ class AlignmentPanel(QWidget):
         controls = [
             self.x_spinbox, self.y_spinbox, self.rotation_spinbox, 
             self.scale_spinbox, self.transparency_spinbox, self.transparency_slider,
-            self.apply_btn, self.reset_btn
+            self.apply_btn, self.reset_btn, self.structure_combo
         ]
         
         for control in controls:
