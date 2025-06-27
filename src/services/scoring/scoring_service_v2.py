@@ -8,8 +8,8 @@ from scipy import ndimage
 from scipy.spatial.distance import directed_hausdorff
 import warnings
 
-from image_analysis.core.models.sem_image import SEMImage
-from image_analysis.core.models.gds_model import GDSModel
+from src.core.models.sem_image import SEMImage
+from src.core.models.gds_model import GDSModel
 
 
 class ScoringService:

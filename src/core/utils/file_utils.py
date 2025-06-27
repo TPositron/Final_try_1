@@ -36,7 +36,7 @@ def get_data_path(subpath: str = "") -> Path:
     Returns:
         Path to the data location
     """
-    data_dir = get_project_root() / "Data"
+    data_dir = Path(__file__).parent.parent.parent / "Data"
     if subpath:
         return data_dir / subpath
     return data_dir
@@ -52,7 +52,7 @@ def get_results_path(subpath: str = "") -> Path:
     Returns:
         Path to the results location
     """
-    results_dir = get_project_root() / "Results"
+    results_dir = Path(__file__).parent.parent.parent / "Results"
     if subpath:
         return results_dir / subpath
     return results_dir

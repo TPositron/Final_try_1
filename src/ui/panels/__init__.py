@@ -20,9 +20,9 @@ __all__ = [
 
 __all__ = [
     'ModeSwitcher',
-    'AlignmentControls',
-    'AlignmentCanvas', 
-    'AlignmentInfo',
+    'AlignmentControlsPanel',
+    'AlignmentCanvasPanel', 
+    'AlignmentInfoPanel',
     'AlignmentPanel',
     'FilterPanel',
     'ScorePanel'

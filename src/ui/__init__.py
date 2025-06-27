@@ -12,9 +12,9 @@ __all__ = [
     'HistogramView',
     # Panels
     'ModeSwitcher',
-    'AlignmentControls',
-    'AlignmentCanvas',
-    'AlignmentInfo',
+    'AlignmentControlsPanel',
+    'AlignmentCanvasPanel',
+    'AlignmentInfoPanel',
     'AlignmentPanel',
     'FilterPanel',
     'ScorePanel'

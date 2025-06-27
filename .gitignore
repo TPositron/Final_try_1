@@ -38,3 +38,13 @@ Extracted_Structures/
 Data/**
 !Data/**/
 !Data/**/.gitkeep
+
+# Ignore Data and Results folders
+Data/
+Results/
+
+# Ignore virtual environment and cache directories
+.venv/
+Data/
+Extracted_Structures/
+__pycache__/

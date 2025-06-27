@@ -7,8 +7,8 @@ import imageio
 import gdspy
 import numpy as np
 
-from src.image_analysis.core.models.sem_image import SEMImage
-from src.image_analysis.core.models.gds_model import GDSModel
+from src.core.models.sem_image import SEMImage
+from src.core.models.gds_model import GDSModel
 
 
 class FileManager:

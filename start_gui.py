@@ -16,12 +16,16 @@ def main():
     src_dir = os.path.join(script_dir, 'src')
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
+    # Ensure src/core is also added for deeper imports
+    core_dir = os.path.join(src_dir, 'core')
+    if core_dir not in sys.path:
+        sys.path.insert(0, core_dir)
     
     # Change to the script directory
     os.chdir(script_dir)
     
     try:        # Import and run the main window directly
-        from src.image_analysis.ui.main_window import MainWindow
+        from ui.main_window import MainWindow
         from PySide6.QtWidgets import QApplication
         
         print("Creating QApplication...")
@@ -31,7 +35,7 @@ def main():
         print("Showing MainWindow...")
         window.show()
         print("Entering event loop...")
-        return app.exec_()
+        return app.exec()
     except Exception as e:
         print(f"An error occurred: {e}")
 

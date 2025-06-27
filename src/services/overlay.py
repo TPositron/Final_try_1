@@ -2,7 +2,7 @@ import numpy as np
 import imageio
 from typing import Optional, Tuple, Union, List, Dict
 from matplotlib.path import Path
-from image_analysis.core.models.sem_image import SEMImage
+from src.core.models.sem_image import SEMImage
 
 class OverlayRenderer:
     """

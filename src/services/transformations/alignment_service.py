@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from typing import Tuple, Dict, Optional, Union, List
 from pathlib import Path
-from src.image_analysis.core.models.sem_image import SEMImage
+from src.core.models.sem_image import SEMImage
 
 class AlignmentService:
     def __init__(self):

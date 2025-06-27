@@ -12,15 +12,15 @@ from skimage.metrics import structural_similarity as ssim
 from skimage.metrics import mean_squared_error as mse
 
 
-from src.image_analysis.ui.components.image_viewer import ImageViewer
-from src.image_analysis.ui.components.filter_panel import FilterPanel
-from src.image_analysis.ui.components.alignment_panel import AlignmentPanel
-from src.image_analysis.ui.components.score_panel import ScorePanel
-from src.image_analysis.services.file_service import FileManager
-from src.image_analysis.services.image_processing_service import ImageProcessingService
-from src.image_analysis.services.alignment_service import AlignmentService
-from src.image_analysis.core.processors.overlay import OverlayRenderer
-from src.image_analysis.core.models.gds_model import GDSModel
+from src.ui.components.image_viewer import ImageViewer
+from src.ui.components.filter_panel import FilterPanel
+from src.ui.components.alignment_panel import AlignmentPanel
+from src.ui.components.score_panel import ScorePanel
+from src.services.file_service import FileManager
+from src.services.image_processing_service import ImageProcessingService
+from src.services.transformations.alignment_service import AlignmentService
+from src.core.processors.overlay import OverlayRenderer
+from src.core.models.gds_model import GDSModel
 
 
 # Structure definitions for GDS extraction
