@@ -9,19 +9,16 @@ import numpy as np
 class AlignmentPanel(QWidget):
     alignment_changed = Signal(dict)
     reset_requested = Signal()
-    structure_selected = Signal(str)  # Changed from int to str for structure name
-    
+    structure_selected = Signal(str)  # Signal emits structure name
+
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.gds_overlay = None
-        self.live_update_enabled = True
-        self.update_timer = QTimer()
-        self.update_timer.setSingleShot(True)
-        self.update_timer.timeout.connect(self._emit_alignment_changed)
-        self.structure_data = {}  # Store structure name -> (binary_image, coordinates)
-        
         self.setup_ui()
         self.connect_signals()
+        self._timer = QTimer()
+        self._timer.setSingleShot(True)
+        self._timer.timeout.connect(self._emit_alignment_changed)
+        self.structure_data = {}  # Store structure name -> (binary_image, coordinates)
         
     def setup_ui(self):
         layout = QVBoxLayout(self)
@@ -262,9 +259,11 @@ class AlignmentPanel(QWidget):
         self.scale_spinbox.setValue(new_value)
         
     def _on_parameter_changed(self):
-        if self.live_update_enabled:
-            self.update_timer.start(100)
-        
+        """Handle any parameter change"""
+        if self._timer.isActive():
+            self._timer.stop()
+        self._timer.start(100)  # Debounce updates
+    
     def _on_slider_changed(self, value):
         self.transparency_spinbox.setValue(value)
         
@@ -272,19 +271,41 @@ class AlignmentPanel(QWidget):
         self.live_update_enabled = enabled
         
     def _on_structure_selected(self, index):
-        if index > 0:  # Skip the "Select Structure" item
-            structure_name = self.structure_combo.currentData()
-            if structure_name:
-                self.structure_selected.emit(structure_name)
-        
+        """Handle structure selection"""
+        structure_name = self.structure_combo.currentData()
+        if structure_name:
+            self.structure_selected.emit(structure_name)
+
+    def update_structures(self, structures):
+        """Update structure dropdown with available structures"""
+        self.structure_combo.clear()
+        self.structure_combo.addItem("Select Structure", "")
+        for idx, struct in structures.items():
+            self.structure_combo.addItem(struct['name'], struct['name'])
+
+    def set_structure_data(self, structure_data):
+        self.structure_data = structure_data
+        self.structure_combo.clear()
+        self.structure_combo.addItem("Select Structure", "")
+        for name in structure_data.keys():
+            self.structure_combo.addItem(name, name)
+
+    def get_selected_structure_data(self):
+        name = self.structure_combo.currentData()
+        if name and name in self.structure_data:
+            return self.structure_data[name]
+        return None
+
     def _emit_alignment_changed(self):
-        parameters = self.get_parameters()
-        selected_structure = self.structure_combo.currentData()
-        if selected_structure:
-            parameters['selected_structure'] = selected_structure
-        self.alignment_changed.emit(parameters)
-        
+        """Emit current parameters"""
+        params = self.get_parameters()
+        structure_name = self.structure_combo.currentData()
+        if structure_name:
+            params['structure_name'] = structure_name
+            self.alignment_changed.emit(params)
+
     def get_parameters(self):
+        """Get current transformation parameters"""
         return {
             'x_offset': self.x_spinbox.value(),
             'y_offset': self.y_spinbox.value(),
@@ -316,25 +337,6 @@ class AlignmentPanel(QWidget):
     def set_gds_overlay(self, gds_overlay):
         self.gds_overlay = gds_overlay
     
-    def set_structure_data(self, structure_data):
-        """Update the structure data dictionary and populate the dropdown."""
-        self.structure_data = structure_data
-        
-        # Clear existing items except the first one
-        self.structure_combo.clear()
-        self.structure_combo.addItem("Select Structure", "")
-        
-        # Add structure names to dropdown
-        for structure_name in structure_data.keys():
-            self.structure_combo.addItem(structure_name, structure_name)
-    
-    def get_selected_structure_data(self):
-        """Get the binary image and coordinates for the currently selected structure."""
-        selected_structure = self.structure_combo.currentData()
-        if selected_structure and selected_structure in self.structure_data:
-            return self.structure_data[selected_structure]
-        return None, None
-        
     def get_transformation_matrix(self):
         params = self.get_parameters()
         

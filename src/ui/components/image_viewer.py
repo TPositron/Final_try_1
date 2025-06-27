@@ -58,10 +58,23 @@ class ImageViewer(QWidget):
         layout.addStretch()
     
     def set_sem_image(self, sem_image):
-        self._sem_image = sem_image
+        # Defensive: ensure only 2D 1024x666 image is set
+        if sem_image is not None:
+            if len(sem_image.shape) == 2 and sem_image.shape == (666, 1024):
+                self._sem_image = sem_image
+            else:
+                # If not, crop from bottom center
+                h, w = sem_image.shape[:2]
+                crop_h, crop_w = 666, 1024
+                start_y = max(0, h - crop_h)
+                start_x = max(0, (w - crop_w) // 2)
+                self._sem_image = sem_image[start_y:start_y+crop_h, start_x:start_x+crop_w]
+        else:
+            self._sem_image = None
         self._preview_image = None
         self._invalidate_cache()
         self._update_image_rect()
+        self.fit_to_window()  # Always fit cropped image to window
         self.update()
     
     def set_gds_overlay(self, gds_overlay):
@@ -116,14 +129,16 @@ class ImageViewer(QWidget):
     
     def _get_image_size(self):
         if self._sem_image is not None:
-            if hasattr(self._sem_image, 'shape'):
-                h, w = self._sem_image.shape
-                return QPoint(w, h)
-            elif hasattr(self._sem_image, 'to_array'):
-                array = self._sem_image.to_array()
-                h, w = array.shape
-                return QPoint(w, h)
-        return QPoint(1024, 666)
+            # Always return (width, height) for consistency
+            shape = self._sem_image.shape
+            if len(shape) == 2:
+                h, w = shape
+            elif len(shape) == 3:
+                h, w = shape[0], shape[1]
+            else:
+                return 0, 0
+            return w, h
+        return 0, 0
     
     def _update_image_rect(self):
         if self._sem_image is None:
@@ -131,8 +146,8 @@ class ImageViewer(QWidget):
             return
         
         image_size = self._get_image_size()
-        scaled_width = int(image_size.x() * self._zoom_factor)
-        scaled_height = int(image_size.y() * self._zoom_factor)
+        scaled_width = int(image_size[0] * self._zoom_factor)
+        scaled_height = int(image_size[1] * self._zoom_factor)
         
         widget_center = self.rect().center()
         image_center = QPoint(scaled_width // 2, scaled_height // 2)

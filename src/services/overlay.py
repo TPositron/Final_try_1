@@ -1,10 +1,8 @@
 import numpy as np
-import cv2
+import imageio
 from typing import Optional, Tuple, Union, List, Dict
 from matplotlib.path import Path
-
 from image_analysis.core.models.sem_image import SEMImage
-
 
 class OverlayRenderer:
     """
@@ -99,7 +97,7 @@ class OverlayRenderer:
         final_ymax = final_center_y + zoom_height / 2
         
         return final_xmin, final_ymin, final_xmax, final_ymax
-    
+
     def _coordinate_to_pixel(self, coord_x: float, coord_y: float, 
                            frame_bounds: Tuple[float, float, float, float]) -> Tuple[int, int]:
         """
@@ -125,7 +123,7 @@ class OverlayRenderer:
         pixel_y = int((1.0 - norm_y) * 666)
         
         return pixel_x, pixel_y
-    
+
     def _pixel_to_sem_coordinate(self, pixel_x: int, pixel_y: int,
                                frame_bounds: Tuple[float, float, float, float]) -> Tuple[float, float]:
         """
@@ -185,13 +183,28 @@ class OverlayRenderer:
         # Calculate transformed frame bounds
         frame_bounds = self._apply_transformations(rotation_deg, zoom_factor, pan_x, pan_y)
         
-        for structure_name, (binary_image, pixel_coords) in structures.items():
-            structure_mask = self._render_structure(binary_image, pixel_coords, frame_bounds,
-                                                  mode, antialiased, line_width)
-            output = np.maximum(output, structure_mask)
+        for structure_name, (binary_image, coordinates) in structures.items():
+            # Assume coordinates is (x_offset, y_offset) or bounding box
+            # Place the binary image at the correct location
+            h, w = binary_image.shape
+            x_off, y_off = 0, 0
+            if isinstance(coordinates, (tuple, list)) and len(coordinates) >= 2:
+                x_off, y_off = int(coordinates[0]), int(coordinates[1])
+            
+            # Place binary image in output (simple overlay, no blending)
+            y1 = max(0, y_off)
+            y2 = min(self.sem_height, y_off + h)
+            x1 = max(0, x_off)
+            x2 = min(self.sem_width, x_off + w)
+            by1 = max(0, -y_off)
+            by2 = by1 + (y2 - y1)
+            bx1 = max(0, -x_off)
+            bx2 = bx1 + (x2 - x1)
+            if y2 > y1 and x2 > x1:
+                output[y1:y2, x1:x2] = np.maximum(output[y1:y2, x1:x2], binary_image[by1:by2, bx1:bx2])
         
         return output
-    
+
     def _render_structure(self, 
                          binary_image: np.ndarray,
                          pixel_coords: Tuple[int, int],
@@ -200,55 +213,22 @@ class OverlayRenderer:
                          antialiased: bool,
                          line_width: int) -> np.ndarray:
         """Render a single structure's binary image with coordinate transformation."""
-        structure_output = np.zeros((self.sem_height, self.sem_width), dtype=np.uint8)
-        
-        pixel_x, pixel_y = pixel_coords
-        binary_h, binary_w = binary_image.shape
-        
-        # Transform each pixel of the binary image to SEM coordinates
-        for y in range(binary_h):
-            for x in range(binary_w):
-                if binary_image[y, x] > 0:  # Only process non-zero pixels
-                    # Convert binary image pixel to SEM coordinates
-                    sem_x, sem_y = self._pixel_to_sem_coordinate(
-                        pixel_x + x, pixel_y + y, frame_bounds
-                    )
-                    
-                    # Check if within SEM bounds and set pixel
-                    sem_x_int = int(round(sem_x))
-                    sem_y_int = int(round(sem_y))
-                    
-                    if (0 <= sem_x_int < self.sem_width and 
-                        0 <= sem_y_int < self.sem_height):
-                        
-                        if mode == 'filled' or mode == 'mask':
-                            structure_output[sem_y_int, sem_x_int] = 255
-                        elif mode == 'edges':
-                            # For edges, check if this is a boundary pixel
-                            if self._is_edge_pixel(binary_image, x, y):
-                                structure_output[sem_y_int, sem_x_int] = 255
-        
-        return structure_output
-    
+        # For now, just return the binary image (could add more modes later)
+        return binary_image
+
     def _is_edge_pixel(self, binary_image: np.ndarray, x: int, y: int) -> bool:
         """Check if pixel is on the edge of a binary shape."""
+        # Simple edge detection: check if any neighbor is 0
         h, w = binary_image.shape
-        
-        # Check 8-connected neighbors
-        for dx in [-1, 0, 1]:
-            for dy in [-1, 0, 1]:
-                if dx == 0 and dy == 0:
-                    continue
-                    
-                nx, ny = x + dx, y + dy
-                if (0 <= nx < w and 0 <= ny < h):
-                    if binary_image[ny, nx] == 0:  # Found a background neighbor
+        if binary_image[y, x] == 0:
+            return False
+        for dy in [-1, 0, 1]:
+            for dx in [-1, 0, 1]:
+                if 0 <= y+dy < h and 0 <= x+dx < w:
+                    if binary_image[y+dy, x+dx] == 0:
                         return True
-                else:
-                    return True  # Edge of image
-        
         return False
-    
+
     def render_composite(self, 
                         structures: Dict[str, Tuple[np.ndarray, Tuple[int, int]]],
                         rotation_deg: float = 0.0,
@@ -273,29 +253,19 @@ class OverlayRenderer:
         Returns:
             RGB composite image
         """
+        overlay = self.render_overlay(structures, rotation_deg, zoom_factor, pan_x, pan_y)
         if background_image is None:
-            background = self.sem_image.to_array()
-            background = (background * 255).astype(np.uint8)
+            background = np.zeros((self.sem_height, self.sem_width, 3), dtype=np.uint8)
         else:
             background = background_image.copy()
-        
-        if len(background.shape) == 2:
-            background = np.stack([background] * 3, axis=-1)
-        
-        overlay_mask = self.render_overlay(structures, rotation_deg, zoom_factor, 
-                                         pan_x, pan_y, mode='filled')
-        
-        result = background.copy()
-        mask_indices = overlay_mask > 0
-        
-        for channel in range(3):
-            result[:, :, channel][mask_indices] = (
-                background[:, :, channel][mask_indices] * (1 - transparency) +
-                overlay_color[channel] * transparency
-            ).astype(np.uint8)
-        
-        return result
-    
+            if background.ndim == 2:
+                background = np.stack([background]*3, axis=-1)
+        color_mask = np.zeros_like(background)
+        for c in range(3):
+            color_mask[..., c] = overlay * overlay_color[c]
+        composite = (background * (1 - transparency) + color_mask * transparency).astype(np.uint8)
+        return composite
+
     def get_transformed_bounds(self, rotation_deg: float = 0.0, zoom_factor: float = 1.0,
                               pan_x: float = 0.0, pan_y: float = 0.0) -> Tuple[float, float, float, float]:
         """
@@ -305,7 +275,7 @@ class OverlayRenderer:
             Transformed bounds (xmin, ymin, xmax, ymax) in coordinate space
         """
         return self._apply_transformations(rotation_deg, zoom_factor, pan_x, pan_y)
-    
+
     def export_overlay_image(self, 
                            output_path: str,
                            structures: Dict[str, Tuple[np.ndarray, Tuple[int, int]]],
@@ -328,22 +298,10 @@ class OverlayRenderer:
             **kwargs: Additional arguments for rendering
         """
         if mode == 'composite':
-            result = self.render_composite(structures, rotation_deg, zoom_factor,
-                                         pan_x, pan_y, **kwargs)
-        elif mode == 'overlay':
-            result = self.render_overlay(structures, rotation_deg, zoom_factor,
-                                       pan_x, pan_y, **kwargs)
-            if len(result.shape) == 2:
-                result = np.stack([result] * 3, axis=-1)
-        elif mode == 'mask':
-            result = self.render_overlay(structures, rotation_deg, zoom_factor,
-                                       pan_x, pan_y, mode='mask', **kwargs)
-            result = np.stack([result] * 3, axis=-1)
+            img = self.render_composite(structures, rotation_deg, zoom_factor, pan_x, pan_y, **kwargs)
         else:
-            raise ValueError(f"Unknown export mode: {mode}")
-        
-        cv2.imwrite(output_path, result)
-
+            img = self.render_overlay(structures, rotation_deg, zoom_factor, pan_x, pan_y)
+        imageio.imwrite(output_path, img)
 
 class OverlayError(Exception):
     """Custom exception for overlay rendering errors."""

@@ -72,13 +72,9 @@ class FileManager:
         
         return GDSModel.from_gds(file_path)
     
-    def load_and_extract_gds_structures(self, filename: str) -> Dict[str, tuple]:
-        """
-        Load GDS file and extract all structures using the new extraction method.
-        Returns dict mapping structure names to (binary_image, coordinates) tuples.
-        """
+    def extract_structures_from_gds(self, filename: str, structures: Dict = None) -> Dict[str, np.ndarray]:
         gds_model = self.load_gds_file(filename)
-        return gds_model.extract_structures_from_gds()
+        return gds_model.extract_structure_images(self.gds_dir / filename, structures)
     
     def save_extracted_structures(self, structures: Dict[str, tuple], prefix: str = "") -> Dict[str, Path]:
         """
@@ -327,6 +323,54 @@ class FileManager:
                     file_path.unlink()
                 except Exception as e:
                     print(f"Failed to delete {file_path}: {e}")
+    
+    def validate_structure_definition(self, structure: Dict) -> None:
+        """Validate structure dictionary has all required keys and valid values"""
+        required_keys = {'name', 'initial_bounds', 'layers'}
+        missing_keys = required_keys - set(structure.keys())
+        if missing_keys:
+            raise ValueError(f"Structure missing required keys: {missing_keys}")
+        
+        if not isinstance(structure['name'], str) or not structure['name']:
+            raise ValueError("Structure name must be a non-empty string")
+            
+        bounds = structure['initial_bounds']
+        if not isinstance(bounds, (tuple, list)) or len(bounds) != 4:
+            raise ValueError("initial_bounds must be a tuple/list of 4 values (xmin, ymin, xmax, ymax)")
+        if bounds[0] >= bounds[2] or bounds[1] >= bounds[3]:
+            raise ValueError("invalid bounds: xmin/ymin must be less than xmax/ymax")
+            
+        if not isinstance(structure['layers'], (list, tuple)) or not structure['layers']:
+            raise ValueError("layers must be a non-empty list/tuple of layer numbers")
+        if not all(isinstance(l, int) and l >= 0 for l in structure['layers']):
+                raise ValueError("all layer numbers must be non-negative integers")
+    
+    def generate_initial_gds_images(self, structures: Dict, gds_filename: str = "Institute_Project_GDS1.gds",
+                                  cell_name: str = None) -> None:
+        """Generate initial GDS structure images in Results/initial_GDS directory."""
+        # Create the results directory
+        initial_gds_dir = self.results_dir / "initial_GDS"
+        initial_gds_dir.mkdir(parents=True, exist_ok=True)
+
+        # Load and process GDS file
+        gds_path = self.gds_dir / gds_filename
+        if not gds_path.exists():
+            raise FileNotFoundError(f"GDS file not found: {gds_path}")
+
+        # Create GDS model and extract structures
+        gds_model = GDSModel()
+        try:
+            # Extract structures using the model
+            print(f"Processing GDS file: {gds_path}")
+            images = gds_model.extract_structure_images(gds_path, structures)
+            # Save each structure's image
+            for name, image in images.items():
+                out_path = initial_gds_dir / f"{name}.png"
+                imageio.imwrite(str(out_path), image)
+                print(f"Saved GDS image: {out_path}")
+        except Exception as e:
+            print(f"Error processing GDS file: {e}")
+            raise
 
 
 def create_file_manager(base_dir: str = ".") -> FileManager:

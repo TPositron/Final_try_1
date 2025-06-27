@@ -11,46 +11,37 @@ class AlignmentService:
         
     def apply_transformations(self, 
                             sem_image: 'SEMImage',
-                            structure_data: Dict[str, Tuple[np.ndarray, Dict]],
+                            structure_data: Dict[str, Tuple[np.ndarray, dict]],
                             structure_name: str,
                             x_offset: int = 0,
                             y_offset: int = 0,
                             rotation: float = 0.0,
                             scale: float = 1.0,
                             transparency: int = 70) -> Dict:
-        
+        """
+        Apply transformations to a single structure overlay and return alignment results.
+        structure_data: {structure_name: (binary_image, coordinates)}
+        """
         if not (-180 <= rotation <= 180):
-            raise ValueError("Rotation must be between -180 and 180 degrees")
-        
+            raise ValueError("Rotation must be between -180 and 180 degrees.")
         if scale <= 0:
-            raise ValueError("Scale must be greater than 0")
-            
+            raise ValueError("Scale must be positive.")
         if structure_name not in structure_data:
-            raise ValueError(f"Structure '{structure_name}' not found in structure data")
-            
+            raise ValueError(f"Structure '{structure_name}' not found in structure_data.")
         binary_image, coordinates = structure_data[structure_name]
         transformed_gds = binary_image.copy().astype(np.float32)
-        
         if transformed_gds.shape != (self.canvas_height, self.canvas_width):
-            transformed_gds = cv2.resize(transformed_gds, 
-                                       (self.canvas_width, self.canvas_height),
-                                       interpolation=cv2.INTER_LINEAR)
-        
+            # Resize to canvas if needed
+            import cv2
+            transformed_gds = cv2.resize(transformed_gds, (self.canvas_width, self.canvas_height), interpolation=cv2.INTER_NEAREST)
         transformed_gds = self._apply_zoom(transformed_gds, scale)
         transformed_gds = self._apply_rotation(transformed_gds, rotation)
         transformed_gds = self._apply_translation(transformed_gds, x_offset, y_offset)
-        
-        transformation_matrix = self._compute_transformation_matrix(
-            x_offset, y_offset, rotation, scale)
-        
+        transformation_matrix = self._compute_transformation_matrix(x_offset, y_offset, rotation, scale)
         sem_array = sem_image.to_array()
         alignment_score = self._compute_alignment_score(sem_array, transformed_gds)
-        
-        overlay_preview = self._create_overlay_preview(
-            sem_array, transformed_gds, transparency)
-        
+        overlay_preview = self._create_overlay_preview(sem_array, transformed_gds, transparency)
         difference_map = self._create_difference_map(sem_array, transformed_gds)
-        
         return {
             'transformed_gds': transformed_gds,
             'transformation_matrix': transformation_matrix,
@@ -67,26 +58,22 @@ class AlignmentService:
                 'transparency': transparency
             }
         }
-    
+
     def apply_transformations_all_structures(self,
                                            sem_image: 'SEMImage',
-                                           structure_data: Dict[str, Tuple[np.ndarray, Dict]],
+                                           structure_data: Dict[str, Tuple[np.ndarray, dict]],
                                            x_offset: int = 0,
                                            y_offset: int = 0,
                                            rotation: float = 0.0,
                                            scale: float = 1.0,
                                            transparency: int = 70) -> Dict[str, Dict]:
-        
+        """
+        Apply transformations to all structures in structure_data.
+        """
         results = {}
         for structure_name in structure_data.keys():
-            try:
-                result = self.apply_transformations(
-                    sem_image, structure_data, structure_name,
-                    x_offset, y_offset, rotation, scale, transparency)
-                results[structure_name] = result
-            except Exception as e:
-                results[structure_name] = {'error': str(e)}
-        
+            results[structure_name] = self.apply_transformations(
+                sem_image, structure_data, structure_name, x_offset, y_offset, rotation, scale, transparency)
         return results
     
     def _apply_zoom(self, image: np.ndarray, scale: float) -> np.ndarray:
@@ -168,7 +155,7 @@ class AlignmentService:
         return np.abs(sem_image - gds_overlay)
     
     def batch_alignment_search(self, sem_image: 'SEMImage', 
-                             structure_data: Dict[str, Tuple[np.ndarray, Dict]],
+                             structure_data: Dict[str, Tuple[np.ndarray, dict]],
                              structure_name: str,
                              x_range: Tuple[int, int, int] = (-20, 21, 5),
                              y_range: Tuple[int, int, int] = (-20, 21, 5),
@@ -230,7 +217,7 @@ class AlignmentService:
         }
     
     def batch_alignment_search_all_structures(self, sem_image: 'SEMImage',
-                                            structure_data: Dict[str, Tuple[np.ndarray, Dict]],
+                                            structure_data: Dict[str, Tuple[np.ndarray, dict]],
                                             x_range: Tuple[int, int, int] = (-20, 21, 5),
                                             y_range: Tuple[int, int, int] = (-20, 21, 5),
                                             rotation_range: Tuple[float, float, float] = (-5.0, 5.5, 0.5),
@@ -292,7 +279,7 @@ def create_alignment_service() -> AlignmentService:
 
 
 def align_gds_to_sem(sem_image: 'SEMImage', 
-                    structure_data: Dict[str, Tuple[np.ndarray, Dict]],
+                    structure_data: Dict[str, Tuple[np.ndarray, dict]],
                     structure_name: str,
                     x_offset: int = 0,
                     y_offset: int = 0,
@@ -305,7 +292,7 @@ def align_gds_to_sem(sem_image: 'SEMImage',
 
 
 def find_best_alignment(sem_image: 'SEMImage', 
-                       structure_data: Dict[str, Tuple[np.ndarray, Dict]],
+                       structure_data: Dict[str, Tuple[np.ndarray, dict]],
                        structure_name: str,
                        search_params: Optional[Dict] = None) -> Dict:
     service = AlignmentService()
@@ -323,7 +310,7 @@ def find_best_alignment(sem_image: 'SEMImage',
 
 
 def find_best_alignment_all_structures(sem_image: 'SEMImage',
-                                     structure_data: Dict[str, Tuple[np.ndarray, Dict]],
+                                     structure_data: Dict[str, Tuple[np.ndarray, dict]],
                                      search_params: Optional[Dict] = None) -> Dict[str, Dict]:
     service = AlignmentService()
     

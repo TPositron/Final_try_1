@@ -5,7 +5,7 @@ import os
 from pathlib import Path
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QMenuBar, QMenu, QFileDialog, QMessageBox, QDockWidget,
-                               QApplication, QStatusBar, QSplitter)
+                               QApplication, QStatusBar, QSplitter, QPushButton)
 from PySide6.QtCore import Qt, QTimer, Signal, QThread
 from PySide6.QtGui import QAction, QIcon
 from skimage.metrics import structural_similarity as ssim
@@ -19,15 +19,17 @@ from src.image_analysis.ui.components.score_panel import ScorePanel
 from src.image_analysis.services.file_service import FileManager
 from src.image_analysis.services.image_processing_service import ImageProcessingService
 from src.image_analysis.services.alignment_service import AlignmentService
+from src.image_analysis.core.processors.overlay import OverlayRenderer
+from src.image_analysis.core.models.gds_model import GDSModel
 
 
 # Structure definitions for GDS extraction
 STRUCTURES = {
-    1: {'bounds': (688.55, 5736.55, 760.55, 5807.1), 'layers': [14], 'name': 'Circpol_T2'},
-    2: {'bounds': (693.99, 6406.40, 723.59, 6428.96), 'layers': [1, 2], 'name': 'IP935Left_11'},
-    3: {'bounds': (980.959, 6025.959, 1001.770, 6044.979), 'layers': [1], 'name': 'IP935Left_14'},
-    4: {'bounds': (3730.00, 4700.99, 3756.00, 4760.00), 'layers': [1, 2], 'name': 'QC855GC_CROSS_Bottom'},
-    5: {'bounds': (7195.558, 5046.99, 7203.99, 5055.33964), 'layers': [1], 'name': 'QC935_46'}
+    1: {'name': 'Circpol_T2', 'initial_bounds': (688.55, 5736.55, 760.55, 5807.1), 'layers': [14]},
+    2: {'name': 'IP935Left_11', 'initial_bounds': (693.99, 6406.40, 723.59, 6428.96), 'layers': [1, 2]},
+    3: {'name': 'IP935Left_14', 'initial_bounds': (980.959, 6025.959, 1001.770, 6044.979), 'layers': [1]},
+    4: {'name': 'QC855GC_CROSS_Bottom', 'initial_bounds': (3730.00, 4700.99, 3756.00, 4760.00), 'layers': [1, 2]},
+    5: {'name': 'QC935_46', 'initial_bounds': (7195.558, 5046.99, 7203.99, 5055.33964), 'layers': [1]}
 }
 
 class MainWindow(QMainWindow):
@@ -38,13 +40,18 @@ class MainWindow(QMainWindow):
         self.setGeometry(100, 100, 1400, 900)
         
         self.file_manager = FileManager()
-        self.file_manager.extract_all_structures(STRUCTURES)
+        # Removed GDS image generation on startup
+        # User will load GDS/SEM files via the UI
+        
         self.image_processing_service = ImageProcessingService()
         self.alignment_service = AlignmentService()
         
         self.current_sem_image = None
+        self.current_structures = {}  # Initialize as empty dict
+        self.current_structure_name = None
         self.current_gds_overlay = None
         self.current_alignment_result = None
+        self.overlay_renderer = None
         
         self.setup_ui()
         self.setup_menu()
@@ -54,29 +61,44 @@ class MainWindow(QMainWindow):
     def setup_ui(self):
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
-        
+
         main_layout = QHBoxLayout(central_widget)
-        
         splitter = QSplitter(Qt.Horizontal)
         main_layout.addWidget(splitter)
-        
+
         self.image_viewer = ImageViewer()
         splitter.addWidget(self.image_viewer)
-        
+
         right_panel = QWidget()
         right_layout = QVBoxLayout(right_panel)
-        
+
+        # Add Load SEM Image button at the top of the right panel
+        self.load_sem_btn = QPushButton("Load SEM Image")
+        self.load_sem_btn.clicked.connect(self.load_sem_image)
+        right_layout.addWidget(self.load_sem_btn)
+
         self.filter_panel = FilterPanel()
         self.alignment_panel = AlignmentPanel()
         self.score_panel = ScorePanel()
-        
+
+        # Build structure list for dropdown: 'Structure 1: Circpol_T2', etc.
+        self.structure_display_names = {}
+        for idx, struct in STRUCTURES.items():
+            display_name = f"Structure {idx}: {struct['name']}"
+            self.structure_display_names[display_name] = idx
+        self.alignment_panel.structure_combo.clear()
+        self.alignment_panel.structure_combo.addItem("Select Structure", "")
+        for display_name in self.structure_display_names:
+            self.alignment_panel.structure_combo.addItem(display_name, display_name)
+
         right_layout.addWidget(self.filter_panel)
         right_layout.addWidget(self.alignment_panel)
         right_layout.addWidget(self.score_panel)
-        
+
+        right_panel.setLayout(right_layout)
         splitter.addWidget(right_panel)
         splitter.setSizes([1000, 400])
-        
+
     def setup_menu(self):
         menubar = self.menuBar()
         
@@ -124,50 +146,36 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage("Ready")
         
     def connect_signals(self):
-        self.filter_panel.filter_changed.connect(self.on_filter_changed)
-        self.filter_panel.apply_clicked.connect(self.on_filter_applied)
-        self.filter_panel.reset_clicked.connect(self.on_reset_filters)
-
+        # Connect alignment panel signals
+        self.alignment_panel.structure_selected.connect(self.on_structure_selected)
         self.alignment_panel.alignment_changed.connect(self.on_alignment_changed)
         self.alignment_panel.reset_requested.connect(self.reset_alignment)
         
-        # Update to use new method and pass structure info correctly
-        structure_list = [(idx, info['name']) for idx, info in STRUCTURES.items()]
-        self.alignment_panel.update_gds_structures(structure_list)
-        self.alignment_panel.structure_selected.connect(self.on_structure_selected)
+        # Connect filter panel signals
+        self.filter_panel.filter_changed.connect(self.on_filter_changed)
+        self.filter_panel.apply_clicked.connect(self.on_filter_applied)
+        self.filter_panel.reset_clicked.connect(self.on_reset_filters)
     
-    def setup_signals(self):
-        self.filter_panel.filter_changed.connect(self.on_filter_changed)
-        self.filter_panel.apply_clicked.connect(self.on_filter_applied)
-        self.filter_panel.reset_clicked.connect(self.on_reset_filters)
-
-        self.alignment_panel.alignment_changed.connect(self.on_alignment_changed)
-        self.alignment_panel.reset_requested.connect(self.reset_alignment)
-        
-        # Update to use new method and pass structure info correctly
-        structure_list = [(idx, info['name']) for idx, info in STRUCTURES.items()]
-        self.alignment_panel.update_gds_structures(structure_list)
-        self.alignment_panel.structure_selected.connect(self.on_structure_selected)
-        
     def load_sem_image(self):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Load SEM Image", str(self.file_manager.get_sem_dir()),
             "Image Files (*.tif *.tiff *.png *.jpg *.jpeg)")
-        
+
         if file_path:
             try:
-                file_name = Path(file_path).name
-                self.current_sem_image = self.file_manager.load_sem_image(file_name)
-                self.image_processing_service.load_image(self.current_sem_image)
-                
-                self.image_viewer.set_sem_image(self.current_sem_image)
-                self.filter_panel.set_image_service(self.image_processing_service)
-                
-                self.status_bar.showMessage(f"Loaded SEM image: {file_name}")
-                
-                if self.current_gds_overlay is not None:
-                    self.update_alignment_display()
-                    
+                sem_array = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
+                if sem_array is None:
+                    raise ValueError(f"Failed to load image: {file_path}")
+                h, w = sem_array.shape[:2]
+                crop_h, crop_w = 666, 1024
+                # Always crop from the bottom center
+                start_y = max(0, h - crop_h)
+                start_x = max(0, (w - crop_w) // 2)
+                cropped = sem_array[start_y:start_y+crop_h, start_x:start_x+crop_w]
+                print(f"Cropped image shape: {cropped.shape}, min: {cropped.min()}, max: {cropped.max()}")
+                self.current_sem_image = cropped
+                self.image_viewer.set_sem_image(cropped)
+                self.status_bar.showMessage(f"Loaded SEM image: {Path(file_path).name} (cropped to 1024x666 from bottom center)")
             except Exception as e:
                 QMessageBox.critical(self, "Error", f"Failed to load SEM image: {str(e)}")
                 
@@ -175,24 +183,80 @@ class MainWindow(QMainWindow):
         file_path, _ = QFileDialog.getOpenFileName(
             self, "Load GDS File", str(self.file_manager.get_gds_dir()),
             "GDS Files (*.gds *.gds2)")
-        
         if file_path:
-            try:
-                file_name = Path(file_path).name
-                gds_model = self.file_manager.load_gds_file(file_name)
-                self.current_gds_overlay = gds_model.render_overlay()
-                
-                self.image_viewer.set_gds_overlay(self.current_gds_overlay)
-                self.alignment_panel.set_gds_overlay(self.current_gds_overlay)
-                
-                self.status_bar.showMessage(f"Loaded GDS file: {file_name}")
-                
-                if self.current_sem_image is not None:
-                    self.update_alignment_display()
-                    
-            except Exception as e:
-                QMessageBox.critical(self, "Error", f"Failed to load GDS file: {str(e)}")
-                
+            # Extract structures from GDS file using new workflow
+            self.current_structures = self.file_manager.extract_structures_from_gds(Path(file_path).name, structures=STRUCTURES)
+            self.alignment_panel.set_structure_data({info['name']: self.current_structures[info['name']] for info in STRUCTURES.values() if info['name'] in self.current_structures})
+            self.status_bar.showMessage(f"Loaded GDS structures from {file_path}")
+
+    def on_structure_selected(self, display_name):
+        """Handle structure selection from alignment panel"""
+        if not display_name or display_name not in self.structure_display_names:
+            print("No valid structure selected.")
+            return
+        idx = self.structure_display_names[display_name]
+        struct = STRUCTURES[idx]
+        structure_name = struct['name']
+        bounds = struct['initial_bounds']
+        layers = struct['layers']
+        gds_files = self.file_manager.list_gds_files()
+        if not gds_files:
+            QMessageBox.warning(self, "No GDS File", "Please load a GDS file first.")
+            return
+        gds_filename = gds_files[0]  # Use the first loaded GDS file
+        try:
+            # Extract binary image for the selected structure
+            images = self.file_manager.extract_structures_from_gds(gds_filename, {idx: struct})
+            gds_mask = images[structure_name]
+            self.current_gds_overlay = gds_mask
+            print(f"Extracted GDS mask for {structure_name}, shape: {gds_mask.shape}, dtype: {gds_mask.dtype}, unique: {np.unique(gds_mask)}")
+            # Ensure mask is 0/255 uint8
+            if gds_mask.max() <= 1:
+                gds_mask = (gds_mask * 255).astype(np.uint8)
+            else:
+                gds_mask = gds_mask.astype(np.uint8)
+            # Convert to RGB if needed
+            if len(gds_mask.shape) == 2:
+                gds_mask_rgb = cv2.cvtColor(gds_mask, cv2.COLOR_GRAY2RGB)
+            else:
+                gds_mask_rgb = gds_mask
+            print(f"Displaying GDS mask, shape: {gds_mask_rgb.shape}, dtype: {gds_mask_rgb.dtype}")
+            self.image_viewer.set_gds_overlay(gds_mask_rgb)
+            self.status_bar.showMessage(f"Loaded structure: {display_name}")
+            if self.current_sem_image is not None:
+                self.update_alignment_display()
+        except Exception as e:
+            print(f"Error extracting or displaying GDS structure: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to extract GDS structure: {e}")
+            self.current_structure_name = None
+
+    def on_alignment_changed(self, parameters):
+        if self.current_sem_image is None or self.current_structures is None or self.current_structure_name is None:
+            return
+        try:
+            # Use the new structure data format
+            result = self.alignment_service.apply_transformations(
+                self.current_sem_image,
+                self.current_structures,
+                self.current_structure_name,
+                x_offset=parameters.get('x_offset', 0),
+                y_offset=parameters.get('y_offset', 0),
+                rotation=parameters.get('rotation', 0.0),
+                scale=parameters.get('scale', 1.0),
+                transparency=parameters.get('transparency', 70)
+            )
+            self.current_alignment_result = result
+            self.update_alignment_display()
+        except Exception as e:
+            QMessageBox.critical(self, "Alignment Error", str(e))
+
+    def update_alignment_display(self):
+        if self.current_sem_image is None or self.current_alignment_result is None:
+            return
+        overlay = self.current_alignment_result.get('overlay_preview')
+        if overlay is not None:
+            self.image_viewer.set_image(overlay)
+
     def on_filter_applied(self, filter_name, parameters):
         if self.current_sem_image is None:
             return
@@ -238,32 +302,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Failed to reset filters: {str(e)}")
             
-    def on_alignment_changed(self, parameters):
-        if self.current_sem_image is None or self.current_gds_overlay is None:
-            return
-            
-        try:
-            current_image = self.image_processing_service.get_current_image()
-            
-            result = self.alignment_service.apply_transformations(
-                current_image, self.current_gds_overlay,
-                parameters.get('x_offset', 0),
-                parameters.get('y_offset', 0),
-                parameters.get('rotation', 0.0),
-                parameters.get('scale', 1.0),
-                parameters.get('transparency', 70)
-            )
-            
-            self.current_alignment_result = result
-            
-            self.image_viewer.set_alignment_result(result)
-            self.score_panel.update_scores({
-                'alignment_score': result['alignment_score']
-            })
-            
-        except Exception as e:
-            self.status_bar.showMessage(f"Alignment error: {str(e)}")
-            
     def reset_alignment(self):
         self.alignment_panel.reset_parameters()
         
@@ -306,29 +344,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Auto-alignment failed: {str(e)}")
             self.status_bar.showMessage("Auto-alignment failed")
-            
-    def update_alignment_display(self):
-        if self.current_sem_image is None or self.current_gds_overlay is None:
-            return
-            
-        current_image = self.image_processing_service.get_current_image()
-        params = self.alignment_panel.get_parameters()
-        
-        try:
-            result = self.alignment_service.apply_transformations(
-                current_image, self.current_gds_overlay,
-                params.get('x_offset', 0),
-                params.get('y_offset', 0),
-                params.get('rotation', 0.0),
-                params.get('scale', 1.0),
-                params.get('transparency', 70)
-            )
-            
-            self.current_alignment_result = result
-            self.image_viewer.set_alignment_result(result)
-            
-        except Exception as e:
-            self.status_bar.showMessage(f"Display update error: {str(e)}")
             
     def calculate_scores(self):
         if self.current_alignment_result is None:

@@ -12,6 +12,10 @@ def main():
     
     # Add the project root to Python path
     sys.path.insert(0, script_dir)
+    # Add src to sys.path for module resolution
+    src_dir = os.path.join(script_dir, 'src')
+    if src_dir not in sys.path:
+        sys.path.insert(0, src_dir)
     
     # Change to the script directory
     os.chdir(script_dir)
