@@ -1,14 +1,18 @@
 import os
 import json
 import csv
+import logging
 from pathlib import Path
-from typing import Dict, List, Optional, Union, Any
+from typing import Dict, List, Optional, Union, Any, Tuple
 import imageio
-import gdspy
 import numpy as np
 
-from src.core.models.sem_image import SEMImage
+from src.core.models import SemImage
 from src.core.models.gds_model import GDSModel
+from .gds_image_service import GDSImageService
+from ..core.models.structure_definitions import get_default_structures
+
+logger = logging.getLogger(__name__)
 
 
 class FileManager:
@@ -19,6 +23,10 @@ class FileManager:
         self.gds_dir = self.base_dir / "Data" / "GDS"
         self.results_dir = self.base_dir / "Results"
         self.extracted_structures_dir = self.base_dir / "Extracted_Structures"
+        
+        # Initialize GDS image service
+        self.gds_image_service = GDSImageService()
+        self.structure_manager = get_default_structures()
         
         self._ensure_directories()
     
@@ -32,345 +40,361 @@ class FileManager:
         if not self.gds_dir.exists():
             self.gds_dir.mkdir(parents=True, exist_ok=True)
     
-    def load_sem_images(self, pattern: str = "*.tif") -> Dict[str, SEMImage]:
+    def load_sem_images(self, pattern: str = "*.tif") -> Dict[str, SemImage]:
         sem_images = {}
         
         for file_path in self.sem_dir.glob(pattern):
             if file_path.suffix.lower() in ['.tif', '.tiff']:
                 try:
-                    sem_image = SEMImage.from_file(file_path.name, str(self.sem_dir))
+                    sem_image = SemImage.from_file(file_path.name, str(self.sem_dir))
                     sem_images[file_path.stem] = sem_image
+                    logger.info(f"Loaded SEM image: {file_path.name}")
                 except Exception as e:
-                    print(f"Failed to load SEM image {file_path}: {e}")
+                    logger.error(f"Failed to load SEM image {file_path.name}: {e}")
         
         return sem_images
     
-    def load_gds_files(self, pattern: str = "*.gds*") -> Dict[str, GDSModel]:
-        gds_models = {}
+    def load_gds_files(self, pattern: str = "*.gds") -> Dict[str, GDSModel]:
+        gds_files = {}
         
         for file_path in self.gds_dir.glob(pattern):
-            if file_path.suffix.lower() in ['.gds', '.gds1']:
+            if file_path.suffix.lower() == '.gds':
                 try:
-                    gds_model = GDSModel.from_gds(file_path)
-                    gds_models[file_path.stem] = gds_model
+                    gds_model = GDSModel.from_file(str(file_path))
+                    gds_files[file_path.stem] = gds_model
+                    logger.info(f"Loaded GDS file: {file_path.name}")
                 except Exception as e:
-                    print(f"Failed to load GDS file {file_path}: {e}")
+                    logger.error(f"Failed to load GDS file {file_path.name}: {e}")
         
-        return gds_models
+        return gds_files
     
-    def load_sem_image(self, filename: str) -> SEMImage:
-        file_path = self.sem_dir / filename
-        if not file_path.exists():
-            raise FileNotFoundError(f"SEM image not found: {file_path}")
-        
-        return SEMImage.from_file(filename, str(self.sem_dir))
-    
-    def load_gds_file(self, filename: str) -> GDSModel:
-        file_path = self.gds_dir / filename
-        if not file_path.exists():
-            raise FileNotFoundError(f"GDS file not found: {file_path}")
-        
-        return GDSModel.from_gds(file_path)
-    
-    def extract_structures_from_gds(self, filename: str, structures: Dict = None) -> Dict[str, np.ndarray]:
-        gds_model = self.load_gds_file(filename)
-        return gds_model.extract_structure_images(self.gds_dir / filename, structures)
-    
-    def save_extracted_structures(self, structures: Dict[str, tuple], prefix: str = "") -> Dict[str, Path]:
-        """
-        Save extracted structures as PNG images with corresponding JSON metadata.
-        Args:
-            structures: Dict mapping structure names to (binary_image, coordinates) tuples
-            prefix: Optional prefix for filenames
-        Returns:
-            Dict mapping structure names to saved image paths
-        """
-        saved_paths = {}
-        
-        for struct_name, (binary_image, coordinates) in structures.items():
-            # Create filename with prefix if provided
-            base_filename = f"{prefix}_{struct_name}" if prefix else struct_name
-            
-            # Save binary image as PNG
-            image_path = self.extracted_structures_dir / f"{base_filename}.png"
-            imageio.imwrite(image_path, (binary_image * 255).astype(np.uint8))
-            
-            # Save metadata as JSON
-            metadata = {
-                "structure_name": struct_name,
-                "coordinates": coordinates,
-                "image_path": str(image_path.relative_to(self.base_dir))
-            }
-            metadata_path = self.extracted_structures_dir / f"{base_filename}_meta.json"
-            
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                json.dump(metadata, f, indent=2, ensure_ascii=False)
-            
-            saved_paths[struct_name] = image_path
-        
-        return saved_paths
-    
-    def save_image(self, img: Union[np.ndarray, SEMImage], path: str, 
-                   subdir: Optional[str] = None) -> Path:
-        if subdir:
-            output_dir = self.results_dir / subdir
-            output_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            output_dir = self.results_dir
-        
-        output_path = output_dir / path
-        
-        if isinstance(img, SEMImage):
-            array = img.to_array()
-            array_8bit = (array * 255).astype(np.uint8)
-        else:
-            array_8bit = img
-            if array_8bit.dtype != np.uint8:
-                if array_8bit.max() <= 1.0:
-                    array_8bit = (array_8bit * 255).astype(np.uint8)
-                else:
-                    array_8bit = array_8bit.astype(np.uint8)
-        
-        imageio.imwrite(output_path, array_8bit)
-        return output_path
-    
-    def save_scores(self, score_dict: Dict[str, Any], filename: str, 
-                   format: str = "csv", subdir: Optional[str] = None) -> Path:
-        if subdir:
-            output_dir = self.results_dir / subdir
-            output_dir.mkdir(parents=True, exist_ok=True)
-        else:
-            output_dir = self.results_dir
-        
-        if format.lower() == "csv":
-            output_path = output_dir / f"{filename}.csv"
-            self._save_scores_csv(score_dict, output_path)
-        elif format.lower() == "json":
-            output_path = output_dir / f"{filename}.json"
-            self._save_scores_json(score_dict, output_path)
-        else:
-            raise ValueError(f"Unsupported format: {format}")
-        
-        return output_path
-    
-    def _save_scores_csv(self, score_dict: Dict[str, Any], output_path: Path):
-        with open(output_path, 'w', newline='', encoding='utf-8') as csvfile:
-            if not score_dict:
-                return
-            
-            first_value = next(iter(score_dict.values()))
-            
-            if isinstance(first_value, dict):
-                fieldnames = ['key'] + list(first_value.keys())
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                
-                for key, value_dict in score_dict.items():
-                    row = {'key': key}
-                    row.update(value_dict)
-                    writer.writerow(row)
-            else:
-                fieldnames = ['key', 'value']
-                writer = csv.DictWriter(csvfile, fieldnames=fieldnames)
-                writer.writeheader()
-                
-                for key, value in score_dict.items():
-                    writer.writerow({'key': key, 'value': value})
-    
-    def _save_scores_json(self, score_dict: Dict[str, Any], output_path: Path):
-        def convert_numpy(obj):
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()
-            elif isinstance(obj, np.integer):
-                return int(obj)
-            elif isinstance(obj, np.floating):
-                return float(obj)
-            elif isinstance(obj, np.bool_):
-                return bool(obj)
-            return obj
-        
-        def json_serializer(obj):
-            if hasattr(obj, '__dict__'):
-                return obj.__dict__
-            return convert_numpy(obj)
-        
-        with open(output_path, 'w', encoding='utf-8') as jsonfile:
-            json.dump(score_dict, jsonfile, indent=2, default=json_serializer, 
-                     ensure_ascii=False)
-    
-    def save_metadata(self, metadata: Dict[str, Any], filename: str, 
-                     subdir: Optional[str] = None) -> Path:
-        return self.save_scores(metadata, filename, format="json", subdir=subdir)
-    
-    def load_scores(self, filename: str, format: str = "csv", 
-                   subdir: Optional[str] = None) -> Dict[str, Any]:
-        if subdir:
-            input_dir = self.results_dir / subdir
-        else:
-            input_dir = self.results_dir
-        
-        if format.lower() == "csv":
-            input_path = input_dir / f"{filename}.csv"
-            return self._load_scores_csv(input_path)
-        elif format.lower() == "json":
-            input_path = input_dir / f"{filename}.json"
-            return self._load_scores_json(input_path)
-        else:
-            raise ValueError(f"Unsupported format: {format}")
-    
-    def _load_scores_csv(self, input_path: Path) -> Dict[str, Any]:
-        if not input_path.exists():
-            raise FileNotFoundError(f"Scores file not found: {input_path}")
-        
-        scores = {}
-        with open(input_path, 'r', encoding='utf-8') as csvfile:
-            reader = csv.DictReader(csvfile)
-            
-            for row in reader:
-                key = row.pop('key')
-                if len(row) == 1 and 'value' in row:
-                    scores[key] = row['value']
-                else:
-                    scores[key] = dict(row)
-        
-        return scores
-    
-    def _load_scores_json(self, input_path: Path) -> Dict[str, Any]:
-        if not input_path.exists():
-            raise FileNotFoundError(f"Scores file not found: {input_path}")
-        
-        with open(input_path, 'r', encoding='utf-8') as jsonfile:
-            return json.load(jsonfile)
-    
-    def list_sem_files(self) -> List[str]:
-        files = []
-        for file_path in self.sem_dir.glob("*.tif*"):
-            files.append(file_path.name)
-        return sorted(files)
-    
-    def list_gds_files(self) -> List[str]:
-        files = []
-        for file_path in self.gds_dir.glob("*.gds*"):
-            files.append(file_path.name)
-        return sorted(files)
-    
-    def list_result_files(self, subdir: Optional[str] = None, 
-                         pattern: str = "*") -> List[str]:
-        if subdir:
-            search_dir = self.results_dir / subdir
-        else:
-            search_dir = self.results_dir
-        
-        if not search_dir.exists():
-            return []
-        
-        files = []
-        for file_path in search_dir.glob(pattern):
-            if file_path.is_file():
-                files.append(file_path.name)
-        return sorted(files)
-    
-    def list_extracted_structures(self) -> List[str]:
-        """List all extracted structure files."""
-        files = []
-        if self.extracted_structures_dir.exists():
-            for file_path in self.extracted_structures_dir.glob("*.png"):
-                files.append(file_path.name)
-        return sorted(files)
-    
-    def create_result_subdir(self, subdir: str) -> Path:
-        result_path = self.results_dir / subdir
-        result_path.mkdir(parents=True, exist_ok=True)
-        return result_path
-    
-    def get_sem_dir(self) -> Path:
-        return self.sem_dir
-    
-    def get_gds_dir(self) -> Path:
-        return self.gds_dir
-    
-    def get_results_dir(self) -> Path:
-        return self.results_dir
-    
-    def get_extracted_structures_dir(self) -> Path:
-        return self.extracted_structures_dir
-    
-    def export_overlay_image(self, overlay_array: np.ndarray, filename: str, 
-                           subdir: Optional[str] = None) -> Path:
-        return self.save_image(overlay_array, filename, subdir)
-    
-    def save_alignment_results(self, results: Dict[str, Any], filename: str, 
-                              subdir: str = "alignment") -> Path:
-        return self.save_scores(results, filename, format="json", subdir=subdir)
-    
-    def load_alignment_results(self, filename: str, 
-                              subdir: str = "alignment") -> Dict[str, Any]:
-        return self.load_scores(filename, format="json", subdir=subdir)
-    
-    def cleanup_temp_files(self, subdir: Optional[str] = None, 
-                          pattern: str = "temp_*"):
-        if subdir:
-            cleanup_dir = self.results_dir / subdir
-        else:
-            cleanup_dir = self.results_dir
-        
-        if not cleanup_dir.exists():
-            return
-        
-        for file_path in cleanup_dir.glob(pattern):
-            if file_path.is_file():
-                try:
-                    file_path.unlink()
-                except Exception as e:
-                    print(f"Failed to delete {file_path}: {e}")
-    
-    def validate_structure_definition(self, structure: Dict) -> None:
-        """Validate structure dictionary has all required keys and valid values"""
-        required_keys = {'name', 'initial_bounds', 'layers'}
-        missing_keys = required_keys - set(structure.keys())
-        if missing_keys:
-            raise ValueError(f"Structure missing required keys: {missing_keys}")
-        
-        if not isinstance(structure['name'], str) or not structure['name']:
-            raise ValueError("Structure name must be a non-empty string")
-            
-        bounds = structure['initial_bounds']
-        if not isinstance(bounds, (tuple, list)) or len(bounds) != 4:
-            raise ValueError("initial_bounds must be a tuple/list of 4 values (xmin, ymin, xmax, ymax)")
-        if bounds[0] >= bounds[2] or bounds[1] >= bounds[3]:
-            raise ValueError("invalid bounds: xmin/ymin must be less than xmax/ymax")
-            
-        if not isinstance(structure['layers'], (list, tuple)) or not structure['layers']:
-            raise ValueError("layers must be a non-empty list/tuple of layer numbers")
-        if not all(isinstance(l, int) and l >= 0 for l in structure['layers']):
-                raise ValueError("all layer numbers must be non-negative integers")
-    
-    def generate_initial_gds_images(self, structures: Dict, gds_filename: str = "Institute_Project_GDS1.gds",
-                                  cell_name: str = None) -> None:
-        """Generate initial GDS structure images in Results/initial_GDS directory."""
-        # Create the results directory
-        initial_gds_dir = self.results_dir / "initial_GDS"
-        initial_gds_dir.mkdir(parents=True, exist_ok=True)
-
-        # Load and process GDS file
-        gds_path = self.gds_dir / gds_filename
-        if not gds_path.exists():
-            raise FileNotFoundError(f"GDS file not found: {gds_path}")
-
-        # Create GDS model and extract structures
-        gds_model = GDSModel()
+    def load_gds_file(self, file_path: Union[str, Path]) -> Optional[GDSModel]:
+        """Load a single GDS file."""
         try:
-            # Extract structures using the model
-            print(f"Processing GDS file: {gds_path}")
-            images = gds_model.extract_structure_images(gds_path, structures)
-            # Save each structure's image
-            for name, image in images.items():
-                out_path = initial_gds_dir / f"{name}.png"
-                imageio.imwrite(str(out_path), image)
-                print(f"Saved GDS image: {out_path}")
+            file_path = Path(file_path)
+            if not file_path.exists():
+                logger.error(f"GDS file not found: {file_path}")
+                return None
+            
+            gds_model = GDSModel.from_file(str(file_path))
+            logger.info(f"Loaded GDS file: {file_path.name}")
+            return gds_model
         except Exception as e:
-            print(f"Error processing GDS file: {e}")
-            raise
+            logger.error(f"Failed to load GDS file {file_path}: {e}")
+            return None
+    
+    def generate_structure_data(self, gds_model: GDSModel, 
+                              structure_names: Optional[List[str]] = None) -> Dict[str, Tuple[np.ndarray, dict]]:
+        """Generate structure data for alignment."""
+        if structure_names is None:
+            structure_names = list(self.structure_manager.keys())
+        
+        structure_data = {}
+        
+        for structure_name in structure_names:
+            if structure_name in self.structure_manager:
+                try:
+                    structure_info = self.structure_manager[structure_name]
+                    binary_image, coordinates = self.gds_image_service.extract_structure_region(
+                        gds_model, structure_info
+                    )
+                    structure_data[structure_name] = (binary_image, coordinates)
+                    logger.info(f"Generated structure data for: {structure_name}")
+                except Exception as e:
+                    logger.error(f"Failed to generate structure data for {structure_name}: {e}")
+        
+        return structure_data
+    
+    def save_file(self, data: Any, file_path: Union[str, Path], file_type: str = 'json') -> bool:
+        """Save data to file in specified format."""
+        try:
+            file_path = Path(file_path)
+            file_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            if file_type.lower() == 'json':
+                with open(file_path, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+            
+            elif file_type.lower() == 'csv':
+                if isinstance(data, list) and len(data) > 0:
+                    if isinstance(data[0], dict):
+                        fieldnames = data[0].keys()
+                        with open(file_path, 'w', newline='') as f:
+                            writer = csv.DictWriter(f, fieldnames=fieldnames)
+                            writer.writeheader()
+                            writer.writerows(data)
+                    else:
+                        with open(file_path, 'w', newline='') as f:
+                            writer = csv.writer(f)
+                            writer.writerows(data)
+                else:
+                    logger.error("CSV data must be a list of dictionaries or lists")
+                    return False
+            
+            elif file_type.lower() in ['png', 'jpg', 'tiff']:
+                if isinstance(data, np.ndarray):
+                    imageio.imwrite(file_path, data)
+                else:
+                    logger.error("Image data must be numpy array")
+                    return False
+            
+            else:
+                logger.error(f"Unsupported file type: {file_type}")
+                return False
+            
+            logger.info(f"Saved {file_type} file: {file_path}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save file {file_path}: {e}")
+            return False
+    
+    def load_file(self, file_path: Union[str, Path], file_type: str = 'json') -> Optional[Any]:
+        """Load data from file."""
+        try:
+            file_path = Path(file_path)
+            if not file_path.exists():
+                logger.error(f"File not found: {file_path}")
+                return None
+            
+            if file_type.lower() == 'json':
+                with open(file_path, 'r') as f:
+                    data = json.load(f)
+            
+            elif file_type.lower() == 'csv':
+                data = []
+                with open(file_path, 'r') as f:
+                    reader = csv.DictReader(f)
+                    data = list(reader)
+            
+            elif file_type.lower() in ['png', 'jpg', 'tiff', 'tif']:
+                data = imageio.imread(file_path)
+            
+            else:
+                logger.error(f"Unsupported file type: {file_type}")
+                return None
+            
+            logger.info(f"Loaded {file_type} file: {file_path}")
+            return data
+            
+        except Exception as e:
+            logger.error(f"Failed to load file {file_path}: {e}")
+            return None
+    
+    def save_alignment_results(self, results: Dict[str, Any], 
+                             output_dir: Optional[Union[str, Path]] = None) -> bool:
+        """Save alignment results to files."""
+        if output_dir is None:
+            output_dir = self.results_dir / "Aligned"
+        
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # Save results as JSON
+            results_file = output_dir / "alignment_results.json"
+            self.save_file(results, results_file, 'json')
+            
+            # Save images if present
+            for key, value in results.items():
+                if isinstance(value, np.ndarray) and len(value.shape) == 2:
+                    image_file = output_dir / f"{key}.png"
+                    self.save_file(value, image_file, 'png')
+            
+            logger.info(f"Saved alignment results to: {output_dir}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save alignment results: {e}")
+            return False
+    
+    def save_scoring_results(self, results: Dict[str, Any],
+                           output_dir: Optional[Union[str, Path]] = None) -> bool:
+        """Save scoring results to files."""
+        if output_dir is None:
+            output_dir = self.results_dir / "Scoring"
+        
+        output_dir = Path(output_dir)
+        output_dir.mkdir(parents=True, exist_ok=True)
+        
+        try:
+            # Save results as JSON
+            results_file = output_dir / "scoring_results.json"
+            self.save_file(results, results_file, 'json')
+            
+            # Save charts/reports if present
+            for key, value in results.items():
+                if key.endswith('_chart') and isinstance(value, np.ndarray):
+                    chart_file = output_dir / "charts" / f"{key}.png"
+                    self.save_file(value, chart_file, 'png')
+                elif key.endswith('_report') and isinstance(value, (list, dict)):
+                    report_file = output_dir / "reports" / f"{key}.json"
+                    self.save_file(value, report_file, 'json')
+            
+            logger.info(f"Saved scoring results to: {output_dir}")
+            return True
+            
+        except Exception as e:
+            logger.error(f"Failed to save scoring results: {e}")
+            return False
+    
+    def save_aligned_gds(self, aligned_model, output_path: str) -> bool:
+        """
+        Save an aligned GDS model as a new GDS file with applied transformations.
+        
+        Args:
+            aligned_model: AlignedGdsModel instance with transformations
+            output_path: Path where to save the new GDS file
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        try:
+            from .gds_transformation_service import GdsTransformationService
+            import gdspy
+            
+            # Get the original GDS file path from the initial model
+            initial_model = aligned_model.initial_model
+            if not hasattr(initial_model, 'gds_file_path') or not initial_model.gds_file_path:
+                print("No GDS file path available in the initial model")
+                return False
+            
+            original_gds_path = initial_model.gds_file_path
+            
+            # Get transformation parameters in the format expected by the transformation service
+            ui_params = aligned_model.get_ui_parameters()
+            transformation_params = {
+                'x_offset': ui_params.get('tx', 0.0),
+                'y_offset': ui_params.get('ty', 0.0),
+                'rotation': ui_params.get('rotation_90', 0.0) + ui_params.get('residual_rotation', 0.0),
+                'scale': ui_params.get('scale', 1.0)
+            }
+            
+            # Get the structure name and bounds
+            structure_name = initial_model.structure_name if hasattr(initial_model, 'structure_name') else 'main'
+            gds_bounds = initial_model.bounds
+            
+            # Use transformation service to create transformed structure
+            transformation_service = GdsTransformationService()
+            transformed_cell = transformation_service.transform_structure(
+                original_gds_path=original_gds_path,
+                structure_name=structure_name,
+                transformation_params=transformation_params,
+                gds_bounds=gds_bounds,
+                canvas_size=(1024, 666)  # Default canvas size
+            )
+            
+            # Create new GDS library and add the transformed cell
+            new_library = gdspy.GdsLibrary(name='ALIGNED_LIBRARY', unit=1e-6, precision=1e-9)
+            new_library.add(transformed_cell)
+            
+            # Save the new GDS file
+            new_library.write_gds(output_path)
+            
+            print(f"Successfully saved aligned GDS to: {output_path}")
+            return True
+            
+        except Exception as e:
+            print(f"Error saving aligned GDS: {e}")
+            return False
+    
+    def save_aligned_image(self, aligned_model, output_path: str) -> bool:
+        """
+        Save an aligned GDS model as an image using the frame extraction approach.
+        
+        Args:
+            aligned_model: AlignedGdsModel instance with transformations
+            output_path: Path where to save the image file
+            
+        Returns:
+            True if saved successfully, False otherwise
+        """
+        try:
+            from .frame_extraction_service import FrameExtractionService
+            
+            # Get the original GDS file path from the initial model
+            initial_model = aligned_model.initial_model
+            if not hasattr(initial_model, 'gds_file_path') or not initial_model.gds_file_path:
+                print("No GDS file path available in the initial model")
+                return False
+            
+            original_gds_path = str(initial_model.gds_file_path)
+            
+            # Get transformation parameters from the aligned model
+            ui_params = aligned_model.get_ui_parameters()
+            transformation_params = {
+                'x_offset': ui_params.get('translation_x_pixels', 0.0),
+                'y_offset': ui_params.get('translation_y_pixels', 0.0),
+                'rotation': ui_params.get('rotation_degrees', 0.0),
+                'scale': ui_params.get('scale', 1.0)
+            }
+            
+            # Get the structure name and bounds
+            structure_name = initial_model.cell.name if hasattr(initial_model, 'cell') and initial_model.cell else 'main'
+            gds_bounds = initial_model.bounds if hasattr(initial_model, 'bounds') else (0, 0, 1000, 1000)
+            
+            logger.info(f"Saving aligned image with params: {transformation_params}")
+            logger.info(f"Structure name: {structure_name}, bounds: {gds_bounds}")
+            
+            # Use frame extraction service to create image
+            extraction_service = FrameExtractionService()
+            
+            # Ensure output path has proper extension for an image file
+            output_path_obj = Path(output_path)
+            if output_path_obj.suffix.lower() not in ['.png', '.jpg', '.jpeg', '.tiff', '.bmp']:
+                output_path = str(output_path_obj.with_suffix('.png'))
+            
+            # Extract bitmap and save to file
+            success = extraction_service.extract_to_file(
+                gds_path=original_gds_path,
+                structure_name=structure_name,
+                transformation_params=transformation_params,
+                gds_bounds=gds_bounds,
+                output_path=output_path,
+                output_size=(1024, 666),
+                layers=getattr(initial_model, 'required_layers', None)
+            )
+            
+            if success:
+                logger.info(f"Successfully saved aligned image to: {output_path}")
+            else:
+                logger.error("Failed to save aligned image")
+            
+            return success
+            
+        except Exception as e:
+            logger.error(f"Error saving aligned image: {e}")
+            return False
+    
+    def get_available_sem_files(self) -> List[str]:
+        """Get list of available SEM files."""
+        sem_files = []
+        for file_path in self.sem_dir.glob("*.tif*"):
+            sem_files.append(file_path.name)
+        return sorted(sem_files)
+    
+    def get_available_gds_files(self) -> List[str]:
+        """Get list of available GDS files."""
+        gds_files = []
+        for file_path in self.gds_dir.glob("*.gds"):
+            gds_files.append(file_path.name)
+        return sorted(gds_files)
+    
+    def cleanup_temp_files(self) -> None:
+        """Clean up temporary files."""
+        temp_dirs = [
+            self.results_dir / "temp",
+            self.extracted_structures_dir / "temp"
+        ]
+        
+        for temp_dir in temp_dirs:
+            if temp_dir.exists():
+                try:
+                    import shutil
+                    shutil.rmtree(temp_dir)
+                    logger.info(f"Cleaned up temp directory: {temp_dir}")
+                except Exception as e:
+                    logger.error(f"Failed to clean up {temp_dir}: {e}")
 
 
 def create_file_manager(base_dir: str = ".") -> FileManager:

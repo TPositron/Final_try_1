@@ -1,9 +1,8 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python
 """
-Cross-platform launcher for Image Analysis GUI
+Platform launcher for Image Analysis GUI
 """
 import sys
-import subprocess
 import os
 
 def main():
@@ -12,20 +11,17 @@ def main():
     
     # Add the project root to Python path
     sys.path.insert(0, script_dir)
-    # Add src to sys.path for module resolution
-    src_dir = os.path.join(script_dir, 'src')
+    # Add the src directory to Python path for package imports
+    src_dir = os.path.join(script_dir, "src")
     if src_dir not in sys.path:
         sys.path.insert(0, src_dir)
-    # Ensure src/core is also added for deeper imports
-    core_dir = os.path.join(src_dir, 'core')
-    if core_dir not in sys.path:
-        sys.path.insert(0, core_dir)
     
     # Change to the script directory
     os.chdir(script_dir)
     
-    try:        # Import and run the main window directly
-        from ui.main_window import MainWindow
+    try:
+        # Import and run the updated main window with new alignment panel
+        from src.ui.main_window import MainWindow
         from PySide6.QtWidgets import QApplication
         
         print("Creating QApplication...")
@@ -38,6 +34,9 @@ def main():
         return app.exec()
     except Exception as e:
         print(f"An error occurred: {e}")
+        import traceback
+        traceback.print_exc()
+        return 1
 
 if __name__ == "__main__":
     sys.exit(main())

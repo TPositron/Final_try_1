@@ -5,7 +5,7 @@ from PySide6.QtCore import QObject, Signal
 import numpy as np
 import cv2
 
-from ..core.utils import get_logger
+from src.core.utils import get_logger
 
 
 class IOUScoreService(QObject):

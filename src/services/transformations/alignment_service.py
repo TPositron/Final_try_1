@@ -2,7 +2,7 @@ import numpy as np
 import cv2
 from typing import Tuple, Dict, Optional, Union, List
 from pathlib import Path
-from src.core.models.sem_image import SEMImage
+from src.core.models import SemImage
 
 class AlignmentService:
     def __init__(self):
@@ -10,7 +10,7 @@ class AlignmentService:
         self.canvas_height = 666
         
     def apply_transformations(self, 
-                            sem_image: 'SEMImage',
+                            sem_image: 'SemImage',
                             structure_data: Dict[str, Tuple[np.ndarray, dict]],
                             structure_name: str,
                             x_offset: int = 0,
@@ -60,7 +60,7 @@ class AlignmentService:
         }
 
     def apply_transformations_all_structures(self,
-                                           sem_image: 'SEMImage',
+                                           sem_image: 'SemImage',
                                            structure_data: Dict[str, Tuple[np.ndarray, dict]],
                                            x_offset: int = 0,
                                            y_offset: int = 0,
@@ -122,39 +122,46 @@ class AlignmentService:
             [0, 0, 1]
         ])
         
-        combined = translate_back @ rotation_matrix @ scale_matrix @ translate_to_origin
-        return combined[:2, :]
+        combined_matrix = translate_back @ rotation_matrix @ scale_matrix @ translate_to_origin
+        return combined_matrix
     
-    def _compute_alignment_score(self, sem_image: np.ndarray, 
-                               gds_overlay: np.ndarray) -> float:
-        sem_edges = cv2.Canny((sem_image * 255).astype(np.uint8), 50, 150)
-        gds_edges = cv2.Canny((gds_overlay * 255).astype(np.uint8), 50, 150)
-        
-        overlap = np.logical_and(sem_edges > 0, gds_edges > 0).sum()
-        total_gds_edges = (gds_edges > 0).sum()
-        
-        if total_gds_edges == 0:
-            return 0.0
-        
-        score = overlap / total_gds_edges
-        return float(score)
+    def _compute_alignment_score(self, sem_array: np.ndarray, gds_array: np.ndarray) -> float:
+        try:
+            from skimage.metrics import structural_similarity as ssim
+            if sem_array.shape != gds_array.shape:
+                gds_array = cv2.resize(gds_array, (sem_array.shape[1], sem_array.shape[0]))
+            
+            sem_norm = (sem_array - sem_array.min()) / (sem_array.max() - sem_array.min() + 1e-8)
+            gds_norm = (gds_array - gds_array.min()) / (gds_array.max() - gds_array.min() + 1e-8)
+            
+            score = ssim(sem_norm, gds_norm, data_range=1.0)
+            return max(0.0, score)
+        except Exception:
+            correlation = np.corrcoef(sem_array.flatten(), gds_array.flatten())[0, 1]
+            return max(0.0, correlation) if not np.isnan(correlation) else 0.0
     
-    def _create_overlay_preview(self, sem_image: np.ndarray, 
-                              gds_overlay: np.ndarray, 
-                              transparency: int) -> np.ndarray:
+    def _create_overlay_preview(self, sem_array: np.ndarray, gds_array: np.ndarray, transparency: int) -> np.ndarray:
         alpha = transparency / 100.0
+        if sem_array.shape != gds_array.shape:
+            gds_array = cv2.resize(gds_array, (sem_array.shape[1], sem_array.shape[0]))
         
-        sem_normalized = (sem_image * 255).astype(np.uint8)
-        gds_normalized = (gds_overlay * 255).astype(np.uint8)
+        sem_norm = (sem_array / sem_array.max()) if sem_array.max() > 0 else sem_array
+        gds_norm = (gds_array / gds_array.max()) if gds_array.max() > 0 else gds_array
         
-        overlay = cv2.addWeighted(sem_normalized, 1.0, gds_normalized, alpha, 0)
-        return overlay.astype(np.float32) / 255.0
+        overlay = sem_norm * (1 - alpha) + gds_norm * alpha
+        return np.clip(overlay, 0, 1)
     
-    def _create_difference_map(self, sem_image: np.ndarray, 
-                             gds_overlay: np.ndarray) -> np.ndarray:
-        return np.abs(sem_image - gds_overlay)
+    def _create_difference_map(self, sem_array: np.ndarray, gds_array: np.ndarray) -> np.ndarray:
+        if sem_array.shape != gds_array.shape:
+            gds_array = cv2.resize(gds_array, (sem_array.shape[1], sem_array.shape[0]))
+        
+        sem_norm = (sem_array / sem_array.max()) if sem_array.max() > 0 else sem_array
+        gds_norm = (gds_array / gds_array.max()) if gds_array.max() > 0 else gds_array
+        
+        difference = np.abs(sem_norm - gds_norm)
+        return difference
     
-    def batch_alignment_search(self, sem_image: 'SEMImage', 
+    def batch_alignment_search(self, sem_image: 'SemImage',
                              structure_data: Dict[str, Tuple[np.ndarray, dict]],
                              structure_name: str,
                              x_range: Tuple[int, int, int] = (-20, 21, 5),
@@ -162,61 +169,45 @@ class AlignmentService:
                              rotation_range: Tuple[float, float, float] = (-5.0, 5.5, 0.5),
                              scale_range: Tuple[float, float, float] = (0.9, 1.11, 0.05)) -> Dict:
         
-        if structure_name not in structure_data:
-            raise ValueError(f"Structure '{structure_name}' not found in structure data")
-        
         best_score = -1
-        best_params = None
-        best_result = None
-        all_results = []
+        best_params = {}
+        best_result = {}
         
-        x_values = range(x_range[0], x_range[1], x_range[2])
-        y_values = range(y_range[0], y_range[1], y_range[2])
-        rotation_values = np.arange(rotation_range[0], rotation_range[1], rotation_range[2])
-        scale_values = np.arange(scale_range[0], scale_range[1], scale_range[2])
+        x_start, x_end, x_step = x_range
+        y_start, y_end, y_step = y_range
+        rot_start, rot_end, rot_step = rotation_range
+        scale_start, scale_end, scale_step = scale_range
         
-        total_iterations = len(x_values) * len(y_values) * len(rotation_values) * len(scale_values)
-        iteration = 0
-        
-        for x_offset in x_values:
-            for y_offset in y_values:
-                for rotation in rotation_values:
-                    for scale in scale_values:
+        for x in range(x_start, x_end, x_step):
+            for y in range(y_start, y_end, y_step):
+                for rotation in np.arange(rot_start, rot_end, rot_step):
+                    for scale in np.arange(scale_start, scale_end, scale_step):
                         try:
                             result = self.apply_transformations(
-                                sem_image, structure_data, structure_name, 
-                                x_offset, y_offset, rotation, scale)
+                                sem_image, structure_data, structure_name,
+                                x, y, rotation, scale)
                             
                             score = result['alignment_score']
-                            
-                            result_summary = {
-                                'parameters': result['parameters'],
-                                'score': score,
-                                'structure_name': structure_name
-                            }
-                            all_results.append(result_summary)
-                            
                             if score > best_score:
                                 best_score = score
-                                best_params = result['parameters'].copy()
+                                best_params = {
+                                    'x_offset': x,
+                                    'y_offset': y,
+                                    'rotation': rotation,
+                                    'scale': scale
+                                }
                                 best_result = result
-                            
-                            iteration += 1
-                            
-                        except Exception as e:
-                            iteration += 1
+                        except Exception:
                             continue
         
         return {
-            'best_result': best_result,
-            'best_parameters': best_params,
             'best_score': best_score,
-            'all_results': all_results,
-            'total_tested': len(all_results),
+            'best_parameters': best_params,
+            'best_result': best_result,
             'structure_name': structure_name
         }
     
-    def batch_alignment_search_all_structures(self, sem_image: 'SEMImage',
+    def batch_alignment_search_all_structures(self, sem_image: 'SemImage',
                                             structure_data: Dict[str, Tuple[np.ndarray, dict]],
                                             x_range: Tuple[int, int, int] = (-20, 21, 5),
                                             y_range: Tuple[int, int, int] = (-20, 21, 5),
@@ -260,17 +251,6 @@ class AlignmentService:
             cv2.imwrite(str(diff_path), diff_image)
             saved_files['difference_map'] = diff_path
         
-        params_path = output_dir / f'alignment_parameters_{structure_name}.txt'
-        with open(params_path, 'w') as f:
-            f.write(f"Alignment Parameters for {structure_name}:\n")
-            f.write("=" * 40 + "\n")
-            for key, value in result.get('parameters', {}).items():
-                f.write(f"{key}: {value}\n")
-            f.write(f"\nAlignment Score: {result.get('alignment_score', 'N/A')}\n")
-            if 'coordinates' in result:
-                f.write(f"Structure Coordinates: {result['coordinates']}\n")
-        saved_files['parameters'] = params_path
-        
         return saved_files
 
 
@@ -278,7 +258,7 @@ def create_alignment_service() -> AlignmentService:
     return AlignmentService()
 
 
-def align_gds_to_sem(sem_image: 'SEMImage', 
+def align_gds_to_sem(sem_image: 'SemImage', 
                     structure_data: Dict[str, Tuple[np.ndarray, dict]],
                     structure_name: str,
                     x_offset: int = 0,
@@ -289,38 +269,3 @@ def align_gds_to_sem(sem_image: 'SEMImage',
     service = AlignmentService()
     return service.apply_transformations(
         sem_image, structure_data, structure_name, x_offset, y_offset, rotation, scale, transparency)
-
-
-def find_best_alignment(sem_image: 'SEMImage', 
-                       structure_data: Dict[str, Tuple[np.ndarray, dict]],
-                       structure_name: str,
-                       search_params: Optional[Dict] = None) -> Dict:
-    service = AlignmentService()
-    
-    if search_params is None:
-        search_params = {}
-    
-    x_range = search_params.get('x_range', (-10, 11, 2))
-    y_range = search_params.get('y_range', (-10, 11, 2))
-    rotation_range = search_params.get('rotation_range', (-2.0, 2.5, 0.5))
-    scale_range = search_params.get('scale_range', (0.95, 1.06, 0.05))
-    
-    return service.batch_alignment_search(
-        sem_image, structure_data, structure_name, x_range, y_range, rotation_range, scale_range)
-
-
-def find_best_alignment_all_structures(sem_image: 'SEMImage',
-                                     structure_data: Dict[str, Tuple[np.ndarray, dict]],
-                                     search_params: Optional[Dict] = None) -> Dict[str, Dict]:
-    service = AlignmentService()
-    
-    if search_params is None:
-        search_params = {}
-    
-    x_range = search_params.get('x_range', (-10, 11, 2))
-    y_range = search_params.get('y_range', (-10, 11, 2))
-    rotation_range = search_params.get('rotation_range', (-2.0, 2.5, 0.5))
-    scale_range = search_params.get('scale_range', (0.95, 1.06, 0.05))
-    
-    return service.batch_alignment_search_all_structures(
-        sem_image, structure_data, x_range, y_range, rotation_range, scale_range)

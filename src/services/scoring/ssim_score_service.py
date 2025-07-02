@@ -6,7 +6,7 @@ import numpy as np
 import cv2
 from skimage.metrics import structural_similarity as ssim
 
-from ..core.utils import get_logger
+from src.core.utils import get_logger
 
 
 class SSIMScoreService(QObject):

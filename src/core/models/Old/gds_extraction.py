@@ -164,3 +164,50 @@ def find_structures_by_pattern(gds_path: str, pattern_bounds: Tuple[float, float
         
     except Exception as e:
         raise ValueError(f"Failed to find structures: {e}")
+
+
+def get_predefined_structure_info(structure_num: int) -> Optional[Dict]:
+    """
+    Retrieve metadata for a predefined GDS structure.If you want to add more structures,
+    you can extend the `structures` dictionary below.
+
+    Args:
+        structure_num: Integer index of the structure.
+
+    Returns:
+        Dictionary containing structure metadata, or None if not found.
+    """
+    structures = {
+        1: {
+            'name': 'Circpol_T2',
+            'bounds': (688.55, 5736.55, 760.55, 5807.1),
+            'layers': [14],
+            'scale': 0.1
+        },
+        2: {
+            'name': 'IP935Left_11',
+            'bounds': (693.99, 6406.40, 723.59, 6428.96),
+            'layers': [1, 2],
+            'scale': 0.2
+        },
+        3: {
+            'name': 'IP935Left_14',
+            'bounds': (980.959, 6025.959, 1001.770, 6044.979),
+            'layers': [1],
+            'scale': 0.15
+        },
+        4: {
+            'name': 'QC855GC_CROSS_Bottom',
+            'bounds': (3730.00, 4700.99, 3756.00, 4760.00),
+            'layers': [1, 2],
+            'scale': 0.25
+        },
+        5: {
+            'name': 'QC935_46',
+            'bounds': (7195.558, 5046.99, 7203.99, 5055.33964),
+            'layers': [1],
+            'scale': 0.3
+        }
+    }
+
+    return structures.get(structure_num)

@@ -2,7 +2,7 @@ import numpy as np
 import imageio
 from typing import Optional, Tuple, Union, List, Dict
 from matplotlib.path import Path
-from src.core.models.sem_image import SEMImage
+from src.core.models import SemImage
 
 class OverlayRenderer:
     """
@@ -10,16 +10,16 @@ class OverlayRenderer:
     and multiple rendering modes.
     """
     
-    def __init__(self, sem_image: SEMImage, initial_gds_bounds: Tuple[float, float, float, float]):
+    def __init__(self, sem_image: SemImage, initial_gds_bounds: Tuple[float, float, float, float]):
         """
         Initialize overlay renderer with SEM image and initial GDS bounds.
         
         Args:
-            sem_image: SEMImage instance providing image dimensions and scale
+            sem_image: SemImage instance providing image dimensions and scale
             initial_gds_bounds: (xmin, ymin, xmax, ymax) of original GDS extraction area
         """
         if not sem_image.is_loaded if hasattr(sem_image, 'is_loaded') else True:
-            raise ValueError("SEMImage must be loaded")
+            raise ValueError("SemImage must be loaded")
             
         self.sem_image = sem_image
         self.sem_height, self.sem_width = self.sem_image.shape

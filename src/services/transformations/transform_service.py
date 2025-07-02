@@ -1,214 +1,266 @@
-"""Service for managing translate/rotate/zoom/transparency transforms."""
+"""
+Transform Service for managing transformation operations.
 
-from typing import Dict, Any, Tuple
+This service coordinates transformation operations between the UI and core models.
+It serves as a compatibility layer for existing code while delegating actual
+transformation math to the utilities module.
+"""
+
+import logging
+from typing import Dict, Any, Optional, Tuple
 from PySide6.QtCore import QObject, Signal
-import numpy as np
 
-from ..core.utils import get_logger
+from src.utils.transformations import (
+    create_transformation_matrix,
+    apply_affine_transform,
+    validate_transformation_parameters,
+    convert_pixels_to_gds_units,
+    convert_gds_to_pixel_units
+)
+
+logger = logging.getLogger(__name__)
 
 
 class TransformService(QObject):
-    """Service for managing geometric and visual transforms."""
+    """
+    Service for coordinating transformation operations.
     
-    # Signals
-    transform_changed = Signal(str, float)  # transform_type, value
-    transforms_reset = Signal()
+    This service provides a Qt-based interface for transformation operations
+    and coordinates between UI components and the core transformation utilities.
+    """
     
-    def __init__(self):
-        super().__init__()
-        self.logger = get_logger(__name__)
-        self._transforms = {
-            'translate_x': 0.0,
-            'translate_y': 0.0,
+    # Qt Signals
+    transform_applied = Signal(dict)  # transformation_data
+    transform_updated = Signal(str, float)  # transform_type, value
+    transform_error = Signal(str)  # error_message
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        
+        # Current transformation state
+        self.current_transforms = {
+            'translation_x': 0.0,
+            'translation_y': 0.0,
             'rotation': 0.0,
-            'scale': 1.0,
-            'transparency': 1.0
+            'scale': 1.0
         }
-        self._transform_limits = {
-            'translate_x': (-1000.0, 1000.0),
-            'translate_y': (-1000.0, 1000.0),
-            'rotation': (-360.0, 360.0),
-            'scale': (0.1, 10.0),
-            'transparency': (0.0, 1.0)
-        }
+        
+        # Transformation history
+        self.transform_history = []
+        
+        logger.debug("TransformService initialized")
     
-    def set_transform(self, transform_type: str, value: float) -> bool:
+    def apply_translation(self, dx: float, dy: float) -> bool:
         """
-        Set a transform parameter.
+        Apply translation transformation.
         
         Args:
-            transform_type: Type of transform (translate_x, translate_y, rotation, scale, transparency)
-            value: New value for the transform
-            
-        Returns:
-            True if successful, False if invalid transform type or value
-        """
-        if transform_type not in self._transforms:
-            self.logger.warning(f"Unknown transform type: {transform_type}")
-            return False
-        
-        # Check limits
-        min_val, max_val = self._transform_limits[transform_type]
-        if not (min_val <= value <= max_val):
-            self.logger.warning(f"Transform value {value} out of range [{min_val}, {max_val}] for {transform_type}")
-            return False
-        
-        old_value = self._transforms[transform_type]
-        self._transforms[transform_type] = value
-        
-        if old_value != value:
-            self.transform_changed.emit(transform_type, value)
-            self.logger.debug(f"Transform {transform_type} changed from {old_value} to {value}")
-        
-        return True
-    
-    def get_transform(self, transform_type: str) -> float:
-        """Get current value of a transform parameter."""
-        return self._transforms.get(transform_type, 0.0)
-    
-    def get_all_transforms(self) -> Dict[str, float]:
-        """Get all current transform values."""
-        return self._transforms.copy()
-    
-    def adjust_transform(self, transform_type: str, delta: float) -> bool:
-        """
-        Adjust a transform parameter by a delta value.
-        
-        Args:
-            transform_type: Type of transform
-            delta: Amount to add to current value
+            dx: Translation in X direction
+            dy: Translation in Y direction
             
         Returns:
             True if successful, False otherwise
         """
-        current_value = self.get_transform(transform_type)
-        return self.set_transform(transform_type, current_value + delta)
+        try:
+            # Validate parameters
+            validation = validate_transformation_parameters(translation=(dx, dy))
+            if not validation['valid']:
+                error_msg = f"Invalid translation parameters: {validation['errors']}"
+                logger.error(error_msg)
+                self.transform_error.emit(error_msg)
+                return False
+            
+            # Update current state
+            old_value = (self.current_transforms['translation_x'], self.current_transforms['translation_y'])
+            self.current_transforms['translation_x'] = dx
+            self.current_transforms['translation_y'] = dy
+            
+            # Log the change
+            logger.debug(f"Transform translation changed from {old_value} to ({dx}, {dy})")
+            
+            # Emit signals
+            self.transform_updated.emit('translation', dx)  # Use X value as representative
+            self._emit_transform_applied('translation', (dx, dy))
+            
+            return True
+            
+        except Exception as e:
+            error_msg = f"Error applying translation: {e}"
+            logger.error(error_msg)
+            self.transform_error.emit(error_msg)
+            return False
     
-    def reset_transform(self, transform_type: str) -> bool:
-        """Reset a specific transform to its default value."""
-        default_values = {
-            'translate_x': 0.0,
-            'translate_y': 0.0,
-            'rotation': 0.0,
-            'scale': 1.0,
-            'transparency': 1.0
-        }
-        
-        if transform_type in default_values:
-            return self.set_transform(transform_type, default_values[transform_type])
-        return False
-    
-    def reset_all_transforms(self) -> None:
-        """Reset all transforms to their default values."""
-        old_transforms = self._transforms.copy()
-        
-        self._transforms = {
-            'translate_x': 0.0,
-            'translate_y': 0.0,
-            'rotation': 0.0,
-            'scale': 1.0,
-            'transparency': 1.0
-        }
-        
-        # Emit signals for changed transforms
-        for transform_type, new_value in self._transforms.items():
-            if old_transforms[transform_type] != new_value:
-                self.transform_changed.emit(transform_type, new_value)
-        
-        self.transforms_reset.emit()
-        self.logger.info("All transforms reset to default values")
-    
-    def set_transform_limits(self, transform_type: str, min_val: float, max_val: float) -> bool:
+    def apply_rotation(self, degrees: float) -> bool:
         """
-        Set limits for a transform parameter.
+        Apply rotation transformation.
         
         Args:
-            transform_type: Type of transform
-            min_val: Minimum allowed value
-            max_val: Maximum allowed value
+            degrees: Rotation angle in degrees
             
         Returns:
             True if successful, False otherwise
         """
-        if transform_type not in self._transforms:
+        try:
+            # Validate parameters
+            validation = validate_transformation_parameters(rotation_degrees=degrees)
+            if not validation['valid']:
+                error_msg = f"Invalid rotation parameters: {validation['errors']}"
+                logger.error(error_msg)
+                self.transform_error.emit(error_msg)
+                return False
+            
+            # Update current state
+            old_value = self.current_transforms['rotation']
+            self.current_transforms['rotation'] = degrees
+            
+            # Log the change
+            logger.debug(f"Transform rotation changed from {old_value} to {degrees}")
+            
+            # Emit signals
+            self.transform_updated.emit('rotation', degrees)
+            self._emit_transform_applied('rotation', degrees)
+            
+            return True
+            
+        except Exception as e:
+            error_msg = f"Error applying rotation: {e}"
+            logger.error(error_msg)
+            self.transform_error.emit(error_msg)
             return False
-        
-        if min_val >= max_val:
-            self.logger.warning(f"Invalid limits: min_val ({min_val}) >= max_val ({max_val})")
-            return False
-        
-        self._transform_limits[transform_type] = (min_val, max_val)
-        
-        # Clamp current value to new limits if necessary
-        current_value = self._transforms[transform_type]
-        if current_value < min_val:
-            self.set_transform(transform_type, min_val)
-        elif current_value > max_val:
-            self.set_transform(transform_type, max_val)
-        
-        return True
     
-    def get_transform_limits(self, transform_type: str) -> Tuple[float, float]:
-        """Get the limits for a transform parameter."""
-        return self._transform_limits.get(transform_type, (0.0, 0.0))
-    
-    def apply_transforms_to_point(self, point: Tuple[float, float]) -> Tuple[float, float]:
+    def apply_scale(self, scale: float) -> bool:
         """
-        Apply current transforms to a single point.
+        Apply scale transformation.
         
         Args:
-            point: (x, y) coordinates
+            scale: Scale factor
             
         Returns:
-            Transformed (x, y) coordinates
+            True if successful, False otherwise
         """
-        x, y = point
-        
-        # Apply scaling
-        x *= self._transforms['scale']
-        y *= self._transforms['scale']
-        
-        # Apply rotation
-        if self._transforms['rotation'] != 0.0:
-            angle = np.radians(self._transforms['rotation'])
-            cos_a, sin_a = np.cos(angle), np.sin(angle)
+        try:
+            # Validate parameters
+            validation = validate_transformation_parameters(scale=scale)
+            if not validation['valid']:
+                error_msg = f"Invalid scale parameters: {validation['errors']}"
+                logger.error(error_msg)
+                self.transform_error.emit(error_msg)
+                return False
             
-            new_x = x * cos_a - y * sin_a
-            new_y = x * sin_a + y * cos_a
-            x, y = new_x, new_y
-        
-        # Apply translation
-        x += self._transforms['translate_x']
-        y += self._transforms['translate_y']
-        
-        return (x, y)
+            # Update current state
+            old_value = self.current_transforms['scale']
+            self.current_transforms['scale'] = scale
+            
+            # Log the change
+            logger.debug(f"Transform scale changed from {old_value} to {scale}")
+            
+            # Emit signals
+            self.transform_updated.emit('scale', scale)
+            self._emit_transform_applied('scale', scale)
+            
+            return True
+            
+        except Exception as e:
+            error_msg = f"Error applying scale: {e}"
+            logger.error(error_msg)
+            self.transform_error.emit(error_msg)
+            return False
     
-    def get_transform_matrix(self) -> np.ndarray:
+    def get_transformation_matrix(self) -> Optional[any]:
         """
-        Get the 3x3 transformation matrix for current transforms.
+        Get the current transformation matrix.
         
         Returns:
-            3x3 transformation matrix
+            3x3 transformation matrix or None if error
         """
-        # Create transformation matrix
-        angle = np.radians(self._transforms['rotation'])
-        cos_a, sin_a = np.cos(angle), np.sin(angle)
-        scale = self._transforms['scale']
-        tx, ty = self._transforms['translate_x'], self._transforms['translate_y']
-        
-        matrix = np.array([
-            [scale * cos_a, -scale * sin_a, tx],
-            [scale * sin_a,  scale * cos_a, ty],
-            [0,              0,             1]
-        ])
-        
-        return matrix
+        try:
+            matrix = create_transformation_matrix(
+                translation=(self.current_transforms['translation_x'], 
+                           self.current_transforms['translation_y']),
+                rotation_degrees=self.current_transforms['rotation'],
+                scale=self.current_transforms['scale']
+            )
+            return matrix
+            
+        except Exception as e:
+            error_msg = f"Error creating transformation matrix: {e}"
+            logger.error(error_msg)
+            self.transform_error.emit(error_msg)
+            return None
     
-    def copy_transforms_from(self, other_service: 'TransformService') -> None:
-        """Copy transform values from another TransformService."""
-        other_transforms = other_service.get_all_transforms()
+    def reset_transforms(self) -> None:
+        """Reset all transformations to identity."""
+        try:
+            self.current_transforms = {
+                'translation_x': 0.0,
+                'translation_y': 0.0,
+                'rotation': 0.0,
+                'scale': 1.0
+            }
+            
+            self.transform_history.clear()
+            
+            logger.info("All transformations reset to identity")
+            self._emit_transform_applied('reset', None)
+            
+        except Exception as e:
+            error_msg = f"Error resetting transforms: {e}"
+            logger.error(error_msg)
+            self.transform_error.emit(error_msg)
+    
+    def get_current_transforms(self) -> Dict[str, float]:
+        """Get current transformation parameters."""
+        return self.current_transforms.copy()
+    
+    def convert_pixels_to_gds(self, pixel_coords: Tuple[float, float], 
+                             pixel_size: float) -> Tuple[float, float]:
+        """
+        Convert pixel coordinates to GDS units.
         
-        for transform_type, value in other_transforms.items():
-            self.set_transform(transform_type, value)
+        Args:
+            pixel_coords: (x, y) coordinates in pixels
+            pixel_size: Size of one pixel in GDS units
+            
+        Returns:
+            (x, y) coordinates in GDS units
+        """
+        try:
+            return convert_pixels_to_gds_units(pixel_coords, pixel_size)
+        except Exception as e:
+            logger.error(f"Error converting pixels to GDS: {e}")
+            return (0.0, 0.0)
+    
+    def convert_gds_to_pixels(self, gds_coords: Tuple[float, float], 
+                             pixel_size: float) -> Tuple[float, float]:
+        """
+        Convert GDS coordinates to pixel units.
         
-        self.logger.info("Copied transforms from another service")
+        Args:
+            gds_coords: (x, y) coordinates in GDS units
+            pixel_size: Size of one pixel in GDS units
+            
+        Returns:
+            (x, y) coordinates in pixels
+        """
+        try:
+            return convert_gds_to_pixel_units(gds_coords, pixel_size)
+        except Exception as e:
+            logger.error(f"Error converting GDS to pixels: {e}")
+            return (0.0, 0.0)
+    
+    def _emit_transform_applied(self, transform_type: str, value: Any) -> None:
+        """Emit transform_applied signal with current state."""
+        transform_data = {
+            'type': transform_type,
+            'value': value,
+            'current_transforms': self.current_transforms.copy(),
+            'matrix': self.get_transformation_matrix()
+        }
+        self.transform_applied.emit(transform_data)
+        
+        # Add to history
+        self.transform_history.append({
+            'type': transform_type,
+            'value': value,
+            'transforms_after': self.current_transforms.copy()
+        })

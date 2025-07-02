@@ -2,48 +2,42 @@
 
 import numpy as np
 import cv2
+import math
 from typing import Dict, List, Tuple, Optional
-from .initial_gds_model import InitialGDSModel
+from .initial_gds_model import InitialGdsModel
 
 
 class AlignedGDSModel:
     """Applies transforms to GDS data and renders as bitmap images."""
     
-    def __init__(self, initial_model: InitialGDSModel):
-        """Initialize with an InitialGDSModel."""
+    def __init__(self, initial_model: InitialGdsModel):
+        """Initialize with an InitialGdsModel."""
         self.initial_model = initial_model
         self.transforms = {
             'translate_x': 0.0,
             'translate_y': 0.0,
             'rotation': 0.0,
-            'scale': 1.0,
-            'transparency': 1.0
+            'scale': 1.0
         }
     
-    def set_transform(self, transform_type: str, value: float) -> None:
-        """Set a transform parameter."""
+    def apply_transform(self, transform_type: str, value: float) -> None:
+        """Update a transformation parameter."""
         if transform_type in self.transforms:
             self.transforms[transform_type] = value
         else:
             raise ValueError(f"Unknown transform type: {transform_type}")
     
-    def get_transform(self, transform_type: str) -> float:
-        """Get a transform parameter value."""
-        return self.transforms.get(transform_type, 0.0)
-    
     def reset_transforms(self) -> None:
-        """Reset all transforms to default values."""
+        """Reset all transformations to default values."""
         self.transforms = {
             'translate_x': 0.0,
             'translate_y': 0.0,
             'rotation': 0.0,
-            'scale': 1.0,
-            'transparency': 1.0
+            'scale': 1.0
         }
     
     def apply_transforms_to_polygon(self, polygon: np.ndarray) -> np.ndarray:
-        """Apply current transforms to a single polygon."""
-        # Convert to float64 to avoid overflow
+        """Apply current transformations to a single polygon."""
         poly = polygon.astype(np.float64)
         
         # Apply scaling
@@ -51,10 +45,10 @@ class AlignedGDSModel:
             center = np.mean(poly, axis=0)
             poly = center + (poly - center) * self.transforms['scale']
         
-        # Apply rotation
-        if self.transforms['rotation'] != 0.0:
-            angle = np.radians(self.transforms['rotation'])
-            cos_a, sin_a = np.cos(angle), np.sin(angle)
+        # Apply 90-degree rotations in GDS coordinates
+        if abs(self.transforms['rotation']) % 90 == 0:
+            angle = math.radians(self.transforms['rotation'])
+            cos_a, sin_a = math.cos(angle), math.sin(angle)
             rotation_matrix = np.array([[cos_a, -sin_a], [sin_a, cos_a]])
             
             center = np.mean(poly, axis=0)
@@ -66,15 +60,15 @@ class AlignedGDSModel:
         
         return poly
     
-    def render_to_bitmap(self, layers: List[int], bounds: Tuple[float, float, float, float], 
-                        image_size: Tuple[int, int] = (1024, 666)) -> np.ndarray:
-        """Render the transformed GDS data to a bitmap image."""
-        width, height = image_size
+    def to_bitmap(self, layers: List[int], resolution: Tuple[int, int]) -> np.ndarray:
+        """Render the transformed GDS data to a binary raster image."""
+        width, height = resolution
         
         # Create white background image
         img = np.full((height, width), 255, dtype=np.uint8)
         
         # Get structure bounds
+        bounds = self.initial_model.get_bounds()
         xmin, ymin, xmax, ymax = bounds
         gds_width = xmax - xmin
         gds_height = ymax - ymin
@@ -104,26 +98,22 @@ class AlignedGDSModel:
                 # Convert to integer coordinates for drawing
                 points = np.round(positioned).astype(np.int32)
                 
-                # Apply transparency by blending with background
-                if self.transforms['transparency'] < 1.0:
-                    # Create temporary image for this polygon
-                    temp_img = np.full((height, width), 255, dtype=np.uint8)
-                    cv2.fillPoly(temp_img, [points], 0)
-                    
-                    # Blend with main image
-                    alpha = self.transforms['transparency']
-                    img = cv2.addWeighted(img, 1.0, temp_img, alpha, 0)
-                else:
-                    # Draw polygon directly in black
-                    cv2.fillPoly(img, [points], 0)
+                # Apply small rotations at the end
+                if abs(self.transforms['rotation']) % 90 != 0:
+                    angle = math.radians(self.transforms['rotation'] % 90)
+                    center_x, center_y = width // 2, height // 2
+                    rotation_matrix = cv2.getRotationMatrix2D((center_x, center_y), math.degrees(angle), 1.0)
+                    img = cv2.warpAffine(img, rotation_matrix, (width, height), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+                
+                # Draw polygon directly in black
+                cv2.fillPoly(img, [points], 0)
         
         return img
     
     def get_transform_matrix(self) -> np.ndarray:
         """Get the current transformation matrix."""
-        # Create 3x3 transformation matrix
-        angle = np.radians(self.transforms['rotation'])
-        cos_a, sin_a = np.cos(angle), np.sin(angle)
+        angle = math.radians(self.transforms['rotation'])
+        cos_a, sin_a = math.cos(angle), math.sin(angle)
         scale = self.transforms['scale']
         tx, ty = self.transforms['translate_x'], self.transforms['translate_y']
         

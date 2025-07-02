@@ -55,9 +55,10 @@ class SEMImage:
                  bit_depth: Optional[int] = None,
                  original_path: Optional[Union[str, Path]] = None,
                  acquisition_date: Optional[str] = None,
+                 auto_crop: bool = True,
                  **additional_metadata):
         """
-        Initialize SEM image container.
+        Initialize SEM image container with automatic bottom cropping.
         
         Args:
             image_data: NumPy array containing image data
@@ -65,15 +66,25 @@ class SEMImage:
             bit_depth: Original bit depth (8 or 16), auto-detected if None
             original_path: Source file location
             acquisition_date: Image acquisition timestamp
+            auto_crop: Whether to automatically crop bottom 102 pixels (default=True)
             **additional_metadata: Additional metadata fields
         
         Raises:
             SEMImageError: If image data is invalid
         """
-        self._validate_image_data(image_data)
+        # Store original data for reference
+        self._original_data = image_data.astype(np.float32)
         
-        # Store raw image data (convert to float32 for processing)
-        self._raw_data = image_data.astype(np.float32)
+        # Apply automatic bottom cropping if enabled
+        if auto_crop:
+            cropped_data = self.crop_bottom(image_data)
+        else:
+            cropped_data = image_data
+        
+        self._validate_image_data(cropped_data)
+        
+        # Store processed image data (convert to float32 for processing)
+        self._raw_data = cropped_data.astype(np.float32)
         
         # Auto-detect bit depth if not provided
         if bit_depth is None:
@@ -86,11 +97,43 @@ class SEMImage:
             'shape': self._raw_data.shape,
             'original_path': str(original_path) if original_path else None,
             'acquisition_date': acquisition_date,
+            'auto_cropped': auto_crop,
             **additional_metadata
         }
         
         # Cache for processed array
         self._processed_array = None
+    
+    def crop_bottom(self, image_data: np.ndarray) -> np.ndarray:
+        """
+        Crop bottom 102 pixels from image to remove scale bar.
+        
+        Args:
+            image_data: Input image array
+            
+        Returns:
+            Cropped image array with bottom 102 pixels removed
+        """
+        if len(image_data.shape) != 2:
+            raise SEMImageError("Image data must be 2D for cropping")
+        
+        height, width = image_data.shape
+        
+        # Remove bottom 102 pixels
+        if height <= self.CROP_BOTTOM:
+            raise SEMImageError(f"Image too small for cropping: height {height} <= {self.CROP_BOTTOM}")
+        
+        cropped_height = height - self.CROP_BOTTOM
+        return image_data[:cropped_height, :]
+    
+    def get_cropped_image(self) -> np.ndarray:
+        """
+        Return the cropped image data.
+        
+        Returns:
+            NumPy array with cropped image data
+        """
+        return self._raw_data.copy()
     
     @classmethod
     def from_file(cls, path: Union[str, Path], data_dir: str = "../Data/SEM/") -> 'SEMImage':
@@ -139,20 +182,14 @@ class SEMImage:
             else:
                 raise SEMImageError("Unsupported image shape: {}".format(image_data.shape))
         
-        # Now image_data is 2D
-        h, w = image_data.shape
-        crop_h, crop_w = 666, 1024
-        start_y = max(0, h - crop_h)
-        start_x = max(0, w - crop_w)
-        cropped_data = image_data[start_y:start_y+crop_h, start_x:start_x+crop_w]
-        
-        # Create instance with extracted metadata
+        # Create instance with automatic bottom cropping (will be applied in __init__)
         return cls(
-            image_data=cropped_data,
+            image_data=image_data,
             pixel_size=metadata.get('pixel_size', 1.0),
             bit_depth=metadata.get('bit_depth'),
             original_path=full_path,
             acquisition_date=metadata.get('acquisition_date'),
+            auto_crop=True,
             **{k: v for k, v in metadata.items() 
                if k not in ['pixel_size', 'bit_depth', 'acquisition_date']}
         )
@@ -184,7 +221,7 @@ class SEMImage:
         """
         # Ensure shape reflects current processed dimensions
         metadata = self._metadata.copy()
-        metadata['shape'] = (self.OUTPUT_HEIGHT, self.OUTPUT_WIDTH)
+        metadata['shape'] = self._raw_data.shape
         return metadata
     
     def get_raw_data(self) -> np.ndarray:
@@ -208,8 +245,8 @@ class SEMImage:
     
     @property
     def shape(self) -> Tuple[int, int]:
-        """Image dimensions (height, width)."""
-        return (self.OUTPUT_HEIGHT, self.OUTPUT_WIDTH)
+        """Image dimensions (height, width) after processing."""
+        return self._raw_data.shape
     
     def export_png(self, output_path: Union[str, Path]) -> None:
         """
@@ -240,14 +277,13 @@ class SEMImage:
         if len(image_data.shape) != 2:
             raise SEMImageError("Image data must be 2D (grayscale)")
         
-        if image_data.shape != (self.OUTPUT_HEIGHT, self.OUTPUT_WIDTH):
-            raise SEMImageError(
-                f"Expected cropped dimensions {self.OUTPUT_WIDTH}×{self.OUTPUT_HEIGHT}, "
-                f"got {image_data.shape[1]}×{image_data.shape[0]}"
-            )
-        
         if image_data.size == 0:
             raise SEMImageError("Image data is empty")
+        
+        # Check minimum dimensions after cropping
+        height, width = image_data.shape
+        if height < 1 or width < 1:
+            raise SEMImageError("Image dimensions too small after processing")
     
     def _detect_bit_depth(self, image_data: np.ndarray) -> int:
         """Auto-detect bit depth from image data."""
@@ -339,17 +375,19 @@ def load_sem_image(filename: Union[str, Path],
 
 
 def create_test_image(width: int = 1024, 
-                     height: int = 666,
+                     height: int = 768,  # Start with original height before cropping
                      pixel_size: float = 1.0,
-                     bit_depth: int = 8) -> SEMImage:
+                     bit_depth: int = 8,
+                     auto_crop: bool = True) -> SEMImage:
     """
     Create a test SEM image for development/testing.
     
     Args:
         width: Image width
-        height: Image height  
+        height: Image height (before cropping if auto_crop=True)
         pixel_size: Pixel size in nm/pixel
         bit_depth: Bit depth (8 or 16)
+        auto_crop: Whether to apply automatic bottom cropping
         
     Returns:
         SEMImage instance with synthetic data
@@ -362,7 +400,8 @@ def create_test_image(width: int = 1024,
         image_data=image_data,
         pixel_size=pixel_size,
         bit_depth=bit_depth,
-        original_path="test_image.tif"
+        original_path="test_image.tif",
+        auto_crop=auto_crop
     )
 
 

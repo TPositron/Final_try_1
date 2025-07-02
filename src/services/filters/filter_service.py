@@ -4,7 +4,7 @@ from typing import Dict, List, Optional, Any, Callable
 from PySide6.QtCore import QObject, Signal
 import numpy as np
 
-from ..core.utils import get_logger
+from ...core.utils import get_logger
 
 
 class FilterService(QObject):

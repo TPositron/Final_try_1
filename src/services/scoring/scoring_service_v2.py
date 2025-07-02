@@ -8,7 +8,7 @@ from scipy import ndimage
 from scipy.spatial.distance import directed_hausdorff
 import warnings
 
-from src.core.models.sem_image import SEMImage
+from src.core.models import SemImage
 from src.core.models.gds_model import GDSModel
 
 
@@ -29,11 +29,11 @@ class ScoringService:
         }
     
     def compute_score(self, 
-                     sem_img: Union[SEMImage, np.ndarray], 
+                     sem_img: Union[SemImage, np.ndarray], 
                      gds_overlay: np.ndarray,
                      compute_diagnostics: bool = False) -> Dict[str, Union[float, np.ndarray]]:
         
-        if isinstance(sem_img, SEMImage):
+        if isinstance(sem_img, SemImage):
             sem_array = sem_img.to_array()
         else:
             sem_array = sem_img.copy()
@@ -59,14 +59,14 @@ class ScoringService:
         return scores
     
     def compute_score_with_legacy(self, 
-                                 sem_img: Union[SEMImage, np.ndarray], 
+                                 sem_img: Union[SemImage, np.ndarray], 
                                  gds_overlay: np.ndarray,
                                  include_legacy: bool = False) -> Dict[str, Union[float, np.ndarray]]:
         
         scores = self.compute_score(sem_img, gds_overlay)
         
         if include_legacy:
-            if isinstance(sem_img, SEMImage):
+            if isinstance(sem_img, SemImage):
                 sem_array = sem_img.to_array()
             else:
                 sem_array = sem_img.copy()
@@ -324,11 +324,11 @@ class ScoringService:
             return np.zeros_like(sem_array)
     
     def compute_region_scores(self, 
-                            sem_img: Union[SEMImage, np.ndarray],
+                            sem_img: Union[SemImage, np.ndarray],
                             gds_overlay: np.ndarray,
                             regions: list) -> Dict[str, Dict[str, float]]:
         
-        if isinstance(sem_img, SEMImage):
+        if isinstance(sem_img, SemImage):
             sem_array = sem_img.to_array()
         else:
             sem_array = sem_img.copy()
@@ -353,11 +353,11 @@ class ScoringService:
         return region_scores
     
     def compute_multi_scale_scores(self, 
-                                 sem_img: Union[SEMImage, np.ndarray],
+                                 sem_img: Union[SemImage, np.ndarray],
                                  gds_overlay: np.ndarray,
                                  scales: list = [1.0, 0.5, 0.25]) -> Dict[str, Dict[str, float]]:
         
-        if isinstance(sem_img, SEMImage):
+        if isinstance(sem_img, SemImage):
             sem_array = sem_img.to_array()
         else:
             sem_array = sem_img.copy()
@@ -403,7 +403,7 @@ def create_scoring_service() -> ScoringService:
     return ScoringService()
 
 
-def compute_alignment_score(sem_img: Union[SEMImage, np.ndarray], 
+def compute_alignment_score(sem_img: Union[SemImage, np.ndarray], 
                           gds_overlay: np.ndarray) -> float:
     service = ScoringService()
     scores = service.compute_score(sem_img, gds_overlay)

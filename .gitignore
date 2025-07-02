@@ -2,6 +2,9 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
+*.pyo
+*.pyd
 *.so
 .Python
 build/
@@ -22,29 +25,30 @@ wheels/
 
 # Virtual Environment
 .env
-.venv
+.venv/
 env/
 venv/
 ENV/
 
-# VS Code
+# IDE files
 .vscode/
+.idea/
+*.swp
+*.swo
+*~
 
-# Project specific
-Results/
-Extracted_Structures/
+# OS files
+.DS_Store
+Thumbs.db
 
-# Keep Data directory but ignore large files
-Data/**
-!Data/**/
-!Data/**/.gitkeep
+# Project specific temp and logs
+logs/
+temp/
+*.log
 
-# Ignore Data and Results folders
+# Exclude entire directories as requested
+config/
 Data/
+logs/
 Results/
 
-# Ignore virtual environment and cache directories
-.venv/
-Data/
-Extracted_Structures/
-__pycache__/

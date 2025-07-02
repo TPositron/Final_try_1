@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import List, Dict
 from PySide6.QtCore import QObject, Signal
 
-from ..core.utils import get_data_path, list_files_by_extension
+from src.core.utils import get_data_path, list_files_by_extension
 
 
 class FileListingService(QObject):

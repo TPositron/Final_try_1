@@ -9,7 +9,7 @@ from PySide6.QtCore import QObject, Signal
 from .pixel_score_service import PixelScoreService
 from .ssim_score_service import SSIMScoreService
 from .iou_score_service import IOUScoreService
-from ..core.utils import get_logger, get_results_path
+from src.core.utils import get_logger, get_results_path
 import numpy as np
 
 

@@ -108,6 +108,15 @@ class ImageViewer(QWidget):
         self.update()
         self._emit_view_changed()
     
+    def set_zoom_factor(self, zoom_factor):
+        """Set the zoom factor for the canvas."""
+        new_zoom = max(0.1, min(10.0, zoom_factor))
+        if new_zoom != self._zoom_factor:
+            self._zoom_factor = new_zoom
+            self._update_image_rect()
+            self.update()
+            self._emit_view_changed()
+    
     def fit_to_window(self):
         if self._sem_image is None:
             return
@@ -115,11 +124,11 @@ class ImageViewer(QWidget):
         widget_size = self.size()
         image_size = self._get_image_size()
         
-        if image_size.width() == 0 or image_size.height() == 0:
+        if image_size[0] == 0 or image_size[1] == 0:
             return
         
-        scale_x = widget_size.width() / image_size.width()
-        scale_y = widget_size.height() / image_size.height()
+        scale_x = widget_size.width() / image_size[0]
+        scale_y = widget_size.height() / image_size[1]
         
         self._zoom_factor = min(scale_x, scale_y) * 0.9
         self._pan_offset = QPoint(0, 0)
@@ -212,10 +221,18 @@ class ImageViewer(QWidget):
             overlay_8bit = overlay_data
         
         if len(overlay_8bit.shape) == 2:
+            # Grayscale overlay
             h, w = overlay_8bit.shape
             overlay_qimage = QImage(overlay_8bit.data, w, h, w, QImage.Format_Grayscale8)
             overlay_pixmap = QPixmap.fromImage(overlay_qimage)
+        elif len(overlay_8bit.shape) == 3 and overlay_8bit.shape[2] == 3:
+            # RGB overlay
+            h, w, c = overlay_8bit.shape
+            bytes_per_line = w * c
+            overlay_qimage = QImage(overlay_8bit.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            overlay_pixmap = QPixmap.fromImage(overlay_qimage)
         else:
+            print(f"Unsupported overlay shape: {overlay_8bit.shape}")
             return base_pixmap
         
         result_pixmap = QPixmap(base_pixmap.size())
@@ -227,7 +244,7 @@ class ImageViewer(QWidget):
         painter.drawPixmap(0, 0, base_pixmap)
         
         painter.setOpacity(self._overlay_alpha)
-        painter.setCompositionMode(QPainter.CompositionMode_Overlay)
+        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
         painter.drawPixmap(0, 0, overlay_pixmap)
         
         painter.end()
