@@ -31,9 +31,9 @@ class ScoringOperationsManager(QObject):
         self.current_scoring_results = {}
         self.current_scoring_method = "SSIM"  # Default method
         
-    def calculate_scores(self):
+    def calculate_scores(self, show_validation_warning=True):
         """Calculate alignment scores using multiple metrics."""
-        if not self._validate_required_data(alignment_required=True):
+        if not self._validate_required_data(alignment_required=True, show_warning=show_validation_warning):
             return
             
         try:
@@ -369,14 +369,15 @@ class ScoringOperationsManager(QObject):
             return self.main_window.alignment_operations_manager.get_alignment_info()
         return None
     
-    def _validate_required_data(self, alignment_required=False):
+    def _validate_required_data(self, alignment_required=False, show_warning=True):
         """Validate that required data is available for operations."""
         if not hasattr(self.main_window, 'current_sem_image') or self.main_window.current_sem_image is None:
-            QMessageBox.warning(
-                self.main_window,
-                "No SEM Image",
-                "Please load a SEM image first."
-            )
+            if show_warning:
+                QMessageBox.warning(
+                    self.main_window,
+                    "No SEM Image",
+                    "Please load a SEM image first."
+                )
             return False
         
         if alignment_required:
@@ -387,11 +388,12 @@ class ScoringOperationsManager(QObject):
                 has_alignment = self.main_window.current_alignment_result is not None
             
             if not has_alignment:
-                QMessageBox.warning(
-                    self.main_window,
-                    "No Alignment",
-                    "Please perform alignment first."
-                )
+                if show_warning:
+                    QMessageBox.warning(
+                        self.main_window,
+                        "No Alignment",
+                        "Please perform alignment first."
+                    )
                 return False
         
         return True

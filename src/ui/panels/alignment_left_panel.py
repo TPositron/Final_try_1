@@ -10,6 +10,7 @@ Enhanced with comprehensive error handling, input validation, and logging.
 
 import logging
 import traceback
+import numpy as np
 from typing import Dict, List, Any, Optional, Tuple
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, 
                                QSlider, QSpinBox, QDoubleSpinBox, QLabel, QPushButton,
@@ -32,6 +33,7 @@ class ManualAlignmentTab(QWidget):
     reset_requested = Signal()
     validation_error = Signal(str)  # error message
     parameter_warning = Signal(str)  # warning message
+    gds_displayed = Signal(np.ndarray)  # Signal to indicate GDS overlay display
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -40,6 +42,7 @@ class ManualAlignmentTab(QWidget):
         self._validation_timer.setSingleShot(True)
         self._validation_timer.timeout.connect(self._delayed_validation)
         self._last_validation_issues = []
+        self.current_gds_overlay = None  # Initialize current GDS overlay
         
         try:
             self.setup_ui()
@@ -97,12 +100,15 @@ class ManualAlignmentTab(QWidget):
         """Create the move controls section with error handling."""
         try:
             move_label = QLabel("Move")
-            move_label.setStyleSheet("font-weight: bold;")
+            move_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #FFFFFF; padding: 2px;")
             parent_layout.addWidget(move_label)
             
             # Move X
+            move_x_label = QLabel("Move X:")
+            move_x_label.setStyleSheet("font-weight: bold; font-size: 10px; color: #FFFFFF; padding: 2px;")
+            parent_layout.addWidget(move_x_label)
+            
             move_x_layout = QHBoxLayout()
-            move_x_layout.addWidget(QLabel("Move X:"))
             
             # X control buttons
             self.x_minus_btn = self._create_increment_button("--", "Decrease X by 10 pixels")
@@ -121,8 +127,11 @@ class ManualAlignmentTab(QWidget):
             parent_layout.addLayout(move_x_layout)
             
             # Move Y
+            move_y_label = QLabel("Move Y:")
+            move_y_label.setStyleSheet("font-weight: bold; font-size: 10px; color: #FFFFFF; padding: 2px;")
+            parent_layout.addWidget(move_y_label)
+            
             move_y_layout = QHBoxLayout()
-            move_y_layout.addWidget(QLabel("Move Y:"))
             
             # Y control buttons
             self.y_minus_btn = self._create_increment_button("--", "Decrease Y by 10 pixels")
@@ -149,7 +158,7 @@ class ManualAlignmentTab(QWidget):
         """Create the rotation controls section with error handling."""
         try:
             rotation_label = QLabel("Rotation")
-            rotation_label.setStyleSheet("font-weight: bold;")
+            rotation_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #FFFFFF; padding: 2px;")
             parent_layout.addWidget(rotation_label)
             
             rotation_range_layout = QHBoxLayout()
@@ -183,7 +192,7 @@ class ManualAlignmentTab(QWidget):
         """Create the zoom controls section with error handling."""
         try:
             zoom_label = QLabel("Zoom")
-            zoom_label.setStyleSheet("font-weight: bold;")
+            zoom_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #FFFFFF; padding: 2px;")
             parent_layout.addWidget(zoom_label)
             
             zoom_range_layout = QHBoxLayout()
@@ -196,12 +205,12 @@ class ManualAlignmentTab(QWidget):
             self.zoom_minus_btn = self._create_increment_button("--", "Decrease zoom by 10%")
             self.zoom_minus_small_btn = self._create_increment_button("-", "Decrease zoom by 1%")
             
-            self.scale_spin = self._create_spinbox(10, 500, 100, "Scale factor as percentage")
+            self.zoom_spin = self._create_spinbox(10, 500, 100, "Zoom level percentage")
             
             self.zoom_plus_small_btn = self._create_increment_button("+", "Increase zoom by 1%")
             self.zoom_plus_btn = self._create_increment_button("++", "Increase zoom by 10%")
             
-            for widget in [self.zoom_minus_btn, self.zoom_minus_small_btn, self.scale_spin,
+            for widget in [self.zoom_minus_btn, self.zoom_minus_small_btn, self.zoom_spin,
                           self.zoom_plus_small_btn, self.zoom_plus_btn]:
                 zoom_layout.addWidget(widget)
             zoom_layout.addStretch()
@@ -217,7 +226,7 @@ class ManualAlignmentTab(QWidget):
         """Create the transparency controls section with error handling."""
         try:
             transparency_label = QLabel("Transparency")
-            transparency_label.setStyleSheet("font-weight: bold;")
+            transparency_label.setStyleSheet("font-weight: bold; font-size: 11px; color: #FFFFFF; padding: 2px;")
             parent_layout.addWidget(transparency_label)
             
             transparency_range_layout = QHBoxLayout()
@@ -250,16 +259,9 @@ class ManualAlignmentTab(QWidget):
     def _create_action_buttons(self, parent_layout):
         """Create action buttons section with error handling."""
         try:
-            buttons_layout = QVBoxLayout()
-            
-            self.reset_btn = self._create_action_button("Reset All", "Reset all transformation parameters to default values", 30)
-            # Remove the Load Transformation button - we don't need it
-            # Only keep Reset All button in this section
-            
-            buttons_layout.addWidget(self.reset_btn)
-            
-            parent_layout.addLayout(buttons_layout)
-            logger.debug("Action buttons created successfully")
+            # This section is no longer needed since we moved all action buttons 
+            # to the final controls section to avoid duplication
+            logger.debug("Action buttons section skipped - buttons moved to final controls")
             
         except Exception as e:
             logger.error(f"Error creating action buttons: {e}")
@@ -276,11 +278,7 @@ class ManualAlignmentTab(QWidget):
             self.show_overlay_cb.setChecked(True)
             self.show_overlay_cb.setToolTip("Show/hide GDS overlay on SEM image")
             display_layout.addWidget(self.show_overlay_cb)
-            
-            # Canvas Zoom
-            self._create_canvas_zoom_controls(display_layout)
-            
-            # Display Transparency
+              # Display Transparency (canvas zoom controls removed - Step 3)
             self._create_display_transparency_controls(display_layout)
             
             parent_layout.addWidget(display_group)
@@ -288,34 +286,6 @@ class ManualAlignmentTab(QWidget):
             
         except Exception as e:
             logger.error(f"Error creating display options: {e}")
-            raise
-    
-    def _create_canvas_zoom_controls(self, parent_layout):
-        """Create canvas zoom controls with error handling."""
-        try:
-            canvas_zoom_layout = QHBoxLayout()
-            canvas_zoom_layout.addWidget(QLabel("Canvas Zoom:"))
-            
-            self.canvas_zoom_spin = self._create_spinbox(10, 500, 100, "Canvas zoom level")
-            self.canvas_zoom_spin.setSuffix("%")
-            self.canvas_zoom_spin.setMaximumWidth(80)
-            canvas_zoom_layout.addWidget(self.canvas_zoom_spin)
-            
-            # Canvas zoom increment buttons
-            self.canvas_zoom_minus_10_btn = self._create_increment_button("-10", "Decrease canvas zoom by 10%")
-            self.canvas_zoom_minus_1_btn = self._create_increment_button("-1", "Decrease canvas zoom by 1%")
-            self.canvas_zoom_plus_1_btn = self._create_increment_button("+1", "Increase canvas zoom by 1%")
-            self.canvas_zoom_plus_10_btn = self._create_increment_button("+10", "Increase canvas zoom by 10%")
-            
-            for btn in [self.canvas_zoom_minus_10_btn, self.canvas_zoom_minus_1_btn,
-                       self.canvas_zoom_plus_1_btn, self.canvas_zoom_plus_10_btn]:
-                canvas_zoom_layout.addWidget(btn)
-            canvas_zoom_layout.addStretch()
-            
-            parent_layout.addLayout(canvas_zoom_layout)
-            
-        except Exception as e:
-            logger.error(f"Error creating canvas zoom controls: {e}")
             raise
     
     def _create_display_transparency_controls(self, parent_layout):
@@ -326,7 +296,7 @@ class ManualAlignmentTab(QWidget):
             
             self.trans_display_spin = self._create_spinbox(0, 100, 70, "Display transparency")
             self.trans_display_spin.setSuffix("%")
-            self.trans_display_spin.setMaximumWidth(80)
+            self.trans_display_spin.setMaximumWidth(70)  # Make transparency spinbox longer
             display_transparency_layout.addWidget(self.trans_display_spin)
             
             # Display transparency increment buttons
@@ -353,9 +323,9 @@ class ManualAlignmentTab(QWidget):
             
             # First row - Reset and Auto Align
             button_row1 = QHBoxLayout()
-            self.final_reset_btn = self._create_action_button("Reset", "Reset all parameters to defaults")
+            self.reset_btn = self._create_action_button("Reset All", "Reset all transformation parameters to default values")
             self.auto_align_btn = self._create_action_button("Auto Align", "Automatically align using image processing")
-            button_row1.addWidget(self.final_reset_btn)
+            button_row1.addWidget(self.reset_btn)
             button_row1.addWidget(self.auto_align_btn)
             final_button_layout.addLayout(button_row1)
             
@@ -374,7 +344,10 @@ class ManualAlignmentTab(QWidget):
         """Create an increment/decrement button with consistent styling and error handling."""
         try:
             button = QPushButton(text)
-            button.setMaximumWidth(30)
+            button.setMaximumWidth(25)  # Slightly wider to match image design
+            button.setMaximumHeight(20)  # Slightly taller to match image design
+            button.setMinimumWidth(25)
+            button.setMinimumHeight(20)
             button.setToolTip(tooltip)
             return button
         except Exception as e:
@@ -387,7 +360,10 @@ class ManualAlignmentTab(QWidget):
             spinbox = QSpinBox()
             spinbox.setRange(min_val, max_val)
             spinbox.setValue(default_val)
-            spinbox.setMaximumWidth(60)
+            spinbox.setMaximumWidth(60)  # Adjust width to match image design
+            spinbox.setMaximumHeight(20)  # Adjust height to match image design
+            spinbox.setMinimumWidth(60)
+            spinbox.setMinimumHeight(20)
             spinbox.setToolTip(f"{tooltip}\nRange: {min_val} to {max_val}")
             return spinbox
         except Exception as e:
@@ -401,7 +377,10 @@ class ManualAlignmentTab(QWidget):
             spinbox.setRange(min_val, max_val)
             spinbox.setSingleStep(step)
             spinbox.setValue(default_val)
-            spinbox.setMaximumWidth(60)
+            spinbox.setMaximumWidth(60)  # Adjust width to match image design
+            spinbox.setMaximumHeight(20)  # Adjust height to match image design
+            spinbox.setMinimumWidth(60)
+            spinbox.setMinimumHeight(20)
             spinbox.setToolTip(f"{tooltip}\nRange: {min_val} to {max_val}, Step: {step}")
             return spinbox
         except Exception as e:
@@ -414,6 +393,8 @@ class ManualAlignmentTab(QWidget):
             button = QPushButton(text)
             if min_height:
                 button.setMinimumHeight(min_height)
+            else:
+                button.setMaximumHeight(22)  # Make action buttons smaller
             button.setToolTip(tooltip)
             return button
         except Exception as e:
@@ -472,23 +453,17 @@ class ManualAlignmentTab(QWidget):
             self.rot_plus_small_btn.clicked.connect(lambda: self.adjust_value_safe(self.rotation_spin, 0.1))
             self.rot_plus_btn.clicked.connect(lambda: self.adjust_value_safe(self.rotation_spin, 1.0))
             
-            # Scale increment buttons
-            self.zoom_minus_btn.clicked.connect(lambda: self.adjust_value_safe(self.scale_spin, -10))
-            self.zoom_minus_small_btn.clicked.connect(lambda: self.adjust_value_safe(self.scale_spin, -1))
-            self.zoom_plus_small_btn.clicked.connect(lambda: self.adjust_value_safe(self.scale_spin, 1))
-            self.zoom_plus_btn.clicked.connect(lambda: self.adjust_value_safe(self.scale_spin, 10))
+            # Zoom increment buttons
+            self.zoom_minus_btn.clicked.connect(lambda: self.adjust_value_safe(self.zoom_spin, -10))
+            self.zoom_minus_small_btn.clicked.connect(lambda: self.adjust_value_safe(self.zoom_spin, -1))
+            self.zoom_plus_small_btn.clicked.connect(lambda: self.adjust_value_safe(self.zoom_spin, 1))
+            self.zoom_plus_btn.clicked.connect(lambda: self.adjust_value_safe(self.zoom_spin, 10))
             
             # Transparency increment buttons
             self.trans_minus_btn.clicked.connect(lambda: self.adjust_value_safe(self.transparency_spin, -10))
             self.trans_minus_small_btn.clicked.connect(lambda: self.adjust_value_safe(self.transparency_spin, -1))
             self.trans_plus_small_btn.clicked.connect(lambda: self.adjust_value_safe(self.transparency_spin, 1))
             self.trans_plus_btn.clicked.connect(lambda: self.adjust_value_safe(self.transparency_spin, 10))
-            
-            # Canvas zoom increment buttons
-            self.canvas_zoom_minus_10_btn.clicked.connect(lambda: self.adjust_value_safe(self.canvas_zoom_spin, -10))
-            self.canvas_zoom_minus_1_btn.clicked.connect(lambda: self.adjust_value_safe(self.canvas_zoom_spin, -1))
-            self.canvas_zoom_plus_1_btn.clicked.connect(lambda: self.adjust_value_safe(self.canvas_zoom_spin, 1))
-            self.canvas_zoom_plus_10_btn.clicked.connect(lambda: self.adjust_value_safe(self.canvas_zoom_spin, 10))
             
             # Display transparency increment buttons
             self.trans_display_minus_10_btn.clicked.connect(lambda: self.adjust_value_safe(self.trans_display_spin, -10))
@@ -499,9 +474,8 @@ class ManualAlignmentTab(QWidget):
             # Connect value changes to emit alignment_changed with validation
             self._connect_value_change_signals()
             
-            # Buttons - connect both reset buttons to the same signal
+            # Buttons - connect reset button to signal
             self.reset_btn.clicked.connect(self.reset_requested)
-            self.final_reset_btn.clicked.connect(self.reset_requested)
             
             logger.debug("Signal connections established successfully")
             
@@ -514,9 +488,11 @@ class ManualAlignmentTab(QWidget):
         """Connect value change signals with validation and error handling."""
         try:
             # Connect value changes to emit alignment_changed with validation
-            controls = [self.x_offset_spin, self.y_offset_spin, self.rotation_spin, 
-                       self.scale_spin, self.transparency_spin, self.canvas_zoom_spin, 
-                       self.trans_display_spin]
+            controls = [
+                self.x_offset_spin, self.y_offset_spin, self.rotation_spin,
+                self.zoom_spin, self.transparency_spin,
+                self.trans_display_spin
+            ]
             
             for control in controls:
                 if hasattr(control, 'valueChanged'):
@@ -579,10 +555,10 @@ class ManualAlignmentTab(QWidget):
                 'translation_x_pixels': self.x_offset_spin.value(),
                 'translation_y_pixels': self.y_offset_spin.value(),
                 'rotation_degrees': self.rotation_spin.value(),
-                'scale': self.scale_spin.value() / 100.0,
+                'zoom': self.zoom_spin.value(),
+                'scale': 1.0,  # Default scale - removed from UI in Step 3
                 'transparency': self.transparency_spin.value(),
                 'display_transparency': self.trans_display_spin.value(),
-                'canvas_zoom': self.canvas_zoom_spin.value(),
                 'show_overlay': self.show_overlay_cb.isChecked()
             }
         except Exception as e:
@@ -671,19 +647,16 @@ class ManualAlignmentTab(QWidget):
         self.rot_plus_small_btn.setToolTip("Rotate +0.1°")
         self.rot_plus_btn.setToolTip("Rotate +1.0°")
         
-        # Scale controls
-        self.scale_spin.setToolTip("Scale factor as percentage\nRange: 10% to 500%")
-        self.zoom_minus_btn.setToolTip("Decrease scale by 10%")
-        self.zoom_minus_small_btn.setToolTip("Decrease scale by 1%")
-        self.zoom_plus_small_btn.setToolTip("Increase scale by 1%")
-        self.zoom_plus_btn.setToolTip("Increase scale by 10%")
+        # Zoom controls
+        self.zoom_spin.setToolTip("Zoom level as percentage\nRange: 10% to 500%")
+        self.zoom_minus_btn.setToolTip("Decrease zoom by 10%")
+        self.zoom_minus_small_btn.setToolTip("Decrease zoom by 1%")
+        self.zoom_plus_small_btn.setToolTip("Increase zoom by 1%")
+        self.zoom_plus_btn.setToolTip("Increase zoom by 10%")
         
         # Transparency controls
         self.transparency_spin.setToolTip("Overlay transparency\nRange: 0% (opaque) to 100% (transparent)")
         self.trans_display_spin.setToolTip("Display transparency\nRange: 0% (opaque) to 100% (transparent)")
-        
-        # Canvas zoom
-        self.canvas_zoom_spin.setToolTip("Canvas zoom level\nRange: 10% to 500%")
         
         # Action buttons
         self.reset_btn.setToolTip("Reset all transformation parameters to default values")
@@ -694,71 +667,86 @@ class ManualAlignmentTab(QWidget):
         self.show_overlay_cb.setToolTip("Show/hide GDS overlay on SEM image")
         
     def setup_styling(self):
-        """Set up consistent styling for all controls."""
-        # Define color scheme
-        primary_color = "#2C3E50"
-        secondary_color = "#3498DB"
-        success_color = "#27AE60"
-        warning_color = "#F39C12"
-        danger_color = "#E74C3C"
-        light_bg = "#ECF0F1"
-        dark_text = "#2C3E50"
+        """Set up dark theme styling for all controls."""
+        # Define dark theme color scheme
+        primary_dark = "#2B2B2B"          # Dark gray for backgrounds
+        secondary_dark = "#3A3A3A"        # Slightly lighter gray for borders
+        accent_color = "#333333"          # Dark gray for buttons (was blue)
+        success_color = "#4CAF50"         # Green for success states
+        warning_color = "#FF9800"         # Orange for warnings
+        danger_color = "#E22719"          # Red for danger states
+        text_color = "#FFFFFF"            # White text
+        light_text = "#CCCCCC"            # Light gray text
+        dark_bg = "#1E1E1E"               # Very dark background
         
-        # Style the main groups
+        # Set the overall widget background to match the image design
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {primary_dark};
+                color: {text_color};
+            }}
+        """)
+        
+        # Style the main groups with dark theme matching the image design
         group_style = f"""
             QGroupBox {{
                 font-weight: bold;
-                border: 2px solid {primary_color};
-                border-radius: 8px;
-                margin-top: 10px;
-                padding-top: 10px;
-                background-color: {light_bg};
+                font-size: 11px;
+                border: 1px solid {secondary_dark};
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+                background-color: {primary_dark};
+                color: {text_color};
             }}
             QGroupBox::title {{
                 subcontrol-origin: margin;
-                left: 10px;
-                padding: 0 8px 0 8px;
-                color: {primary_color};
-                background-color: {light_bg};
+                left: 8px;
+                padding: 0 4px 0 4px;
+                color: {text_color};
+                background-color: {primary_dark};
+                font-size: 11px;
+                font-weight: bold;
             }}
         """
         
-        # Apply styling to all group boxes
+        # Apply dark styling to all group boxes
         for group in self.findChildren(QGroupBox):
             group.setStyleSheet(group_style)
         
-        # Style increment/decrement buttons
-        button_style = f"""
-            QPushButton {{
-                background-color: {secondary_color};
-                color: white;
-                border: none;
-                border-radius: 4px;
-                padding: 4px;
-                font-weight: bold;
-                min-width: 25px;
-            }}
-            QPushButton:hover {{
-                background-color: #2980B9;
-            }}
-            QPushButton:pressed {{
-                background-color: #21618C;
-            }}
-            QPushButton:disabled {{
-                background-color: #BDC3C7;
-                color: #7F8C8D;
-            }}
+        # Style increment/decrement buttons with dark theme to match the image design
+        button_style = """
+        QPushButton {
+            background-color: #2B2B2B;
+            color: white;
+            border: 1px solid #444444;
+            border-radius: 3px;
+            padding: 2px 4px;
+            min-width: 18px;
+            min-height: 18px;
+            font-size: 10px;
+            font-weight: bold;
+        }
+        QPushButton:hover {
+            background-color: #3A3A3A;
+            border-color: #555555;
+        }
+        QPushButton:pressed {
+            background-color: #1E1E1E;
+            border-color: #333333;
+        }
         """
+        for btn in self.findChildren(QPushButton):
+            btn.setStyleSheet(button_style)
         
-        # Apply to increment/decrement buttons
+        # Apply to increment/decrement buttons 
         increment_buttons = [
             self.x_minus_btn, self.x_minus_small_btn, self.x_plus_small_btn, self.x_plus_btn,
             self.y_minus_btn, self.y_minus_small_btn, self.y_plus_small_btn, self.y_plus_btn,
             self.rot_minus_btn, self.rot_minus_small_btn, self.rot_plus_small_btn, self.rot_plus_btn,
             self.zoom_minus_btn, self.zoom_minus_small_btn, self.zoom_plus_small_btn, self.zoom_plus_btn,
             self.trans_minus_btn, self.trans_minus_small_btn, self.trans_plus_small_btn, self.trans_plus_btn,
-            self.canvas_zoom_minus_10_btn, self.canvas_zoom_minus_1_btn, 
-            self.canvas_zoom_plus_1_btn, self.canvas_zoom_plus_10_btn,
+            # canvas zoom buttons removed - Step 3
             self.trans_display_minus_10_btn, self.trans_display_minus_1_btn,
             self.trans_display_plus_1_btn, self.trans_display_plus_10_btn
         ]
@@ -766,81 +754,121 @@ class ManualAlignmentTab(QWidget):
         for btn in increment_buttons:
             btn.setStyleSheet(button_style)
         
-        # Style action buttons
+        # Style action buttons with dark theme and smaller fonts
         action_button_style = f"""
             QPushButton {{
-                background-color: {primary_color};
-                color: white;
-                border: none;
+                background-color: {secondary_dark};
+                color: {text_color};
+                border: 1px solid {accent_color};
                 border-radius: 6px;
-                padding: 8px 16px;
+                padding: 6px 12px;
                 font-weight: bold;
-                font-size: 12px;
+                font-size: 10px;
             }}
             QPushButton:hover {{
-                background-color: #34495E;
+                background-color: {accent_color};
+                border-color: {accent_color};
             }}
             QPushButton:pressed {{
-                background-color: #1B2631;
+                background-color: #444444;
+                border-color: #444444;
             }}
             QPushButton:disabled {{
-                background-color: #BDC3C7;
-                color: #7F8C8D;
+                background-color: #333333;
+                color: #666666;
+                border-color: #444444;
             }}
         """
         
-        action_buttons = [self.reset_btn, self.final_reset_btn, self.auto_align_btn]
+        action_buttons = [self.reset_btn, self.auto_align_btn]
         for btn in action_buttons:
             btn.setStyleSheet(action_button_style)
         
-        # Style spinboxes
-        spinbox_style = f"""
-            QSpinBox, QDoubleSpinBox {{
-                border: 2px solid {secondary_color};
-                border-radius: 4px;
-                padding: 4px;
-                background-color: white;
-                color: {dark_text};
-                font-weight: bold;
-            }}
-            QSpinBox:focus, QDoubleSpinBox:focus {{
-                border-color: {success_color};
-            }}
-            QSpinBox:disabled, QDoubleSpinBox:disabled {{
-                background-color: #F8F9FA;
-                color: #6C757D;
-                border-color: #DEE2E6;
+        # Style spinboxes with dark theme to match the image design
+        spinbox_style = """
+        QSpinBox, QDoubleSpinBox {
+            border: 1px solid #444444;
+            border-radius: 3px;
+            padding: 2px 4px;
+            background-color: #2B2B2B;
+            color: #ffffff;
+            font-size: 10px;
+            font-weight: normal;
+            min-width: 50px;
+            min-height: 18px;
+        }
+        QSpinBox:focus, QDoubleSpinBox:focus {
+            border: 1px solid #4CAF50;
+            background-color: #3A3A3A;
+        }
+        QSpinBox::up-button, QDoubleSpinBox::up-button {
+            width: 0px;
+            height: 0px;
+            border: 0px;
+        }
+        QSpinBox::down-button, QDoubleSpinBox::down-button {
+            width: 0px;
+            height: 0px;
+            border: 0px;
+        }
+        """
+        
+        # Apply to all spinboxes (PySide6: must call separately for each type)
+        spinboxes = self.findChildren(QSpinBox) + self.findChildren(QDoubleSpinBox)
+        for spinbox in spinboxes:
+            spinbox.setStyleSheet(spinbox_style)
+        
+        # Style labels to match the image design
+        label_style = f"""
+            QLabel {{
+                color: {text_color};
+                font-size: 10px;
+                font-weight: normal;
+                padding: 2px;
             }}
         """
         
-        # Apply to all spinboxes
-        for spinbox in self.findChildren((QSpinBox, QDoubleSpinBox)):
-            spinbox.setStyleSheet(spinbox_style)
+        # Apply to all labels
+        for label in self.findChildren(QLabel):
+            label.setStyleSheet(label_style)
         
-        # Style checkboxes
+        # Style checkboxes with dark theme and smaller fonts
         checkbox_style = f"""
             QCheckBox {{
-                color: {dark_text};
+                color: {text_color};
                 font-weight: bold;
+                font-size: 10px;
                 spacing: 8px;
             }}
             QCheckBox::indicator {{
-                width: 18px;
-                height: 18px;
-                border: 2px solid {secondary_color};
+                width: 16px;
+                height: 16px;
+                border: 2px solid {secondary_dark};
                 border-radius: 4px;
-                background-color: white;
+                background-color: {primary_dark};
             }}
             QCheckBox::indicator:checked {{
                 background-color: {success_color};
                 border-color: {success_color};
             }}
             QCheckBox::indicator:hover {{
-                border-color: {success_color};
+                border-color: {accent_color};
             }}
         """
         
         self.show_overlay_cb.setStyleSheet(checkbox_style)
+        
+        # Style labels with dark theme
+        label_style = f"""
+            QLabel {{
+                color: {text_color};
+                font-weight: bold;
+            }}
+        """
+        
+        # Apply dark theme to all labels
+        for label in self.findChildren(QLabel):
+            label.setStyleSheet(label_style)
         
     def update_button_states(self, has_images=False, alignment_ready=False):
         """Update button enabled states based on current conditions."""
@@ -851,9 +879,8 @@ class ManualAlignmentTab(QWidget):
         # Enable save button only when alignment is ready
         self.save_aligned_gds_btn.setEnabled(alignment_ready)
         
-        # Always enable reset buttons
+        # Always enable reset button
         self.reset_btn.setEnabled(True)
-        self.final_reset_btn.setEnabled(True)
         
     def adjust_value_safe(self, spinbox, delta):
         """Safely adjust a spinbox value with comprehensive error handling."""
@@ -1014,16 +1041,15 @@ class ManualAlignmentTab(QWidget):
                     self.rotation_spin.setValue(value)
                     set_params['rotation'] = value
                 
-                # Scale
-                if 'scale' in params:
-                    value = self._validate_and_convert_value(params['scale'], float, 'scale')
-                    # Convert scale factor to percentage for display
-                    percentage = value * 100.0
-                    if 10 <= percentage <= 500:
-                        self.scale_spin.setValue(int(percentage))
-                        set_params['scale'] = value
-                    else:
-                        logger.warning(f"Scale percentage {percentage} out of range [10, 500], skipping")
+                # Scale removed from UI in Step 3
+                # if 'scale' in params:
+                #     value = self._validate_and_convert_value(params['scale'], float, 'scale')
+                #     percentage = value * 100.0
+                #     if 10 <= percentage <= 500:
+                #         self.scale_spin.setValue(int(percentage))
+                #         set_params['scale'] = value
+                #     else:
+                #         logger.warning(f"Scale percentage {percentage} out of range [10, 500], skipping")
                 
                 # Transparency
                 if 'transparency' in params:
@@ -1092,7 +1118,7 @@ class ManualAlignmentTab(QWidget):
         try:
             controls = [
                 self.x_offset_spin, self.y_offset_spin, self.rotation_spin,
-                self.scale_spin, self.transparency_spin, self.canvas_zoom_spin,
+                self.transparency_spin,
                 self.trans_display_spin, self.show_overlay_cb
             ]
             
@@ -1128,7 +1154,7 @@ class ManualAlignmentTab(QWidget):
                 'rotation': 0.0,
                 'scale_percentage': 100,
                 'transparency': 70,
-                'canvas_zoom': 100,
+                'zoom': 100,
                 'display_transparency': 70,
                 'show_overlay': True
             }
@@ -1155,10 +1181,11 @@ class ManualAlignmentTab(QWidget):
                 except Exception as e:
                     reset_errors.append(f"rotation: {e}")
                     
-                try:
-                    self.scale_spin.setValue(defaults['scale_percentage'])
-                except Exception as e:
-                    reset_errors.append(f"scale: {e}")
+                # Scale removed from UI in Step 3
+                # try:
+                #     self.scale_spin.setValue(defaults['scale_percentage'])
+                # except Exception as e:
+                #     reset_errors.append(f"scale: {e}")
                     
                 try:
                     self.transparency_spin.setValue(defaults['transparency'])
@@ -1166,9 +1193,9 @@ class ManualAlignmentTab(QWidget):
                     reset_errors.append(f"transparency: {e}")
                     
                 try:
-                    self.canvas_zoom_spin.setValue(defaults['canvas_zoom'])
+                    self.zoom_spin.setValue(defaults['zoom'])
                 except Exception as e:
-                    reset_errors.append(f"canvas_zoom: {e}")
+                    reset_errors.append(f"zoom: {e}")
                     
                 try:
                     self.trans_display_spin.setValue(defaults['display_transparency'])
@@ -1209,9 +1236,9 @@ class ManualAlignmentTab(QWidget):
             'translation_x_pixels': self.x_offset_spin.value(),
             'translation_y_pixels': self.y_offset_spin.value(),
             'rotation_degrees': self.rotation_spin.value(),
-            'scale': self.scale_spin.value() / 100.0,  # Convert percentage to scale factor
+            'scale': 1.0,  # Default scale - removed from UI in Step 3
             'transparency': self.transparency_spin.value(),
-            'canvas_zoom': self.canvas_zoom_spin.value(),
+            'zoom': self.zoom_spin.value(),
             'display_transparency': self.trans_display_spin.value(),
             'show_overlay': self.show_overlay_cb.isChecked()
         }
@@ -1245,19 +1272,19 @@ class ManualAlignmentTab(QWidget):
                 self._set_model_parameter(self.y_offset_spin, ui_params, 'translation_y_pixels', int, 0)
                 self._set_model_parameter(self.rotation_spin, ui_params, 'rotation_degrees', float, 0.0)
                 
-                # Handle scale conversion (model uses scale factor, UI uses percentage)
-                scale_factor = ui_params.get('scale', 1.0)
-                try:
-                    scale_percentage = scale_factor * 100.0
-                    if 10 <= scale_percentage <= 500:
-                        self.scale_spin.setValue(int(scale_percentage))
-                        logger.debug(f"Set scale to {scale_percentage}% (factor: {scale_factor})")
-                    else:
-                        logger.warning(f"Scale percentage {scale_percentage} out of range, using default")
-                        self.scale_spin.setValue(100)
-                except Exception as e:
-                    logger.error(f"Error setting scale parameter: {e}")
-                    self.scale_spin.setValue(100)
+                # Scale removed from UI in Step 3
+                # scale_factor = ui_params.get('scale', 1.0)
+                # try:
+                #     scale_percentage = scale_factor * 100.0
+                #     if 10 <= scale_percentage <= 500:
+                #         self.scale_spin.setValue(int(scale_percentage))
+                #         logger.debug(f"Set scale to {scale_percentage}% (factor: {scale_factor})")
+                #     else:
+                #         logger.warning(f"Scale percentage {scale_percentage} out of range, using default")
+                #         self.scale_spin.setValue(100)
+                # except Exception as e:
+                #     logger.error(f"Error setting scale parameter: {e}")
+                #     self.scale_spin.setValue(100)
                 
                 logger.info("Successfully set parameters from model")
                 
@@ -1309,6 +1336,7 @@ class ThreePointAlignmentTab(QWidget):
         
         try:
             self.setup_ui()
+            self.setup_styling()
             self.setup_tooltips()
             self.connect_signals()
             logger.info("ThreePointAlignmentTab initialized successfully")
@@ -1331,7 +1359,7 @@ class ThreePointAlignmentTab(QWidget):
                 "4. Confirm alignment"
             )
             instructions.setWordWrap(True)
-            instructions.setStyleSheet("font-weight: bold; color: #2C3E50; padding: 10px; background-color: #ECF0F1; border-radius: 5px;")
+            instructions.setStyleSheet("font-weight: bold; color: #FFFFFF; padding: 10px; background-color: #2B2B2B; border: 2px solid #3A3A3A; border-radius: 5px;")
             layout.addWidget(instructions)
             
             # Point selection mode
@@ -1821,13 +1849,13 @@ class ThreePointAlignmentTab(QWidget):
                     for j in range(i + 1, len(coords)):
                         dist = ((coords[i][0] - coords[j][0])**2 + (coords[i][1] - coords[j][1])**2)**0.5
                         if dist < min_distance:
-                            return True
-                return False
+                            return False
+                return True
             
-            if points_too_close(self.sem_points):
+            if not points_too_close(self.sem_points):
                 return False, "SEM points are too close together - select more spread out points"
             
-            if points_too_close(self.gds_points):
+            if not points_too_close(self.gds_points):
                 return False, "GDS points are too close together - select more spread out points"
             
             return True, "Points validated successfully"
@@ -1993,6 +2021,130 @@ class ThreePointAlignmentTab(QWidget):
         self.calculate_btn.setToolTip("Calculate transformation matrix from selected points\nRequires 3 SEM and 3 GDS points")
         self.confirm_btn.setToolTip("Confirm and apply the calculated transformation")
         
+    def setup_styling(self):
+        """Set up dark theme styling for all 3-point alignment controls."""
+        # Define dark theme color scheme to match manual alignment tab
+        primary_dark = "#2B2B2B"
+        secondary_dark = "#3A3A3A"
+        accent_color = "#333333"  # Changed from blue to gray to match manual tab
+        success_color = "#4CAF50"
+        text_color = "#FFFFFF"
+        
+        # Set the overall widget background to match the manual tab
+        self.setStyleSheet(f"""
+            QWidget {{
+                background-color: {primary_dark};
+                color: {text_color};
+            }}
+        """)
+        
+        # Style group boxes with dark theme to match manual tab
+        group_style = f"""
+            QGroupBox {{
+                font-weight: bold;
+                font-size: 11px;
+                border: 1px solid {secondary_dark};
+                border-radius: 4px;
+                margin-top: 8px;
+                padding-top: 8px;
+                background-color: {primary_dark};
+                color: {text_color};
+            }}
+            QGroupBox::title {{
+                subcontrol-origin: margin;
+                left: 8px;
+                padding: 0 4px 0 4px;
+                color: {text_color};
+                background-color: {primary_dark};
+                font-size: 11px;
+                font-weight: bold;
+            }}
+        """
+        
+        # Apply to all group boxes
+        for group in self.findChildren(QGroupBox):
+            group.setStyleSheet(group_style)
+        
+        # Style mode selection buttons to match manual tab
+        mode_button_style = f"""
+            QPushButton {{
+                background-color: {secondary_dark};
+                color: {text_color};
+                border: 1px solid {accent_color};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-weight: bold;
+                font-size: 10px;
+            }}
+            QPushButton:checked {{
+                background-color: {accent_color};
+                border-color: {accent_color};
+            }}
+            QPushButton:hover {{
+                background-color: {accent_color};
+                border-color: {accent_color};
+            }}
+            QPushButton:pressed {{
+                background-color: #444444;
+                border-color: #444444;
+            }}
+        """
+        
+        self.sem_mode_btn.setStyleSheet(mode_button_style)
+        self.gds_mode_btn.setStyleSheet(mode_button_style)
+        
+        # Style action buttons to match manual tab
+        action_button_style = f"""
+            QPushButton {{
+                background-color: {secondary_dark};
+                color: {text_color};
+                border: 1px solid {accent_color};
+                border-radius: 6px;
+                padding: 6px 12px;
+                font-weight: bold;
+                font-size: 10px;
+            }}
+            QPushButton:hover {{
+                background-color: {accent_color};
+                border-color: {accent_color};
+            }}
+            QPushButton:pressed {{
+                background-color: #444444;
+                border-color: #444444;
+            }}
+            QPushButton:disabled {{
+                background-color: #333333;
+                color: #666666;
+                border-color: #444444;
+            }}
+        """
+        
+        self.clear_points_btn.setStyleSheet(action_button_style)
+        self.calculate_btn.setStyleSheet(action_button_style)
+        self.confirm_btn.setStyleSheet(action_button_style)
+        
+        # Style labels with dark theme
+        label_style = f"""
+            QLabel {{
+                color: {text_color};
+                font-weight: bold;
+            }}
+        """
+        
+        # Apply to all labels
+        for label in self.findChildren(QLabel):
+            # Skip the instructions label as it already has custom styling
+            if "3-Point Alignment:" not in label.text():
+                label.setStyleSheet(label_style)
+
+    def setup_tooltips(self):
+        """Set up helpful tooltips for 3-point alignment controls."""
+        self.sem_mode_btn.setToolTip("Switch to SEM point selection mode\nClick 3 points on the SEM image")
+        self.gds_mode_btn.setToolTip("Switch to GDS point selection mode\nClick 3 corresponding points on the GDS overlay")
+        self.clear_points_btn.setToolTip("Clear all selected points and start over")
+        self.calculate_btn.setToolTip("Calculate transformation matrix from selected points\nRequires 3 SEM and 3 GDS points")
+        self.confirm_btn.setToolTip("Confirm and apply the calculated transformation")
+        
     def get_selection_status(self):
         """Get current selection status as a formatted string."""
         return f"SEM: {len(self.sem_points)}/3, GDS: {len(self.gds_points)}/3, Mode: {self.current_mode.upper()}"
@@ -2045,7 +2197,10 @@ class AlignmentLeftPanel(BaseViewPanel):
     
     def __init__(self, parent=None):
         super().__init__(ViewMode.ALIGNMENT, parent)
-        
+        # Set the panel width to be 15% wider than default
+        self.setMinimumWidth(350)  # Increased from ~300 to 350 (15% wider)
+        self.setMaximumWidth(400)  # Set max width to prevent it from getting too wide
+    
     def init_panel(self):
         """Initialize the alignment panel UI with scroll area support."""
         try:
@@ -2090,97 +2245,138 @@ class AlignmentLeftPanel(BaseViewPanel):
             # Add scroll area to main layout
             self.main_layout.addWidget(scroll_area)
             
+            # Apply dark theme to the panel
+            self._apply_dark_theme()
+            
             # Connect tab signals to panel signals
             self._connect_tab_signals()
             
-            logger.info("Alignment panel initialized successfully with scroll support")
+            logger.info("Alignment panel initialized successfully with scroll support and dark theme")
             
         except Exception as e:
             logger.error(f"Error initializing alignment panel: {e}")
             logger.error(traceback.format_exc())
             raise
     
+    def _apply_dark_theme(self):
+        """Apply dark theme to the alignment panel."""
+        try:
+            # Define dark theme colors
+            primary_dark = "#2B2B2B"
+            secondary_dark = "#3A3A3A"
+            accent_color = "#4A9EFF"
+            text_color = "#FFFFFF"
+            dark_bg = "#1E1E1E"
+            
+            # Apply dark theme to the main panel
+            self.setStyleSheet(f"""
+                AlignmentLeftPanel {{
+                    background-color: {dark_bg};
+                    color: {text_color};
+                }}
+                QScrollArea {{
+                    border: none;
+                    background-color: {dark_bg};
+                }}
+                QScrollArea QWidget {{
+                    background-color: {dark_bg};
+                }}
+            """)
+            
+            # Apply dark theme to tab widget
+            tab_style = f"""
+                QTabWidget::pane {{
+                    border: 2px solid {secondary_dark};
+                    border-radius: 6px;
+                    background-color: {primary_dark};
+                }}
+                QTabWidget::tab-bar {{
+                    alignment: center;
+                }}
+                QTabBar::tab {{
+                    background-color: {secondary_dark};
+                    color: {text_color};
+                    padding: 8px 16px;
+                    margin-right: 2px;
+                    border-top-left-radius: 6px;
+                    border-top-right-radius: 6px;
+                    font-weight: bold;
+                }}
+                QTabBar::tab:selected {{
+                    background-color: {accent_color};
+                    color: {text_color};
+                }}
+                QTabBar::tab:hover {{
+                    background-color: #5BA7FF;
+                }}
+            """
+            
+            self.tab_widget.setStyleSheet(tab_style)
+            
+            logger.debug("Dark theme applied to alignment panel")
+            
+        except Exception as e:
+            logger.error(f"Error applying dark theme to alignment panel: {e}")
+            raise
+    
     def _create_file_selection_section(self, parent_layout):
         """Create the file selection section at the top of the panel."""
         try:
-            # File Selection Group
+            # File Selection Group with dark theme
             file_selection_group = QGroupBox("File Selection")
             file_selection_group.setStyleSheet("""
                 QGroupBox {
                     font-weight: bold;
-                    border: 2px solid #2C3E50;
+                    border: 2px solid #3A3A3A;
                     border-radius: 8px;
                     margin-top: 10px;
                     padding-top: 10px;
-                    background-color: #ECF0F1;
+                    background-color: #2B2B2B;
+                    color: #FFFFFF;
                 }
                 QGroupBox::title {
                     subcontrol-origin: margin;
                     left: 10px;
                     padding: 0 8px 0 8px;
-                    color: #2C3E50;
-                    background-color: #ECF0F1;
+                    color: #FFFFFF;
+                    background-color: #2B2B2B;
                 }
             """)
             
             file_layout = QVBoxLayout(file_selection_group)
             
-            # Select SEM button
+            # Select SEM button with dark theme
             self.select_sem_btn = QPushButton("Select SEM")
             self.select_sem_btn.setMinimumHeight(30)
             self.select_sem_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #3498DB;
-                    color: white;
+                    background-color: #4A9EFF;
+                    color: #FFFFFF;
                     border: none;
-                    border-radius: 6px;
-                    padding: 8px 16px;
+                    border-radius: 4px;
+                    padding: 8px;
                     font-weight: bold;
                     font-size: 12px;
                 }
                 QPushButton:hover {
-                    background-color: #2980B9;
+                    background-color: #5BA7FF;
                 }
                 QPushButton:pressed {
-                    background-color: #21618C;
+                    background-color: #3D8BFF;
                 }
             """)
             file_layout.addWidget(self.select_sem_btn)
             
-            # GDS Structure selection
+            # GDS Structure selection - now handled by FileSelector component
             gds_layout = QVBoxLayout()
-            gds_label = QLabel("Select GDS Structure:")
+            gds_label = QLabel("GDS Structure:")
             gds_label.setStyleSheet("font-weight: bold; color: #2C3E50;")
             gds_layout.addWidget(gds_label)
             
-            # Create structure combo (will be populated by the main window)
-            self.structure_combo = QComboBox()
-            self.structure_combo.addItem("Select Structure...")
-            self.structure_combo.setMinimumHeight(25)
-            self.structure_combo.setStyleSheet("""
-                QComboBox {
-                    border: 2px solid #3498DB;
-                    border-radius: 4px;
-                    padding: 4px;
-                    background-color: white;
-                    color: #2C3E50;
-                    font-weight: bold;
-                }
-                QComboBox:focus {
-                    border-color: #27AE60;
-                }
-                QComboBox::drop-down {
-                    border: none;
-                    width: 20px;
-                }
-                QComboBox::down-arrow {
-                    image: none;
-                    border-left: 5px solid transparent;
-                    border-right: 5px solid transparent;
-                    border-top: 5px solid #2C3E50;
-                }
-            """)
-            gds_layout.addWidget(self.structure_combo)
+            # Info label about centralized structure selection
+            info_label = QLabel("Structure selection is handled by the FileSelector component in the right panel")
+            info_label.setStyleSheet("color: #666666; font-size: 11px; font-style: italic;")
+            gds_layout.addWidget(info_label)
             
             file_layout.addLayout(gds_layout)
             
@@ -2189,11 +2385,9 @@ class AlignmentLeftPanel(BaseViewPanel):
             
             # Connect SEM button signal
             self.select_sem_btn.clicked.connect(self._on_select_sem_clicked)
-            self.structure_combo.currentTextChanged.connect(self._on_structure_selected)
             
             # Set up tooltips for file selection
             self.select_sem_btn.setToolTip("Select SEM image file for alignment")
-            self.structure_combo.setToolTip("Select GDS structure to align with SEM image")
             
             logger.debug("File selection section created successfully")
             
@@ -2224,8 +2418,6 @@ class AlignmentLeftPanel(BaseViewPanel):
         except Exception as e:
             logger.error(f"Error connecting tab signals: {e}")
             raise
-        self.select_sem_btn.clicked.connect(self._on_select_sem_clicked)
-        self.structure_combo.currentTextChanged.connect(self._on_structure_selected)
         
         # Set up tooltips for file selection
         self.select_sem_btn.setToolTip("Select SEM image file for alignment")
@@ -2237,8 +2429,9 @@ class AlignmentLeftPanel(BaseViewPanel):
     
     def _on_structure_selected(self, structure_name):
         """Handle structure selection."""
-        if structure_name and structure_name != "Select Structure...":
-            self.action_requested.emit("select_structure", {"structure_name": structure_name})
+        # Structure selection is now handled by the FileSelector component in the main window
+        # This method is kept for compatibility but no longer needed
+        print("Structure selection is now handled by FileSelector component")
         
     def get_current_tab_name(self):
         """Get the name of the currently active tab."""
@@ -2260,7 +2453,7 @@ class AlignmentLeftPanel(BaseViewPanel):
             'translation_x_pixels': self.manual_tab.x_offset_spin.value(),
             'translation_y_pixels': self.manual_tab.y_offset_spin.value(),
             'rotation_degrees': self.manual_tab.rotation_spin.value(),
-            'scale': self.manual_tab.scale_spin.value() / 100.0,  # Convert percentage to scale factor
+            'scale': 1.0,  # Default scale - removed from UI in Step 3
             'transparency': self.manual_tab.transparency_spin.value(),
             'canvas_zoom': self.manual_tab.canvas_zoom_spin.value(),
             'display_transparency': self.manual_tab.trans_display_spin.value(),
@@ -2278,7 +2471,8 @@ class AlignmentLeftPanel(BaseViewPanel):
         self.manual_tab.x_offset_spin.setValue(0)
         self.manual_tab.y_offset_spin.setValue(0)
         self.manual_tab.rotation_spin.setValue(0.0)
-        self.manual_tab.scale_spin.setValue(100)  # 100%
+        # Scale removed from UI in Step 3
+        # self.manual_tab.scale_spin.setValue(100)  # 100%
         self.manual_tab.transparency_spin.setValue(70)
         self.manual_tab.canvas_zoom_spin.setValue(100)
         self.manual_tab.trans_display_spin.setValue(70)
@@ -2311,15 +2505,15 @@ class AlignmentLeftPanel(BaseViewPanel):
             
     def populate_structure_combo(self, structures):
         """Populate the structure combo box with available GDS structures."""
-        self.structure_combo.clear()
-        self.structure_combo.addItem("Select Structure...")
-        for structure in structures:
-            self.structure_combo.addItem(structure)
+        # Structure selection is now handled by the FileSelector component in the main window
+        # This method is kept for compatibility but no longer needed
+        print("Structure combo population is now handled by FileSelector component")
             
     def get_selected_structure(self):
-        """Get the currently selected GDS structure."""
-        current_text = self.structure_combo.currentText()
-        return current_text if current_text != "Select Structure..." else None
+        """Get the currently selected GDS structure from the FileSelector component."""
+        # Structure selection is now handled by the FileSelector component in the main window
+        # We'll return None here since this panel no longer manages structure selection
+        return None
     
     def get_panel_status(self):
         """Get comprehensive status information for debugging and monitoring."""
@@ -2406,3 +2600,39 @@ class AlignmentLeftPanel(BaseViewPanel):
             issues.append("No GDS structure selected")
             
         return issues
+    
+    def _display_gds_image(self, gds_overlay):
+        """Display GDS overlay for alignment purposes."""
+        try:
+            if gds_overlay is not None and gds_overlay.size > 0:
+                # Store the overlay for alignment operations
+                self.current_gds_overlay = gds_overlay
+                
+                # Emit signal for visual feedback
+                if hasattr(self, 'gds_displayed'):
+                    self.gds_displayed.emit(gds_overlay)
+                
+                # Log for debugging
+                logger.info(f"GDS overlay received in ManualAlignmentTab: shape={gds_overlay.shape}")
+                print(f"GDS overlay displayed in manual alignment tab: {gds_overlay.shape}")
+                
+                # Enable controls since we now have GDS data
+                self.setEnabled(True)
+                
+                # Provide visual feedback
+                non_zero_pixels = np.count_nonzero(gds_overlay)
+                logger.info(f"GDS overlay contains {non_zero_pixels} active pixels")
+                
+            else:
+                logger.warning("Empty or invalid GDS overlay received")
+                self.current_gds_overlay = None
+                
+        except Exception as e:
+            logger.error(f"Error displaying GDS image in ManualAlignmentTab: {e}")
+            print(f"Error displaying GDS in manual alignment tab: {e}")
+            
+    def get_current_gds_overlay(self):
+        """Get the current GDS overlay."""
+        return getattr(self, 'current_gds_overlay', None)
+        
+    # ...existing methods...

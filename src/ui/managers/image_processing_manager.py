@@ -47,6 +47,10 @@ class ImageProcessingManager(QObject):
             # Update the main window's current image reference
             self.main_window.current_sem_image = filtered_image
             
+            # Update histogram if filter panel exists
+            if hasattr(self.main_window, 'filter_panel') and hasattr(self.main_window.filter_panel, 'update_histogram'):
+                self.main_window.filter_panel.update_histogram(filtered_image)
+            
             # Track applied filter
             self.applied_filters.append({
                 'name': filter_name,
@@ -72,7 +76,7 @@ class ImageProcessingManager(QObject):
             
     def on_filter_preview(self, filter_name, parameters):
         """Handle filter preview from the filter panel."""
-        if not self._validate_required_data(sem_required=True):
+        if not self._validate_required_data(sem_required=True, show_warning=False):
             return
             
         try:
@@ -82,6 +86,10 @@ class ImageProcessingManager(QObject):
             # Update the image viewer with preview
             if hasattr(self.main_window, 'image_viewer') and hasattr(self.main_window.image_viewer, 'set_preview_image'):
                 self.main_window.image_viewer.set_preview_image(preview_array)
+            
+            # Update histogram with preview if filter panel exists
+            if hasattr(self.main_window, 'filter_panel') and hasattr(self.main_window.filter_panel, 'update_histogram'):
+                self.main_window.filter_panel.update_histogram(preview_array)
             
             # Emit signal
             self.filter_previewed.emit(filter_name, parameters, preview_array)
@@ -109,6 +117,10 @@ class ImageProcessingManager(QObject):
             
             # Update the main window's current image reference
             self.main_window.current_sem_image = original_image
+            
+            # Update histogram with original image if filter panel exists
+            if hasattr(self.main_window, 'filter_panel') and hasattr(self.main_window.filter_panel, 'update_histogram'):
+                self.main_window.filter_panel.update_histogram(original_image)
             
             # Clear applied filters tracking
             self.applied_filters = []
@@ -305,17 +317,81 @@ class ImageProcessingManager(QObject):
             self._handle_service_error("Undo Filter", e)
             return False
     
-    def _validate_required_data(self, sem_required=False):
+    def save_current_image(self):
+        """Save current filtered image to Results/SEM_Filters/manual/ directory."""
+        try:
+            # Get current filtered image
+            current_image = self.image_processing_service.get_current_image()
+            if current_image is None:
+                if hasattr(self.main_window, 'status_bar'):
+                    self.main_window.status_bar.showMessage("No image to save")
+                return
+                
+            # Create save directory if it doesn't exist
+            from pathlib import Path
+            import cv2
+            from datetime import datetime
+            
+            save_dir = Path("Results/SEM_Filters/manual")
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename with timestamp and filter info
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Get applied filters info for filename
+            applied_filters = self.get_applied_filters()
+            if applied_filters:
+                # Create a short filter description for filename
+                filter_names = [f['name'] for f in applied_filters[-3:]]  # Last 3 filters
+                filter_suffix = "_".join(filter_names).replace(" ", "")[:30]  # Limit length
+                filename = f"filtered_{filter_suffix}_{timestamp}.png"
+            else:
+                filename = f"filtered_image_{timestamp}.png"
+            save_path = save_dir / filename
+            
+            # Save the image
+            success = cv2.imwrite(str(save_path), current_image)
+            
+            if not success:
+                raise RuntimeError(f"Failed to save image to {save_path}")
+            
+            # Verify file was created
+            if not save_path.exists():
+                raise RuntimeError(f"Image file was not created at {save_path}")
+            
+            # Update status
+            if hasattr(self.main_window, 'status_bar'):
+                self.main_window.status_bar.showMessage(f"Image saved successfully to {save_path}")
+            
+            print(f"✓ Image saved successfully to: {save_path}")
+            
+            # Show success message
+            if hasattr(self.main_window, 'show_message'):
+                self.main_window.show_message("Image Saved", f"Filtered image saved to:\n{save_path}")
+            
+        except Exception as e:
+            error_msg = f"Error saving image: {str(e)}"
+            print(error_msg)
+            if hasattr(self.main_window, 'status_bar'):
+                self.main_window.status_bar.showMessage(error_msg)
+            self.image_processing_error.emit("save_image", str(e))
+            
+            # Show error message
+            if hasattr(self.main_window, 'show_error'):
+                self.main_window.show_error("Save Error", error_msg)
+
+    def _validate_required_data(self, sem_required=False, gds_required=False, alignment_required=False, show_warning=True):
         """Validate that required data is available for operations."""
         if sem_required and not hasattr(self.main_window, 'current_sem_image'):
             return False
         
         if sem_required and self.main_window.current_sem_image is None:
-            QMessageBox.warning(
-                self.main_window,
-                "No SEM Image",
-                "Please load a SEM image first."
-            )
+            if show_warning:
+                QMessageBox.warning(
+                    self.main_window,
+                    "No SEM Image",
+                    "Please load a SEM image first."
+                )
             return False
         
         return True

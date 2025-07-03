@@ -92,8 +92,8 @@ class AlignmentPanel(QWidget):
         right_panel = self._create_right_panel()
         self.main_splitter.addWidget(right_panel)
         
-        # Set splitter proportions (25% left, 50% center, 25% right)
-        self.main_splitter.setSizes([300, 600, 300])
+        # Set splitter proportions (12.5% left, 62.5% center, 25% right)
+        self.main_splitter.setSizes([150, 750, 300])
         
         layout.addWidget(self.main_splitter)
         
@@ -103,11 +103,11 @@ class AlignmentPanel(QWidget):
     def _create_left_panel(self) -> QWidget:
         """Create the left panel with sub-mode switcher and controls."""
         left_widget = QWidget()
-        left_widget.setMaximumWidth(300)
-        left_widget.setMinimumWidth(250)
+        left_widget.setMaximumWidth(150)
+        left_widget.setMinimumWidth(100)
         left_layout = QVBoxLayout(left_widget)
         left_layout.setContentsMargins(5, 5, 5, 5)
-        left_layout.setSpacing(10)
+        left_layout.setSpacing(8)
         
         # Sub-mode switcher
         self.sub_mode_switcher = AlignmentSubModeSwitcher()
@@ -144,7 +144,7 @@ class AlignmentPanel(QWidget):
         title_layout = QHBoxLayout()
         
         title_label = QLabel("Alignment Workspace")
-        title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #2E86AB;")
+        title_label.setStyleSheet("font-weight: bold; font-size: 14px; color: #4A9EFF;")
         title_layout.addWidget(title_label)
         
         # View controls
@@ -169,7 +169,7 @@ class AlignmentPanel(QWidget):
         
         self.image_label = QLabel()
         self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setStyleSheet("border: 1px solid #cccccc; background-color: #f8f9fa;")
+        self.image_label.setStyleSheet("border: 1px solid #3A3A3A; background-color: #2B2B2B; color: #FFFFFF;")
         self.image_label.setText("No image loaded\n\nSelect SEM and GDS files to begin alignment")
         self.image_label.setMinimumSize(400, 400)
         
@@ -178,7 +178,7 @@ class AlignmentPanel(QWidget):
         
         # Status bar
         self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("color: #666666; font-style: italic;")
+        self.status_label.setStyleSheet("color: #CCCCCC; font-style: italic;")
         self.progress_bar = QProgressBar()
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setValue(0)
@@ -204,7 +204,7 @@ class AlignmentPanel(QWidget):
         
         # SEM file selection
         sem_label = QLabel("Select SEM:")
-        sem_label.setStyleSheet("font-weight: bold; color: #2E86AB;")
+        sem_label.setStyleSheet("font-weight: bold; color: #4A9EFF;")
         file_layout.addWidget(sem_label)
         
         self.sem_combo = QPushButton("Browse SEM Files...")
@@ -212,27 +212,23 @@ class AlignmentPanel(QWidget):
         file_layout.addWidget(self.sem_combo)
         
         self.sem_status = QLabel("No SEM file selected")
-        self.sem_status.setStyleSheet("color: #666666; font-size: 10px;")
+        self.sem_status.setStyleSheet("color: #CCCCCC; font-size: 10px;")
         file_layout.addWidget(self.sem_status)
         
         file_layout.addSpacing(15)
         
-        # GDS structure selection
-        gds_label = QLabel("Select GDS Structure:")
-        gds_label.setStyleSheet("font-weight: bold; color: #2E86AB;")
+        # GDS structure selection - now handled by FileSelector component
+        gds_label = QLabel("GDS Structure:")
+        gds_label.setStyleSheet("font-weight: bold; color: #4A9EFF;")
         file_layout.addWidget(gds_label)
         
-        self.gds_combo = QPushButton("Browse GDS Files...")
-        self.gds_combo.clicked.connect(self._browse_gds_files)
-        file_layout.addWidget(self.gds_combo)
+        # Info label about centralized selection
+        info_label = QLabel("GDS file auto-loaded. Structure selection handled by FileSelector component.")
+        info_label.setStyleSheet("color: #CCCCCC; font-size: 10px; font-style: italic;")
+        file_layout.addWidget(info_label)
         
-        self.structure_combo = QPushButton("Select Structure...")
-        self.structure_combo.setEnabled(False)
-        self.structure_combo.clicked.connect(self._select_structure)
-        file_layout.addWidget(self.structure_combo)
-        
-        self.gds_status = QLabel("No GDS file selected")
-        self.gds_status.setStyleSheet("color: #666666; font-size: 10px;")
+        self.gds_status = QLabel("Institute_Project_GDS1.gds (auto-loaded)")
+        self.gds_status.setStyleSheet("color: #CCCCCC; font-size: 10px;")
         file_layout.addWidget(self.gds_status)
         
         right_layout.addWidget(file_group)
@@ -256,7 +252,7 @@ class AlignmentPanel(QWidget):
                 background-color: #45a049;
             }
             QPushButton:disabled {
-                background-color: #cccccc;
+                background-color: #333333;
                 color: #666666;
             }
         """)
@@ -358,7 +354,7 @@ class AlignmentPanel(QWidget):
         splitter.addWidget(self.transformation_preview)
         
         # Set splitter proportions (60% selection, 40% preview)
-        splitter.setSizes([400, 300])
+        splitter.setSizes([200, 150])
         
         hybrid_layout.addWidget(splitter)
         
@@ -612,42 +608,15 @@ class AlignmentPanel(QWidget):
     
     def _browse_gds_files(self):
         """Browse and select GDS files."""
-        try:
-            # Get GDS data directory  
-            data_dir = Path(__file__).parent.parent.parent.parent / "Data" / "GDS"
-            if not data_dir.exists():
-                data_dir = Path.home()
-            
-            # Open file dialog
-            file_path, _ = QFileDialog.getOpenFileName(
-                self,
-                "Select GDS File", 
-                str(data_dir),
-                "GDS Files (*.gds *.gds2 *.gdsii);;All Files (*)"
-            )
-            
-            if file_path:
-                self.gds_combo.setText(Path(file_path).name)
-                self.gds_status.setText(f"Selected: {Path(file_path).name}")
-                self.gds_status.setStyleSheet("color: #4CAF50; font-size: 10px;")
-                
-                # Enable structure selection
-                self.structure_combo.setEnabled(True)
-                self.structure_combo.setText("Select Structure...")
-                
-                # Emit signal for file loading
-                self.gds_file_loaded.emit(file_path)
-                logger.info(f"GDS file selected: {file_path}")
-                
-                # Update generate button state
-                self._update_generate_button_state()
-                
-        except Exception as e:
-            logger.error(f"Error browsing GDS files: {e}")
-            QMessageBox.warning(self, "Error", f"Failed to browse GDS files: {e}")
+        # GDS file selection is now handled by the FileSelector component
+        # This method is kept for compatibility but no longer needed
+        print("GDS file selection is now handled by FileSelector component")
     
     def _select_structure(self):
         """Select GDS structure from available structures."""
+        # Structure selection is now handled by the FileSelector component
+        # This method is kept for compatibility but no longer needed
+        print("Structure selection is now handled by FileSelector component")
         try:
             structures = ["Structure 1 - IP935Left_11", "Structure 2 - IP935Left_14", "Structure 3 - QC855GC_CROSS"]
             
@@ -663,19 +632,8 @@ class AlignmentPanel(QWidget):
             )
             
             if ok and structure:
-                self.structure_combo.setText(structure)
-                self.gds_status.setText(f"Structure: {structure}")
-                self.gds_status.setStyleSheet("color: #4CAF50; font-size: 10px;")
-                
-                # Extract structure ID
-                structure_id = structures.index(structure) + 1
-                
-                # Emit signal for structure selection
-                self.gds_structure_selected.emit("", structure_id)
-                logger.info(f"GDS structure selected: {structure} (ID: {structure_id})")
-                
-                # Update generate button state
-                self._update_generate_button_state()
+                # Structure selection is now handled by FileSelector component
+                print(f"Structure selection {structure} would be handled by FileSelector component")
                 
         except Exception as e:
             logger.error(f"Error selecting structure: {e}")
@@ -809,14 +767,11 @@ class AlignmentPanel(QWidget):
         # Reset file selections
         self.sem_combo.setText("Browse SEM Files...")
         self.sem_status.setText("No SEM file selected")
-        self.sem_status.setStyleSheet("color: #666666; font-size: 10px;")
+        self.sem_status.setStyleSheet("color: #CCCCCC; font-size: 10px;")
         
-        self.gds_combo.setText("Browse GDS Files...")
-        self.gds_status.setText("No GDS file selected")
-        self.gds_status.setStyleSheet("color: #666666; font-size: 10px;")
-        
-        self.structure_combo.setText("Select Structure...")
-        self.structure_combo.setEnabled(False)
+        # GDS file is auto-loaded, structure selection handled by FileSelector
+        self.gds_status.setText("Institute_Project_GDS1.gds (auto-loaded)")
+        self.gds_status.setStyleSheet("color: #CCCCCC; font-size: 10px;")
         
         self.generate_button.setEnabled(False)
         

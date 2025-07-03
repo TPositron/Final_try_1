@@ -7,6 +7,7 @@ import cv2
 
 class ImageViewer(QWidget):
     view_changed = Signal(dict)
+    point_selected = Signal(int, int, str)  # x, y, mode ("sem" or "gds")
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -31,6 +32,12 @@ class ImageViewer(QWidget):
         
         self._overlay_visible = True
         self._overlay_alpha = 0.7
+        
+        # Point selection state
+        self._point_selection_mode = False
+        self._point_selection_type = "sem"  # "sem" or "gds"
+        self._sem_points = []
+        self._gds_points = []
         
         self.setFocusPolicy(Qt.StrongFocus)
         self._setup_ui()
@@ -77,6 +84,28 @@ class ImageViewer(QWidget):
         self.fit_to_window()  # Always fit cropped image to window
         self.update()
     
+    def load_image(self, file_path):
+        """
+        Load an image from a file path and display it.
+        
+        Args:
+            file_path (str): Path to the image file to load
+        """
+        try:
+            # Load the image using OpenCV
+            image = cv2.imread(file_path, cv2.IMREAD_GRAYSCALE)
+            
+            if image is None:
+                print(f"Error: Could not load image from {file_path}")
+                return
+            
+            # Convert to numpy array and set as SEM image
+            self.set_sem_image(image)
+            print(f"Successfully loaded image: {file_path}")
+            
+        except Exception as e:
+            print(f"Error loading image {file_path}: {e}")
+
     def set_gds_overlay(self, gds_overlay):
         self._gds_overlay = gds_overlay
         self._invalidate_cache()
@@ -92,14 +121,27 @@ class ImageViewer(QWidget):
         self._invalidate_cache()
         self.update()
     
-    def set_overlay_alpha(self, alpha):
-        self._overlay_alpha = max(0.0, min(1.0, alpha))
-        self._invalidate_cache()
-        self.update()
-    
     def toggle_overlay(self):
         self._overlay_visible = not self._overlay_visible
         self.update()
+    
+    def set_overlay_visible(self, visible):
+        """Set overlay visibility."""
+        self._overlay_visible = visible
+        self.update()
+    
+    def set_overlay_alpha(self, alpha):
+        """Set overlay transparency."""
+        self._overlay_alpha = max(0.0, min(1.0, alpha))
+        self.update()
+    
+    def get_overlay_visible(self):
+        """Get overlay visibility state."""
+        return self._overlay_visible
+    
+    def get_overlay_alpha(self):
+        """Get overlay transparency."""
+        return self._overlay_alpha
     
     def reset_view(self):
         self._zoom_factor = 1.0
@@ -294,9 +336,41 @@ class ImageViewer(QWidget):
         
         painter.drawPixmap(self._image_rect.topLeft(), scaled_pixmap)
         
+        # Draw point markers
+        self._draw_point_markers(painter)
+        
         if self._alignment_result and 'difference_map' in self._alignment_result:
             self._draw_difference_overlay(painter)
     
+    def _draw_point_markers(self, painter):
+        """Draw visual markers for selected points."""
+        if not self._image_rect.isEmpty():
+            # Draw SEM points in blue
+            painter.setPen(QPen(QColor(100, 150, 255), 3))
+            painter.setBrush(QBrush(QColor(100, 150, 255, 150)))
+            for i, (x, y) in enumerate(self._sem_points):
+                screen_point = self._image_to_screen_coords(QPoint(x, y))
+                if self._image_rect.contains(screen_point):
+                    # Draw circle
+                    painter.drawEllipse(screen_point.x() - 8, screen_point.y() - 8, 16, 16)
+                    # Draw number
+                    painter.setPen(QPen(QColor(255, 255, 255), 2))
+                    painter.drawText(screen_point.x() - 5, screen_point.y() + 5, str(i + 1))
+                    painter.setPen(QPen(QColor(100, 150, 255), 3))
+            
+            # Draw GDS points in orange
+            painter.setPen(QPen(QColor(255, 150, 50), 3))
+            painter.setBrush(QBrush(QColor(255, 150, 50, 150)))
+            for i, (x, y) in enumerate(self._gds_points):
+                screen_point = self._image_to_screen_coords(QPoint(x, y))
+                if self._image_rect.contains(screen_point):
+                    # Draw square
+                    painter.drawRect(screen_point.x() - 8, screen_point.y() - 8, 16, 16)
+                    # Draw number
+                    painter.setPen(QPen(QColor(255, 255, 255), 2))
+                    painter.drawText(screen_point.x() - 5, screen_point.y() + 5, str(i + 1))
+                    painter.setPen(QPen(QColor(255, 150, 50), 3))
+
     def _draw_difference_overlay(self, painter):
         pass
     
@@ -334,15 +408,33 @@ class ImageViewer(QWidget):
     
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
-            self._dragging = True
-            self._drag_start = event.position().toPoint()
-            self._drag_offset = self._pan_offset
-            self.setCursor(Qt.ClosedHandCursor)
+            if self._point_selection_mode:
+                # Handle point selection
+                image_coords = self._screen_to_image_coords(event.position().toPoint())
+                
+                # Check if clicking near an existing point to remove it
+                if self.remove_point_near(event.position().toPoint().x(), event.position().toPoint().y(), 
+                                        self._point_selection_type):
+                    # Point was removed, emit signal to update UI
+                    self.point_selected.emit(-1, -1, self._point_selection_type)  # Signal for point removal
+                else:
+                    # Add new point if within image bounds and under limit
+                    if self._image_rect.contains(event.position().toPoint()):
+                        current_points = len(self._sem_points) if self._point_selection_type == "sem" else len(self._gds_points)
+                        if current_points < 3:
+                            self.add_point(image_coords.x(), image_coords.y(), self._point_selection_type)
+                            self.point_selected.emit(image_coords.x(), image_coords.y(), self._point_selection_type)
+            else:
+                # Normal panning mode
+                self._dragging = True
+                self._drag_start = event.position().toPoint()
+                self._drag_offset = self._pan_offset
+                self.setCursor(Qt.ClosedHandCursor)
         
         event.accept()
     
     def mouseMoveEvent(self, event: QMouseEvent):
-        if self._dragging:
+        if self._dragging and not self._point_selection_mode:
             current_pos = event.position().toPoint()
             delta = current_pos - self._drag_start
             self._pan_offset = self._drag_offset + delta
@@ -355,8 +447,11 @@ class ImageViewer(QWidget):
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton and self._dragging:
             self._dragging = False
-            self.setCursor(Qt.ArrowCursor)
-            self._emit_view_changed()
+            if self._point_selection_mode:
+                self.setCursor(Qt.CrossCursor)
+            else:
+                self.setCursor(Qt.ArrowCursor)
+                self._emit_view_changed()
         
         event.accept()
     
@@ -372,8 +467,8 @@ class ImageViewer(QWidget):
         relative_pos = screen_point - self._image_rect.topLeft()
         
         image_size = self._get_image_size()
-        scale_x = image_size.x() / self._image_rect.width()
-        scale_y = image_size.y() / self._image_rect.height()
+        scale_x = image_size[0] / self._image_rect.width()
+        scale_y = image_size[1] / self._image_rect.height()
         
         image_x = int(relative_pos.x() * scale_x)
         image_y = int(relative_pos.y() * scale_y)
@@ -385,8 +480,8 @@ class ImageViewer(QWidget):
             return QPoint(0, 0)
         
         image_size = self._get_image_size()
-        scale_x = self._image_rect.width() / image_size.x()
-        scale_y = self._image_rect.height() / image_size.y()
+        scale_x = self._image_rect.width() / image_size[0]
+        scale_y = self._image_rect.height() / image_size[1]
         
         screen_x = int(image_point.x() * scale_x) + self._image_rect.left()
         screen_y = int(image_point.y() * scale_y) + self._image_rect.top()
@@ -439,7 +534,115 @@ class ImageViewer(QWidget):
         self._invalidate_cache()
         self._update_image_rect()
         self.update()
-
-
-def create_image_viewer(parent=None):
-    return ImageViewer(parent)
+    
+    def moveGDS(self, dx, dy):
+        """Move GDS overlay by pixel amounts (Step 4 requirement)."""
+        try:
+            if self._gds_overlay is not None:
+                # Create translation matrix
+                translation_matrix = np.array([
+                    [1, 0, dx],
+                    [0, 1, dy]
+                ], dtype=np.float32)
+                
+                # Apply translation
+                height, width = self._gds_overlay.shape[:2]
+                transformed_overlay = cv2.warpAffine(self._gds_overlay, translation_matrix, (width, height))
+                self.set_gds_overlay(transformed_overlay)
+        except Exception as e:
+            print(f"Error moving GDS overlay: {e}")
+    
+    def rotateGDS(self, angle):
+        """Rotate GDS overlay by degrees (Step 4 requirement)."""
+        try:
+            if self._gds_overlay is not None:
+                height, width = self._gds_overlay.shape[:2]
+                center = (width // 2, height // 2)
+                
+                # Create rotation matrix
+                rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+                
+                # Apply rotation
+                transformed_overlay = cv2.warpAffine(self._gds_overlay, rotation_matrix, (width, height))
+                self.set_gds_overlay(transformed_overlay)
+        except Exception as e:
+            print(f"Error rotating GDS overlay: {e}")
+    
+    def zoomGDS(self, factor):
+        """Zoom GDS overlay by scale factor (Step 4 requirement)."""
+        try:
+            if self._gds_overlay is not None:
+                height, width = self._gds_overlay.shape[:2]
+                center = (width // 2, height // 2)
+                
+                # Create scale matrix
+                scale_matrix = cv2.getRotationMatrix2D(center, 0, factor)
+                
+                # Apply scaling
+                transformed_overlay = cv2.warpAffine(self._gds_overlay, scale_matrix, (width, height))
+                self.set_gds_overlay(transformed_overlay)
+        except Exception as e:
+            print(f"Error zooming GDS overlay: {e}")
+    
+    def setGDSTransparency(self, alpha):
+        """Adjust GDS opacity (Step 4 requirement)."""
+        try:
+            self.set_overlay_alpha(alpha)
+        except Exception as e:
+            print(f"Error setting GDS transparency: {e}")
+    
+    def set_point_selection_mode(self, enabled, point_type="sem"):
+        """Enable/disable point selection mode."""
+        self._point_selection_mode = enabled
+        self._point_selection_type = point_type
+        if enabled:
+            self.setCursor(Qt.CrossCursor)
+        else:
+            self.setCursor(Qt.ArrowCursor)
+    
+    def add_point(self, x, y, point_type):
+        """Add a point to the appropriate list."""
+        point = (int(x), int(y))
+        if point_type == "sem":
+            if len(self._sem_points) < 3:
+                self._sem_points.append(point)
+        elif point_type == "gds":
+            if len(self._gds_points) < 3:
+                self._gds_points.append(point)
+        self.update()
+    
+    def remove_point_near(self, x, y, point_type, tolerance=10):
+        """Remove a point near the given coordinates."""
+        points_list = self._sem_points if point_type == "sem" else self._gds_points
+        for i, (px, py) in enumerate(points_list):
+            screen_point = self._image_to_screen_coords(QPoint(px, py))
+            distance = ((screen_point.x() - x) ** 2 + (screen_point.y() - y) ** 2) ** 0.5
+            if distance <= tolerance:
+                points_list.pop(i)
+                self.update()
+                return True
+        return False
+    
+    def clear_points(self, point_type):
+        """Clear all points of the specified type."""
+        if point_type == "sem":
+            self._sem_points.clear()
+        elif point_type == "gds":
+            self._gds_points.clear()
+        self.update()
+    
+    def get_points(self, point_type):
+        """Get points of the specified type."""
+        if point_type == "sem":
+            return self._sem_points.copy()
+        elif point_type == "gds":
+            return self._gds_points.copy()
+        return []
+    
+    def set_points(self, points, point_type):
+        """Set points of the specified type."""
+        if point_type == "sem":
+            self._sem_points = points.copy()
+        elif point_type == "gds":
+            self._gds_points = points.copy()
+        self.update()

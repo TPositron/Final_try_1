@@ -150,6 +150,10 @@ class ImageProcessingService(QObject):
         """Get list of available filter names."""
         return list(self.filter_registry.keys())
     
+    def get_filter_history(self) -> List[Dict[str, Any]]:
+        """Get the current filter history."""
+        return self.filter_history.copy()
+
     def get_filter_info(self, filter_name: str) -> Dict[str, Any]:
         """Get information about a specific filter."""
         if filter_name not in self.filter_registry:
@@ -166,6 +170,15 @@ class ImageProcessingService(QObject):
         self.filter_history = []
         logger.info(f"Image set: shape {image.shape}")
     
+    def set_current_image(self, image: np.ndarray):
+        """Set the current image (for cascading filters)."""
+        self.current_image = image.copy()
+        logger.info(f"Current image updated: shape {image.shape}")
+    
+    def set_original_image(self, image: np.ndarray):
+        """Alias for set_image for backward compatibility."""
+        self.set_image(image)
+
     # Step 77: Implement filter application with basic parameter handling
     def apply_filter(self, filter_name: str, parameters: Dict[str, Any] = None, preview_only: bool = False) -> Optional[np.ndarray]:
         """
@@ -194,13 +207,26 @@ class ImageProcessingService(QObject):
             filter_info = self.filter_registry[filter_name]
             filter_function = filter_info['function']
             
-            # Merge with default parameters
+            # Merge with default parameters and validate
             final_params = {}
             for param_name, param_info in filter_info['parameters'].items():
                 final_params[param_name] = param_info['default']
             
             if parameters:
-                final_params.update(parameters)
+                # Validate and update parameters
+                for param_name, param_value in parameters.items():
+                    if param_name in filter_info['parameters']:
+                        param_info = filter_info['parameters'][param_name]
+                        
+                        # Validate parameter bounds
+                        if 'min' in param_info and param_value < param_info['min']:
+                            param_value = param_info['min']
+                            logger.warning(f"Parameter {param_name} clamped to minimum: {param_info['min']}")
+                        if 'max' in param_info and param_value > param_info['max']:
+                            param_value = param_info['max']
+                            logger.warning(f"Parameter {param_name} clamped to maximum: {param_info['max']}")
+                        
+                        final_params[param_name] = param_value
             
             logger.info(f"Applying filter '{filter_name}' with parameters: {final_params}")
             
@@ -230,9 +256,10 @@ class ImageProcessingService(QObject):
             return filtered_image
             
         except Exception as e:
-            error_msg = f"Filter application failed: {e}"
+            error_msg = f"Filter application failed for '{filter_name}': {str(e)}"
             logger.error(error_msg)
             self.error_occurred.emit(error_msg)
+            self.processing_finished.emit(f"Filter {filter_name} failed")
             return None
     
     def reset_to_original(self):
@@ -557,3 +584,75 @@ class ImageProcessingService(QObject):
     def get_original_image(self) -> Optional[np.ndarray]:
         """Get the original unprocessed image."""
         return self.original_image.copy() if self.original_image is not None else None
+    
+    def get_filters_by_category(self) -> Dict[str, List[str]]:
+        """Get filters organized by category for automatic filtering."""
+        return {
+            'contrast': ['clahe'],
+            'denoising': ['gaussian_blur', 'median_filter'],
+            'binarisation': ['threshold'],
+            'edge_detection': ['edge_detection']
+        }
+    
+    def get_filter_presets_by_category(self) -> Dict[str, Dict[str, Dict]]:
+        """Get predefined filter presets organized by category."""
+        return {
+            'contrast': {
+                'light_clahe': {
+                    'filter': 'clahe',
+                    'parameters': {'clip_limit': 1.5, 'tile_grid_size': 8}
+                },
+                'medium_clahe': {
+                    'filter': 'clahe', 
+                    'parameters': {'clip_limit': 2.5, 'tile_grid_size': 8}
+                },
+                'strong_clahe': {
+                    'filter': 'clahe',
+                    'parameters': {'clip_limit': 4.0, 'tile_grid_size': 6}
+                }
+            },
+            'denoising': {
+                'light_blur': {
+                    'filter': 'gaussian_blur',
+                    'parameters': {'kernel_size': 3, 'sigma': 0.8}
+                },
+                'medium_blur': {
+                    'filter': 'gaussian_blur',
+                    'parameters': {'kernel_size': 5, 'sigma': 1.2}
+                },
+                'strong_median': {
+                    'filter': 'median_filter',
+                    'parameters': {'kernel_size': 5}
+                }
+            },
+            'binarisation': {
+                'low_threshold': {
+                    'filter': 'threshold',
+                    'parameters': {'threshold': 85, 'max_value': 255}
+                },
+                'medium_threshold': {
+                    'filter': 'threshold',
+                    'parameters': {'threshold': 127, 'max_value': 255}
+                },
+                'high_threshold': {
+                    'filter': 'threshold',
+                    'parameters': {'threshold': 170, 'max_value': 255}
+                }
+            },
+            'edge_detection': {
+                'soft_canny': {
+                    'filter': 'edge_detection',
+                    'parameters': {'low_threshold': 30, 'high_threshold': 100}
+                },
+                'normal_canny': {
+                    'filter': 'edge_detection',
+                    'parameters': {'low_threshold': 50, 'high_threshold': 150}
+                },
+                'sharp_canny': {
+                    'filter': 'edge_detection',
+                    'parameters': {'low_threshold': 80, 'high_threshold': 200}
+                }
+            }
+        }
+
+    # Step 78: Preset management

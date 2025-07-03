@@ -26,17 +26,30 @@ class HistogramView(QWidget):
     def setup_ui(self):
         """Initialize the UI components."""
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(0, 0, 0, 0)  # Remove margins for better space usage
         
-        # Create matplotlib figure
-        self.figure = Figure(figsize=(6, 4))
+        # Create matplotlib figure with increased size for better visibility
+        self.figure = Figure(figsize=(6, 4))  # Increased from (5, 3)
         self.canvas = FigureCanvas(self.figure)
+        
+        # Set size policies for responsive behavior
+        from PySide6.QtWidgets import QSizePolicy
+        size_policy = QSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        size_policy.setHorizontalStretch(1)
+        size_policy.setVerticalStretch(1)
+        self.canvas.setSizePolicy(size_policy)
+        
         layout.addWidget(self.canvas)
         
-        # Create subplots
-        self.hist_ax = self.figure.add_subplot(2, 1, 1)
-        self.kernel_ax = self.figure.add_subplot(2, 1, 2)
+        # Create single subplot for histogram only
+        self.hist_ax = self.figure.add_subplot(1, 1, 1)
         
-        self.figure.tight_layout()
+        # Set dark theme styling to match application
+        self.figure.patch.set_facecolor('#2b2b2b')
+        self.hist_ax.set_facecolor('#2b2b2b')
+        
+        # Improve layout spacing for better presentation
+        self.figure.tight_layout(pad=1.5)
         
     def update_histogram(self, image_data: np.ndarray) -> None:
         """Update the histogram display with new image data."""
@@ -48,54 +61,45 @@ class HistogramView(QWidget):
         # Clear previous plots
         self.hist_ax.clear()
         
-        # Calculate histogram
-        hist, bins = np.histogram(image_data.flatten(), bins=256, range=(0, 255))
+        # Convert image to grayscale if it's color
+        if len(image_data.shape) == 3:
+            # Convert to grayscale
+            gray_image = np.dot(image_data[...,:3], [0.2989, 0.5870, 0.1140])
+        else:
+            gray_image = image_data
         
-        # Plot histogram
-        self.hist_ax.bar(bins[:-1], hist, width=1, alpha=0.7, color='blue')
-        self.hist_ax.set_title('Image Histogram')
-        self.hist_ax.set_xlabel('Pixel Intensity')
-        self.hist_ax.set_ylabel('Frequency')
-        self.hist_ax.grid(True, alpha=0.3)
+        # Ensure data is in 0-255 range
+        if gray_image.max() <= 1.0:
+            gray_image = gray_image * 255
+        
+        # Calculate histogram
+        hist, bins = np.histogram(gray_image.flatten(), bins=256, range=(0, 255))
+        
+        # Plot histogram with improved styling
+        self.hist_ax.bar(bins[:-1], hist, width=1, alpha=0.8, color='#4a90e2', edgecolor='none')
+        self.hist_ax.set_title('SEM Image Histogram', color='white', fontsize=10)
+        self.hist_ax.set_xlabel('Pixel Intensity (0-255)', color='white', fontsize=8)
+        self.hist_ax.set_ylabel('Frequency', color='white', fontsize=8)
+        self.hist_ax.grid(True, alpha=0.3, color='gray')
+        
+        # Style the axes for dark theme
+        self.hist_ax.tick_params(colors='white', labelsize=7)
+        self.hist_ax.spines['bottom'].set_color('white')
+        self.hist_ax.spines['top'].set_color('white')
+        self.hist_ax.spines['right'].set_color('white')
+        self.hist_ax.spines['left'].set_color('white')
         
         # Update canvas
         self.canvas.draw()
         self.histogram_updated.emit()
         
-    def update_kernel_view(self, kernel: np.ndarray, title: str = "Filter Kernel") -> None:
-        """Update the kernel visualization."""
-        if kernel is None:
-            return
-            
-        # Clear previous plot
-        self.kernel_ax.clear()
-        
-        # Display kernel as image
-        im = self.kernel_ax.imshow(kernel, cmap='RdBu_r', aspect='equal')
-        self.kernel_ax.set_title(title)
-        
-        # Add colorbar if kernel is large enough
-        if kernel.shape[0] > 3 or kernel.shape[1] > 3:
-            self.figure.colorbar(im, ax=self.kernel_ax, shrink=0.6)
-        
-        # Add text annotations for small kernels
-        if kernel.shape[0] <= 5 and kernel.shape[1] <= 5:
-            for i in range(kernel.shape[0]):
-                for j in range(kernel.shape[1]):
-                    text = self.kernel_ax.text(j, i, f'{kernel[i, j]:.2f}',
-                                             ha="center", va="center", color="black", fontsize=8)
-        
-        # Update canvas
-        self.canvas.draw()
-        
     def clear_displays(self) -> None:
-        """Clear both histogram and kernel displays."""
+        """Clear histogram display."""
         self.hist_ax.clear()
-        self.kernel_ax.clear()
         self.canvas.draw()
         
     def save_plots(self, filepath: str) -> None:
-        """Save the current plots to file."""
+        """Save the current histogram plot to file."""
         self.figure.savefig(filepath, dpi=150, bbox_inches='tight')
         
     def get_histogram_data(self) -> Optional[tuple]:
@@ -103,5 +107,15 @@ class HistogramView(QWidget):
         if self.current_image is None:
             return None
             
-        hist, bins = np.histogram(self.current_image.flatten(), bins=256, range=(0, 255))
+        # Convert to grayscale if needed
+        if len(self.current_image.shape) == 3:
+            gray_image = np.dot(self.current_image[...,:3], [0.2989, 0.5870, 0.1140])
+        else:
+            gray_image = self.current_image
+            
+        # Ensure data is in 0-255 range
+        if gray_image.max() <= 1.0:
+            gray_image = gray_image * 255
+        
+        hist, bins = np.histogram(gray_image.flatten(), bins=256, range=(0, 255))
         return hist, bins

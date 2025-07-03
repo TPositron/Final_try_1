@@ -38,21 +38,13 @@ class GDSOperationsManager(QObject):
     def populate_structure_combo(self):
         """Populate the structure selection combo box with predefined structures."""
         try:
-            if not hasattr(self.main_window, 'structure_combo'):
-                print("Warning: No structure combo available")
-                return
-                
-            self.main_window.structure_combo.clear()
-            self.main_window.structure_combo.addItem("Select Structure...", "")
+            # Note: Structure combo is now handled by FileSelector component
+            # This method is kept for compatibility but doesn't populate the old combo
+            print("Structure combo population is now handled by FileSelector component")
             
-            # Add structures using new GDS service
+            # Get structures info for signal emission
             structures_info = self.new_gds_service.get_all_structures_info()
-            for structure_num, info in structures_info.items():
-                display_name = f"Structure {structure_num} - {info['name']}"
-                # Store the structure number format for compatibility
-                self.main_window.structure_combo.addItem(display_name, f"Structure {structure_num}")
-            
-            print(f"Populated structure combo with {len(structures_info)} structures")
+            print(f"Available structures: {len(structures_info)}")
             
             # Emit signal
             self.structure_combo_populated.emit(len(structures_info))
@@ -61,7 +53,7 @@ class GDSOperationsManager(QObject):
             self._auto_load_default_gds()
             
         except Exception as e:
-            error_msg = f"Failed to populate structure combo: {str(e)}"
+            error_msg = f"Failed to get structure info: {str(e)}"
             print(error_msg)
             self.gds_operation_error.emit("populate_combo", str(e))
     
@@ -70,11 +62,26 @@ class GDSOperationsManager(QObject):
         try:
             if hasattr(self.main_window, 'file_service'):
                 default_gds_path = self.main_window.file_service.get_gds_dir() / "Institute_Project_GDS1.gds"
-                if default_gds_path.exists():
-                    print(f"Auto-loading default GDS: {default_gds_path}")
-                    self._load_gds_file_internal(str(default_gds_path))
+            else:
+                # Fallback path if file_service is not available
+                default_gds_path = Path("Data/GDS/Institute_Project_GDS1.gds")
+                
+            if default_gds_path.exists():
+                print(f"Auto-loading default GDS: {default_gds_path}")
+                self._load_gds_file_internal(str(default_gds_path))
+            else:
+                print(f"Default GDS file not found: {default_gds_path}")
+                # Try alternate path
+                alt_path = Path("Data") / "GDS" / "Institute_Project_GDS1.gds"
+                if alt_path.exists():
+                    print(f"Found default GDS at alternate path: {alt_path}")
+                    self._load_gds_file_internal(str(alt_path))
+                else:
+                    print(f"Could not locate default GDS file at any expected location")
         except Exception as e:
             print(f"Could not auto-load default GDS: {e}")
+            import traceback
+            traceback.print_exc()
     
     def _update_structure_combo_only(self):
         """Update structure combo without auto-loading GDS files."""
@@ -126,16 +133,16 @@ class GDSOperationsManager(QObject):
             success = self.new_gds_service.load_gds_file(file_path)
             
             if success:
-                # Enable structure selection
-                if hasattr(self.main_window, 'structure_combo'):
-                    self.main_window.structure_combo.setEnabled(True)
-                
                 # Store current GDS filename for structure loading
                 self.current_gds_filename = gds_filename
                 self.current_gds_filepath = str(file_path)
                 
-                # Update the structure combo with available structures (without auto-loading)
-                self._update_structure_combo_only()
+                # Populate structure dropdown in FileSelector component
+                if hasattr(self.main_window, 'file_selector') and self.main_window.file_selector:
+                    self.main_window.file_selector.populate_structure_dropdown()
+                    print("Structure dropdown populated in FileSelector")
+                else:
+                    print("Warning: FileSelector not found, cannot populate structure dropdown")
                 
                 # Update status
                 if hasattr(self.main_window, 'status_bar'):
@@ -345,3 +352,29 @@ class GDSOperationsManager(QObject):
             print(error_msg)
             self.gds_operation_error.emit("export_overlay", str(e))
             return False
+        
+    def load_gds_file_from_path(self, file_path: str):
+        """Load GDS file from given file path (for FileSelector integration)."""
+        if file_path:
+            self._load_gds_file_internal(file_path)
+    
+    def select_structure_by_id(self, structure_id: int):
+        """Select structure by ID (for FileSelector integration)."""
+        try:
+            # Map structure ID to structure name using existing service
+            structures_info = self.new_gds_service.get_all_structures_info()
+            
+            if structure_id in structures_info:
+                structure_info = structures_info[structure_id]
+                structure_name = structure_info.get('name', f'Structure {structure_id}')
+                
+                # Call existing structure selection method
+                self.on_structure_selected(structure_name)
+                print(f"Structure {structure_id} ({structure_name}) selected via FileSelector")
+            else:
+                print(f"Warning: Structure ID {structure_id} not found in available structures")
+                
+        except Exception as e:
+            error_msg = f"Failed to select structure {structure_id}: {str(e)}"
+            print(error_msg)
+            self.gds_operation_error.emit("select_structure", str(e))

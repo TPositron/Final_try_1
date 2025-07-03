@@ -8,6 +8,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox,
                                QLabel, QSlider, QSpinBox, QDoubleSpinBox, QInputDialog, QProgressBar)
 from PySide6.QtCore import Qt, Signal
 from ..components.histogram_view import HistogramView
+from ..components.dynamic_parameter_widgets import DynamicParameterPanel
 from typing import Dict, Any, List
 import numpy as np
 import json
@@ -26,6 +27,7 @@ class FilterPanel(QWidget):
     filter_reset = Signal()  # Reset to original image
     preset_saved = Signal(str, dict)  # preset_name, preset_data
     preset_loaded = Signal(str, dict)  # preset_name, preset_data
+    save_image_requested = Signal()  # Request to save current filtered image
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -33,7 +35,9 @@ class FilterPanel(QWidget):
         self.current_parameters = {}
         self.available_filters = []
         self.presets = {}  # Store filter presets
+        self.filter_folder_path = "config/filter_presets"  # Dynamic filter loading path
         self.setup_ui()
+        self._load_dynamic_filters()
         self._load_presets()
         
     def setup_ui(self):
@@ -72,10 +76,13 @@ class FilterPanel(QWidget):
         
         controls_layout.addWidget(filter_group)
         
-        # Filter parameters group
-        self.params_group = QGroupBox("Parameters")
-        self.params_layout = QVBoxLayout(self.params_group)
-        controls_layout.addWidget(self.params_group)
+        # Dynamic parameter panel (replaces old static parameter controls)
+        self.dynamic_params = DynamicParameterPanel()
+        controls_layout.addWidget(self.dynamic_params)
+        
+        # Connect dynamic parameter signals
+        self.dynamic_params.parameters_changed.connect(self._on_parameters_changed)
+        self.dynamic_params.parameters_preview.connect(self._on_parameters_preview)
         
         # Filter history group
         history_group = QGroupBox("Applied Filters")
@@ -102,6 +109,30 @@ class FilterPanel(QWidget):
         button_layout.addWidget(self.reset_button)
         
         controls_layout.addLayout(button_layout)
+        
+        # Save button (separate row)
+        save_button_layout = QHBoxLayout()
+        self.save_button = QPushButton("Save SEM Image")
+        self.save_button.clicked.connect(self._on_save_clicked)
+        self.save_button.setStyleSheet("""
+            QPushButton {
+                background-color: #27ae60;
+                color: white;
+                border: none;
+                padding: 8px 16px;
+                border-radius: 4px;
+                font-weight: bold;
+            }
+            QPushButton:hover {
+                background-color: #229954;
+            }
+            QPushButton:pressed {
+                background-color: #1e8449;
+            }
+        """)
+        save_button_layout.addWidget(self.save_button)
+        controls_layout.addLayout(save_button_layout)
+        
         controls_layout.addStretch()
 
         # Progress and status widgets
@@ -113,15 +144,27 @@ class FilterPanel(QWidget):
         controls_layout.addWidget(self.status_label)
         controls_layout.addWidget(self.progress_bar)
 
-        # Right side: Histogram and kernel view
+        # Right side: Create structured right panel with histogram at top
+        right_panel = QWidget()
+        right_layout = QVBoxLayout(right_panel)
+        right_layout.setContentsMargins(5, 5, 5, 5)
+        right_layout.setSpacing(10)
+        
+        # Histogram at the top of right panel with increased size
         self.histogram_view = HistogramView()
+        self.histogram_view.setMinimumHeight(300)  # Increased from default
+        self.histogram_view.setMaximumHeight(400)  # Set reasonable maximum
+        right_layout.addWidget(self.histogram_view)
+        
+        # Add stretch to push histogram to top and allow space for future components
+        right_layout.addStretch()
         
         # Add to splitter
         splitter.addWidget(controls_widget)
-        splitter.addWidget(self.histogram_view)
+        splitter.addWidget(right_panel)
         
-        # Set splitter proportions (60% left, 40% right)
-        splitter.setSizes([600, 400])
+        # Adjust splitter proportions to give more space to right panel for larger histogram
+        splitter.setSizes([250, 750])
         
         layout.addWidget(splitter)
         
@@ -141,72 +184,29 @@ class FilterPanel(QWidget):
             self.filter_previewed.emit(self.current_filter, parameters)
         
     def _update_parameter_controls(self, filter_name: str):
-        """Update parameter controls based on selected filter."""
-        # Clear existing parameter controls
-        for i in reversed(range(self.params_layout.count())):
-            self.params_layout.itemAt(i).widget().setParent(None)
-            
-        # Add parameter controls based on filter type
-        # This would be expanded with actual filter parameter definitions
-        if filter_name == "Gaussian Blur":
-            self._add_parameter_control("sigma", "Sigma", "double", 1.0, 0.1, 10.0)
-        elif filter_name == "Canny":
-            self._add_parameter_control("low_threshold", "Low Threshold", "int", 50, 0, 255)
-            self._add_parameter_control("high_threshold", "High Threshold", "int", 150, 0, 255)
-        elif filter_name == "Laplacian":
-            self._add_parameter_control("ksize", "Kernel Size", "int", 3, 1, 15, step=2)
-        elif filter_name == "Gabor":
-            self._add_parameter_control("frequency", "Frequency", "double", 0.1, 0.01, 1.0)
-            self._add_parameter_control("theta", "Theta", "double", 0.0, 0.0, 180.0)
-            
-    def _add_parameter_control(self, param_name: str, label: str, param_type: str, 
-                             default_value, min_val, max_val, step=None):
-        """Add a parameter control widget."""
-        layout = QHBoxLayout()
-        layout.addWidget(QLabel(f"{label}:"))
-        
-        if param_type == "int":
-            control = QSpinBox()
-            control.setRange(int(min_val), int(max_val))
-            if step:
-                control.setSingleStep(step)
-            control.setValue(int(default_value))
-            # Connect to real-time preview
-            control.valueChanged.connect(self._on_parameter_changed)
-        elif param_type == "double":
-            control = QDoubleSpinBox()
-            control.setRange(float(min_val), float(max_val))
-            control.setValue(float(default_value))
-            control.setSingleStep(0.1)
-            # Connect to real-time preview
-            control.valueChanged.connect(self._on_parameter_changed)
-        
-        control.setObjectName(param_name)
-        layout.addWidget(control)
-        
-        self.params_layout.addLayout(layout)
-        
-    def _on_parameter_changed(self, value):
-        """Handle parameter value changes for real-time preview."""
-        if self.current_filter:
-            parameters = self._get_current_parameters()
-            self.filter_previewed.emit(self.current_filter, parameters)
+        """Update parameter controls based on selected filter using dynamic parameter system."""
+        # Use the dynamic parameter panel to update controls
+        if hasattr(self, 'dynamic_params'):
+            self.dynamic_params.update_for_filter(filter_name)
         
     def _get_current_parameters(self) -> Dict[str, Any]:
-        """Get current parameter values."""
-        parameters = {}
-        for i in range(self.params_layout.count()):
-            layout = self.params_layout.itemAt(i)
-            if hasattr(layout, 'itemAt') and layout.itemAt(1):
-                widget = layout.itemAt(1).widget()
-                if hasattr(widget, 'objectName') and widget.objectName():
-                    param_name = widget.objectName()
-                    if isinstance(widget, QSpinBox):
-                        parameters[param_name] = widget.value()
-                    elif isinstance(widget, QDoubleSpinBox):
-                        parameters[param_name] = widget.value()
-        return parameters
+        """Get current parameter values from dynamic parameter panel."""
+        if hasattr(self, 'dynamic_params'):
+            return self.dynamic_params.get_current_parameters()
+        return {}
         
+    def _on_parameters_changed(self, parameters: Dict[str, Any]):
+        """Handle parameter value changes from dynamic parameter panel."""
+        self.current_parameters = parameters
+        if self.current_filter:
+            self.filter_previewed.emit(self.current_filter, parameters)
+            
+    def _on_parameters_preview(self, parameters: Dict[str, Any]):
+        """Handle preview request from dynamic parameter panel."""
+        self.current_parameters = parameters
+        if self.current_filter:
+            self.filter_previewed.emit(self.current_filter, parameters)
+            
     def _on_preview_clicked(self):
         """Handle preview button click."""
         if self.current_filter:
@@ -227,6 +227,8 @@ class FilterPanel(QWidget):
         """Handle reset button click."""
         self.filter_reset.emit()
         self.history_list.clear()
+        if hasattr(self, 'dynamic_params'):
+            self.dynamic_params.reset()
         
     def update_histogram(self, image_data: np.ndarray):
         """Update the histogram display."""
@@ -235,12 +237,6 @@ class FilterPanel(QWidget):
     def update_kernel_view(self, kernel: np.ndarray, title: str = "Filter Kernel"):
         """Update the kernel visualization."""
         self.histogram_view.update_kernel_view(kernel, title)
-        
-    def _on_parameter_changed(self):
-        """Handle parameter value changes for real-time preview."""
-        if self.current_filter:
-            parameters = self._get_current_parameters()
-            self.filter_previewed.emit(self.current_filter, parameters)
             
     def _on_preset_selected(self, preset_name: str):
         """Handle preset selection."""
@@ -272,16 +268,10 @@ class FilterPanel(QWidget):
             self.preset_saved.emit(name, preset)
             
     def _set_current_parameters(self, parameters: Dict[str, Any]):
-        """Set parameter values in the UI controls."""
-        for i in range(self.params_layout.count()):
-            layout = self.params_layout.itemAt(i)
-            if hasattr(layout, 'itemAt') and layout.itemAt(1):
-                widget = layout.itemAt(1).widget()
-                if hasattr(widget, 'objectName') and widget.objectName():
-                    param_name = widget.objectName()
-                    if param_name in parameters:
-                        if isinstance(widget, (QSpinBox, QDoubleSpinBox)):
-                            widget.setValue(parameters[param_name])
+        """Set parameter values in the dynamic parameter panel."""
+        if hasattr(self, 'dynamic_params'):
+            self.dynamic_params.set_parameters(parameters)
+        self.current_parameters = parameters
                             
     def _load_presets(self):
         """Load presets from config file."""
@@ -312,10 +302,9 @@ class FilterPanel(QWidget):
         self.current_parameters = {}
         self.filter_combo.setCurrentIndex(0)
         self.preset_combo.setCurrentIndex(0)
-        # Clear parameter controls if any exist
-        for control in getattr(self, '_parameter_controls', []):
-            control.setParent(None)
-        self._parameter_controls = []
+        # Reset dynamic parameter panel
+        if hasattr(self, 'dynamic_params'):
+            self.dynamic_params.reset()
         
     def get_current_state(self) -> Dict[str, Any]:
         """Get current panel state for session saving."""
@@ -378,19 +367,90 @@ class FilterPanel(QWidget):
             'preset_name': getattr(self, 'current_preset_name', None)
         }
         
-        # Collect enabled filters and their parameters
-        for filter_name, checkbox in self.filter_checkboxes.items():
-            if checkbox.isChecked():
-                config['enabled_filters'].append(filter_name)
-                
-                # Get parameters for this filter
-                if filter_name in self.filter_controls:
-                    params = {}
-                    for param_name, control in self.filter_controls[filter_name].items():
-                        if hasattr(control, 'value'):
-                            params[param_name] = control.value()
-                        elif hasattr(control, 'text'):
-                            params[param_name] = control.text()
-                    config['filter_parameters'][filter_name] = params
+        # Include current filter if selected
+        if self.current_filter:
+            config['enabled_filters'].append(self.current_filter)
+            config['filter_parameters'][self.current_filter] = self._get_current_parameters()
         
         return config
+
+    def _on_save_clicked(self):
+        """Handle save button click."""
+        try:
+            # Emit signal to request saving of current filtered image
+            self.save_image_requested.emit()
+            
+            # Update status
+            if hasattr(self, 'status_label'):
+                self.status_label.setText("Saving current filtered image...")
+            
+            logger.info("Save image requested")
+            
+        except Exception as e:
+            logger.error(f"Error in save clicked handler: {e}")
+            if hasattr(self, 'status_label'):
+                self.status_label.setText(f"Save error: {str(e)}")
+
+    def _load_dynamic_filters(self):
+        """Load filters dynamically from filter folder for Step 5 implementation."""
+        try:
+            filter_folder = os.path.join(os.getcwd(), self.filter_folder_path)
+            if not os.path.exists(filter_folder):
+                logger.warning(f"Filter folder not found: {filter_folder}")
+                return
+            
+            dynamic_filters = []
+            filter_configs = {}
+            
+            # Scan filter folder for JSON files
+            for filename in os.listdir(filter_folder):
+                if filename.endswith('.json'):
+                    file_path = os.path.join(filter_folder, filename)
+                    try:
+                        with open(file_path, 'r') as f:
+                            filter_config = json.load(f)
+                        
+                        # Extract filter name and configuration
+                        filter_name = filter_config.get('name', filename.replace('.json', ''))
+                        dynamic_filters.append(filter_name)
+                        filter_configs[filter_name] = filter_config
+                        
+                        logger.info(f"Loaded dynamic filter: {filter_name}")
+                        
+                    except Exception as e:
+                        logger.error(f"Error loading filter {filename}: {e}")
+            
+            # Update available filters with dynamically loaded ones
+            self.available_filters.extend(dynamic_filters)
+            self.filter_configs = filter_configs
+            
+            # Auto-generate UI for the dynamic filters
+            self._auto_generate_filter_ui()
+            
+            logger.info(f"Loaded {len(dynamic_filters)} dynamic filters from {filter_folder}")
+            
+        except Exception as e:
+            logger.error(f"Error loading dynamic filters: {e}")
+    
+    def _auto_generate_filter_ui(self):
+        """Auto-generate UI based on available filters for Step 5."""
+        try:
+            # Update filter dropdown with all available filters
+            if hasattr(self, 'filter_combo'):
+                current_items = [self.filter_combo.itemText(i) for i in range(self.filter_combo.count())]
+                
+                # Add new filters that aren't already in the combo
+                for filter_name in self.available_filters:
+                    if filter_name not in current_items:
+                        self.filter_combo.addItem(filter_name)
+            
+            # Update dynamic parameter panel to handle new filters
+            if hasattr(self, 'dynamic_params'):
+                # Store filter configurations for parameter generation
+                if hasattr(self, 'filter_configs'):
+                    self.dynamic_params.set_filter_configs(self.filter_configs)
+            
+            logger.info("Auto-generated UI for dynamic filters")
+            
+        except Exception as e:
+            logger.error(f"Error auto-generating filter UI: {e}")

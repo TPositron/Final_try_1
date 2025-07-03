@@ -65,7 +65,7 @@ class UISetup:
         main_splitter.addWidget(right_panel_container)
         
         # Set initial splitter sizes: left panel, image viewer, right panel
-        main_splitter.setSizes([280, 950, 250])
+        main_splitter.setSizes([140, 1090, 250])
         
         print("UI layout setup complete")
     

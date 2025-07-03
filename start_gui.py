@@ -20,8 +20,8 @@ def main():
     os.chdir(script_dir)
     
     try:
-        # Import and run the updated main window with new alignment panel
-        from src.ui.main_window import MainWindow
+        # Import and run the updated main window with new tab structure
+        from src.ui.modular_main_window_clean import MainWindow
         from PySide6.QtWidgets import QApplication
         
         print("Creating QApplication...")

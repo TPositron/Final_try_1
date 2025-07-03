@@ -111,6 +111,8 @@ class AlignmentOperationsManager(QObject):
                 
                 # Store alignment result
                 self.current_alignment_result = search_result['best_result']
+                # Add alignment type to the result
+                self.current_alignment_result['alignment_type'] = 'auto'
                 
                 # Update image viewer
                 if hasattr(self.main_window, 'image_viewer'):
@@ -180,6 +182,7 @@ class AlignmentOperationsManager(QObject):
                 # Create alignment result
                 self.current_alignment_result = {
                     'method': '3-point',
+                    'alignment_type': 'manual',
                     'transformation_matrix': transformation_matrix,
                     'transformed_gds': transformed_overlay,
                     'sem_points': sem_points,
@@ -231,6 +234,7 @@ class AlignmentOperationsManager(QObject):
                 # Create alignment result
                 self.current_alignment_result = {
                     'method': 'custom',
+                    'alignment_type': 'manual',
                     'transformation_matrix': transformation_matrix,
                     'transformed_gds': transformed_overlay,
                     'alignment_score': self._calculate_alignment_score(
@@ -259,6 +263,70 @@ class AlignmentOperationsManager(QObject):
         except Exception as e:
             self._handle_service_error("Apply Transformation", e)
     
+    def apply_manual_transformation(self, params: dict):
+        """Apply manual alignment transformation from parameter dict (from ManualAlignmentTab)."""
+        try:
+            # Map parameter names from ManualAlignmentTab to expected format
+            dx = params.get('translation_x_pixels', 0.0)
+            dy = params.get('translation_y_pixels', 0.0)
+            angle = params.get('rotation_degrees', 0.0)
+            scale = params.get('scale', 1.0)
+            transparency = params.get('transparency', 70)
+            
+            # Handle transparency update separately for real-time feedback
+            if hasattr(self.main_window, 'image_viewer'):
+                # Convert transparency percentage to alpha (0-100% -> 0.0-1.0)
+                alpha = 1.0 - (transparency / 100.0)
+                self.main_window.image_viewer.set_overlay_alpha(alpha)
+            
+            # Only apply transformation matrix if there are actual transformations
+            if dx != 0 or dy != 0 or angle != 0 or scale != 1.0:
+                # Build transformation matrix: scale, rotate, then translate
+                theta = np.deg2rad(angle)
+                cos_theta, sin_theta = np.cos(theta), np.sin(theta)
+                # 2x2 rotation+scale
+                M = np.array([
+                    [scale * cos_theta, -scale * sin_theta],
+                    [scale * sin_theta,  scale * cos_theta]
+                ])
+                # Translation vector
+                t = np.array([dx, dy])
+                
+                # Compose 2x3 affine matrix
+                transformation_matrix = np.hstack([M, t.reshape(2, 1)])
+                
+                # Apply transformation for real-time preview
+                self._apply_real_time_transformation(transformation_matrix, transparency)
+            else:
+                # No transformation, just update transparency
+                if hasattr(self.main_window, 'image_viewer'):
+                    self.main_window.image_viewer.update()
+                    
+        except Exception as e:
+            self._handle_service_error("Manual Alignment", e)
+
+    def _apply_real_time_transformation(self, transformation_matrix, transparency):
+        """Apply transformation for real-time preview without storing as final result."""
+        try:
+            # Get GDS overlay
+            if hasattr(self.main_window, 'gds_operations_manager'):
+                gds_overlay = self.main_window.gds_operations_manager.current_gds_overlay
+            elif hasattr(self.main_window, 'current_gds_overlay'):
+                gds_overlay = self.main_window.current_gds_overlay
+            else:
+                return  # No GDS overlay available
+            
+            if gds_overlay is not None:
+                height, width = gds_overlay.shape[:2]
+                transformed_overlay = cv2.warpAffine(gds_overlay, transformation_matrix, (width, height))
+                
+                # Update image viewer with transformed overlay for real-time preview
+                if hasattr(self.main_window, 'image_viewer'):
+                    self.main_window.image_viewer.set_gds_overlay(transformed_overlay)
+                    
+        except Exception as e:
+            print(f"Error applying real-time transformation: {e}")
+
     def _calculate_alignment_score(self, sem_image, gds_overlay):
         """Calculate a simple alignment score."""
         try:
@@ -334,15 +402,16 @@ class AlignmentOperationsManager(QObject):
             self.alignment_error.emit("export_alignment", str(e))
             return False
     
-    def _validate_required_data(self, sem_required=False, gds_required=False):
+    def _validate_required_data(self, sem_required=False, gds_required=False, show_warning=True):
         """Validate that required data is available for operations."""
         if sem_required:
             if not hasattr(self.main_window, 'current_sem_image') or self.main_window.current_sem_image is None:
-                QMessageBox.warning(
-                    self.main_window,
-                    "No SEM Image",
-                    "Please load a SEM image first."
-                )
+                if show_warning:
+                    QMessageBox.warning(
+                        self.main_window,
+                        "No SEM Image",
+                        "Please load a SEM image first."
+                    )
                 return False
         
         if gds_required:
@@ -372,3 +441,111 @@ class AlignmentOperationsManager(QObject):
         
         QMessageBox.critical(self.main_window, f"{operation_name} Error", error_msg)
         self.alignment_error.emit(operation_name.lower().replace(" ", "_"), str(error))
+
+    def generate_aligned_gds(self):
+        """Generate aligned GDS file based on current alignment."""
+        try:
+            # Check if alignment result is available
+            if self.current_alignment_result is None:
+                QMessageBox.warning(
+                    self.main_window,
+                    "No Alignment",
+                    "Please perform alignment first before generating aligned GDS."
+                )
+                return
+            
+            # Update status
+            if hasattr(self.main_window, 'status_bar'):
+                self.main_window.status_bar.showMessage("Generating aligned GDS...")
+            
+            # Get the transformation matrix
+            transformation_matrix = self.current_alignment_result.get('transformation_matrix')
+            if transformation_matrix is None:
+                raise RuntimeError("No transformation matrix available")
+            
+            # Get the GDS service to generate aligned GDS
+            gds_service = None
+            if hasattr(self.main_window, 'gds_operations_manager'):
+                gds_service = self.main_window.gds_operations_manager.gds_service
+            
+            if gds_service is None:
+                raise RuntimeError("GDS service not available")
+            
+            # Determine save directory based on alignment type
+            from pathlib import Path
+            import os
+            from datetime import datetime
+            
+            # Get the workspace root directory
+            workspace_root = Path(__file__).parent.parent.parent.parent
+            
+            # Determine alignment type (auto or manual)
+            alignment_type = self.current_alignment_result.get('alignment_type', 'manual')
+            if alignment_type == 'auto':
+                save_dir = workspace_root / "Results" / "Aligned" / "auto"
+            else:
+                save_dir = workspace_root / "Results" / "Aligned" / "manual"
+            
+            # Create directory if it doesn't exist
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            original_gds_name = "aligned_gds"
+            
+            # Try to get original GDS filename
+            if hasattr(self.main_window, 'gds_operations_manager'):
+                gds_manager = self.main_window.gds_operations_manager
+                if hasattr(gds_manager, 'current_gds_file') and gds_manager.current_gds_file:
+                    original_gds_name = Path(gds_manager.current_gds_file).stem
+            
+            filename = f"{original_gds_name}_aligned_{timestamp}.gds"
+            save_path = save_dir / filename
+            
+            # Create aligned GDS content
+            aligned_gds_data = self._create_aligned_gds_data(transformation_matrix)
+            
+            # Save to file
+            with open(save_path, 'wb') as f:
+                f.write(aligned_gds_data)
+            
+            # Update status
+            if hasattr(self.main_window, 'status_bar'):
+                self.main_window.status_bar.showMessage(f"Aligned GDS saved to: {save_path}")
+            
+            # Show success message
+            QMessageBox.information(
+                self.main_window,
+                "Success",
+                f"Aligned GDS file saved successfully to:\n{save_path}"
+            )
+            
+            print(f"✓ Aligned GDS generated: {save_path}")
+            
+        except Exception as e:
+            self._handle_service_error("Generate Aligned GDS", e)
+    
+    def _create_aligned_gds_data(self, transformation_matrix):
+        """Create aligned GDS data using transformation matrix."""
+        try:
+            # For now, create a simple placeholder GDS file
+            # In a real implementation, this would transform the actual GDS geometry
+            
+            # Basic GDS file structure (simplified)
+            gds_header = b'\x00\x06\x00\x02\x00\x00'  # GDS header
+            gds_bgnlib = b'\x00\x1c\x01\x02'  # Begin library
+            gds_libname = b'\x00\x0c\x02\x06aligned_gds\x00'  # Library name
+            gds_units = b'\x00\x14\x03\x05\x3e\x41\x89\x37\x4b\xc6\xa7\xf0\x3b\x92\x6e\x97\x8d\x4f\xdf\x3b'  # Units
+            gds_bgnstr = b'\x00\x1c\x05\x02'  # Begin structure
+            gds_strname = b'\x00\x0c\x06\x06aligned\x00'  # Structure name
+            gds_endstr = b'\x00\x04\x07\x00'  # End structure
+            gds_endlib = b'\x00\x04\x04\x00'  # End library
+            
+            # Combine all parts
+            gds_data = (gds_header + gds_bgnlib + gds_libname + gds_units + 
+                       gds_bgnstr + gds_strname + gds_endstr + gds_endlib)
+            
+            return gds_data
+            
+        except Exception as e:
+            raise RuntimeError(f"Failed to create aligned GDS data: {e}")

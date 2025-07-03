@@ -150,7 +150,7 @@ class ScorePanel(QWidget):
         splitter.addWidget(details_widget)
         
         # Set splitter proportions (60% left, 40% right)
-        splitter.setSizes([600, 400])
+        splitter.setSizes([300, 200])
         
         layout.addWidget(splitter)
         

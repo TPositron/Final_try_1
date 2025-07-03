@@ -102,6 +102,71 @@ class FileOperationsManager(QObject):
                 print(f"Debug - SEM loading error: {e}")
                 self.file_operation_error.emit("load_sem", str(e))
     
+    def load_sem_image_from_path(self, file_path: str):
+        """Load SEM image from given file path (for FileSelector integration)."""
+        if file_path:
+            try:
+                # Use the file service to load and crop SEM image
+                sem_data = self.file_service.load_sem_file(Path(file_path))
+                
+                if sem_data and 'cropped_array' in sem_data:
+                    # Get the already cropped image array
+                    cropped_image = sem_data['cropped_array']
+                    
+                    # Store the image data and path
+                    self.main_window.current_sem_image = cropped_image
+                    self.main_window.current_sem_image_obj = sem_data['sem_image']  # SemImage object
+                    self.current_sem_path = file_path  # Store the original SEM file path
+                    
+                    # Create cut folder if it doesn't exist
+                    cut_folder = Path("Results") / "cut"
+                    cut_folder.mkdir(parents=True, exist_ok=True)
+                    
+                    # Save the cropped image to the cut folder
+                    original_filename = Path(file_path).name
+                    base_name = Path(file_path).stem
+                    cut_filename = f"{base_name}_cropped_1024x666.png"
+                    cut_path = cut_folder / cut_filename
+                    
+                    # Convert numpy array to PIL Image and save
+                    if len(cropped_image.shape) == 2:
+                        # Grayscale image
+                        pil_image = Image.fromarray(cropped_image.astype(np.uint8))
+                    else:
+                        # Color image
+                        pil_image = Image.fromarray(cropped_image)
+                    
+                    pil_image.save(cut_path)
+                    print(f"Cropped SEM image saved to: {cut_path}")
+                    
+                    # Display in image viewer 
+                    self.main_window.image_viewer.load_image(file_path)
+                    
+                    # Update UI
+                    original_filename = Path(file_path).name
+                    
+                    # Update file info label if it exists (for backward compatibility)
+                    if hasattr(self.main_window, 'file_info_label'):
+                        sem_info = f"SEM: {original_filename}"
+                        if hasattr(self.main_window, 'current_gds_filename') and self.main_window.current_gds_filename:
+                            gds_info = f"GDS: {self.main_window.current_gds_filename}"
+                            self.main_window.file_info_label.setText(f"{sem_info}\n{gds_info}")
+                        else:
+                            self.main_window.file_info_label.setText(f"{sem_info}\nGDS: Not selected")
+                    
+                    # Emit signal
+                    self.sem_image_loaded.emit(file_path, sem_data)
+                    print(f"✓ SEM image loaded: {original_filename}")
+                    
+                else:
+                    raise Exception("Failed to load or crop SEM image")
+                    
+            except Exception as e:
+                error_msg = f"Failed to load SEM image: {str(e)}"
+                print(error_msg)
+                self.file_operation_error.emit("load_sem", str(e))
+                QMessageBox.critical(self.main_window, "Error", error_msg)
+
     def save_results(self):
         """Save current results to file."""
         try:
