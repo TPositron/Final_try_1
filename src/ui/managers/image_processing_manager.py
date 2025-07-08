@@ -1,3 +1,4 @@
+
 """
 Image Processing Manager
 Handles all image processing operations, filtering, and image-related functionality.
@@ -6,6 +7,7 @@ Extracted from main_window_v2.py to create a focused, maintainable module.
 
 import cv2
 import numpy as np
+from typing import Optional, Dict, Any
 from PySide6.QtWidgets import QMessageBox
 from PySide6.QtCore import QObject, Signal
 
@@ -24,12 +26,22 @@ class ImageProcessingManager(QObject):
     def __init__(self, main_window):
         """Initialize with reference to main window."""
         super().__init__()
+        self.original_image: Optional[np.ndarray] = None
+        self.current_image: Optional[np.ndarray] = None
+        self.filter_history: list = []
+
         self.main_window = main_window
         self.image_processing_service = ImageProcessingService()
         
         # Image processing state
         self.applied_filters = []  # Track applied filters
         
+    def set_image(self, image: np.ndarray):
+        """Set the original image for processing."""
+        self.original_image = image.copy()
+        self.current_image = image.copy()
+        self.filter_history = []
+
     def on_filter_applied(self, filter_name, parameters):
         """Handle filter application from the filter panel."""
         if not self._validate_required_data(sem_required=True):
@@ -47,9 +59,13 @@ class ImageProcessingManager(QObject):
             # Update the main window's current image reference
             self.main_window.current_sem_image = filtered_image
             
-            # Update histogram if filter panel exists
-            if hasattr(self.main_window, 'filter_panel') and hasattr(self.main_window.filter_panel, 'update_histogram'):
-                self.main_window.filter_panel.update_histogram(filtered_image)
+            # Update histogram
+            if hasattr(self.main_window, 'histogram_view'):
+                self.main_window.histogram_view.update_histogram(filtered_image)
+            
+            # Update advanced filtering right panel histogram
+            if hasattr(self.main_window, 'advanced_filtering_right_panel'):
+                self.main_window.advanced_filtering_right_panel.update_histogram(filtered_image)
             
             # Track applied filter
             self.applied_filters.append({
@@ -83,20 +99,28 @@ class ImageProcessingManager(QObject):
             # Generate preview using image processing service
             preview_array = self.image_processing_service.preview_filter(filter_name, parameters)
             
-            # Update the image viewer with preview
-            if hasattr(self.main_window, 'image_viewer') and hasattr(self.main_window.image_viewer, 'set_preview_image'):
-                self.main_window.image_viewer.set_preview_image(preview_array)
-            
-            # Update histogram with preview if filter panel exists
-            if hasattr(self.main_window, 'filter_panel') and hasattr(self.main_window.filter_panel, 'update_histogram'):
-                self.main_window.filter_panel.update_histogram(preview_array)
-            
-            # Emit signal
-            self.filter_previewed.emit(filter_name, parameters, preview_array)
-            
-            print(f"✓ Filter preview generated: {filter_name}")
+            if preview_array is not None:
+                # Update the image viewer with preview
+                if hasattr(self.main_window, 'image_viewer'):
+                    self.main_window.image_viewer.set_sem_image(preview_array)
+                
+                # Update histogram with preview
+                if hasattr(self.main_window, 'histogram_view'):
+                    self.main_window.histogram_view.update_histogram(preview_array)
+                
+                # Update advanced filtering right panel histogram
+                if hasattr(self.main_window, 'advanced_filtering_right_panel'):
+                    self.main_window.advanced_filtering_right_panel.update_histogram(preview_array)
+                
+                # Emit signal
+                self.filter_previewed.emit(filter_name, parameters, preview_array)
+                
+                print(f"✓ Filter preview generated: {filter_name}")
+            else:
+                print(f"❌ Filter preview failed: {filter_name}")
             
         except Exception as e:
+            print(f"Error in filter preview: {e}")
             if hasattr(self.main_window, 'status_bar'):
                 self.main_window.status_bar.showMessage(f"Preview error: {str(e)}")
             self.image_processing_error.emit("preview_filter", str(e))
@@ -118,9 +142,13 @@ class ImageProcessingManager(QObject):
             # Update the main window's current image reference
             self.main_window.current_sem_image = original_image
             
-            # Update histogram with original image if filter panel exists
-            if hasattr(self.main_window, 'filter_panel') and hasattr(self.main_window.filter_panel, 'update_histogram'):
-                self.main_window.filter_panel.update_histogram(original_image)
+            # Update histogram with original image
+            if hasattr(self.main_window, 'histogram_view'):
+                self.main_window.histogram_view.update_histogram(original_image)
+            
+            # Update advanced filtering right panel histogram
+            if hasattr(self.main_window, 'advanced_filtering_right_panel'):
+                self.main_window.advanced_filtering_right_panel.update_histogram(original_image)
             
             # Clear applied filters tracking
             self.applied_filters = []
@@ -224,8 +252,9 @@ class ImageProcessingManager(QObject):
             # Convert to appropriate format for saving
             if current_image.dtype == np.float64 or current_image.dtype == np.float32:
                 # Normalize to 0-255 for saving
-                normalized = cv2.normalize(current_image, None, 0, 255, cv2.NORM_MINMAX)
-                export_image = normalized.astype(np.uint8)
+                normalized = np.zeros_like(current_image, dtype=np.uint8)
+                cv2.normalize(current_image, normalized, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+                export_image = normalized
             else:
                 export_image = current_image
             
@@ -418,3 +447,146 @@ class ImageProcessingManager(QObject):
             'total_count': len(self.applied_filters),
             'has_custom_filters': any(f.get('custom', False) for f in self.applied_filters)
         }
+
+def apply_filter(self, filter_name: str, parameters: Dict[str, Any]) -> Optional[np.ndarray]:
+        """Apply a filter with given parameters and update current image."""
+        try:
+            if self.current_image is None:
+                print("No image loaded for filtering")
+                return None
+            
+            # Apply the filter based on filter_name
+            filtered_image = self._apply_filter_by_name(filter_name, self.current_image, parameters)
+            
+            if filtered_image is not None:
+                self.current_image = filtered_image
+                # Add to filter history
+                self.filter_history.append({
+                    'filter': filter_name,
+                    'parameters': parameters.copy()
+                })
+                return filtered_image.copy()
+            
+            return None
+            
+        except Exception as e:
+            print(f"Error applying filter {filter_name}: {e}")
+            return None
+        
+def preview_filter(self, filter_name: str, parameters: Dict[str, Any]) -> Optional[np.ndarray]:
+    """Preview a filter without modifying the current image."""
+    try:
+        if self.current_image is None:
+            print("No image loaded for preview")
+            return None
+            
+        # Apply filter to current image but don't save it
+        preview_image = self._apply_filter_by_name(filter_name, self.current_image, parameters)
+            
+        if preview_image is not None:
+            return preview_image.copy()
+            
+        return None
+            
+    except Exception as e:
+        print(f"Error previewing filter {filter_name}: {e}")
+        return None
+        
+def reset_filters(self):
+    """Reset to original image."""
+    try:
+        if self.original_image is not None:
+            self.current_image = self.original_image.copy()
+            self.filter_history = []
+            print("Filters reset to original image")
+        else:
+            print("No original image to reset to")
+                
+    except Exception as e:
+        print(f"Error resetting filters: {e}")
+    
+   
+def _apply_filter_by_name(self, filter_name: str, image: np.ndarray, parameters: Dict[str, Any]) -> Optional[np.ndarray]:
+    """Apply a specific filter by name."""
+    try:
+        if filter_name.lower() == "gaussian_blur":
+            kernel_size = parameters.get('kernel_size', 5)
+            sigma = parameters.get('sigma', 1.0)
+            if kernel_size % 2 == 0:
+                kernel_size += 1  # Ensure odd kernel size
+            return cv2.GaussianBlur(image, (kernel_size, kernel_size), sigma)
+            
+        elif filter_name.lower() == "median_filter":
+            kernel_size = parameters.get('kernel_size', 5)
+            if kernel_size % 2 == 0:
+                kernel_size += 1  # Ensure odd kernel size
+            return cv2.medianBlur(image, kernel_size)
+            
+        elif filter_name.lower() == "bilateral_filter":
+            d = parameters.get('d', 9)
+            sigma_color = parameters.get('sigma_color', 75)
+            sigma_space = parameters.get('sigma_space', 75)
+            return cv2.bilateralFilter(image, d, sigma_color, sigma_space)
+            
+        elif filter_name.lower() == "unsharp_mask":
+            sigma = parameters.get('sigma', 1.0)
+            strength = parameters.get('strength', 1.5)
+                
+            # Create blurred version
+            blurred = cv2.GaussianBlur(image, (0, 0), sigma)
+                
+            # Create sharpened image
+            sharpened = cv2.addWeighted(image, 1 + strength, blurred, -strength, 0)
+            return np.clip(sharpened, 0, 255).astype(np.uint8)
+            
+        elif filter_name.lower() == "edge_detection":
+            method = parameters.get('method', 'canny')
+            if method.lower() == 'canny':
+                low_threshold = parameters.get('low_threshold', 50)
+                high_threshold = parameters.get('high_threshold', 150)
+                return cv2.Canny(image, low_threshold, high_threshold)
+            elif method.lower() == 'sobel':
+                ksize = parameters.get('ksize', 3)
+                dx = cv2.Sobel(image, cv2.CV_64F, 1, 0, ksize=ksize)
+                dy = cv2.Sobel(image, cv2.CV_64F, 0, 1, ksize=ksize)
+                magnitude = np.sqrt(dx*dx + dy*dy)
+                return np.clip(magnitude, 0, 255).astype(np.uint8)
+            
+        elif filter_name.lower() == "histogram_equalization":
+            if len(image.shape) == 3:
+                # Convert to LAB, equalize L channel, convert back
+                lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+                lab[:,:,0] = cv2.equalizeHist(lab[:,:,0])
+                return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+            else:
+                return cv2.equalizeHist(image)
+            
+        elif filter_name.lower() == "contrast_brightness":
+            alpha = parameters.get('contrast', 1.0)  # Contrast control (1.0-3.0)
+            beta = parameters.get('brightness', 0)   # Brightness control (0-100)
+            adjusted = cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
+            return adjusted
+            
+        elif filter_name.lower() == "morphological":
+            operation = parameters.get('operation', 'opening')
+            kernel_size = parameters.get('kernel_size', 5)
+            iterations = parameters.get('iterations', 1)
+                
+            kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+                
+            if operation.lower() == 'opening':
+                return cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel, iterations=iterations)
+            elif operation.lower() == 'closing':
+                return cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel, iterations=iterations)
+            elif operation.lower() == 'erosion':
+                return cv2.erode(image, kernel, iterations=iterations)
+            elif operation.lower() == 'dilation':
+                return cv2.dilate(image, kernel, iterations=iterations)
+            
+        else:
+            print(f"Unknown filter: {filter_name}")
+            return None
+                
+    except Exception as e:
+        print(f"Error applying filter {filter_name}: {e}")
+        return None

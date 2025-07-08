@@ -107,7 +107,10 @@ class ImageViewer(QWidget):
             print(f"Error loading image {file_path}: {e}")
 
     def set_gds_overlay(self, gds_overlay):
+        print(f"ImageViewer.set_gds_overlay called with: {gds_overlay.shape if gds_overlay is not None else None}")
         self._gds_overlay = gds_overlay
+        if gds_overlay is not None:
+            print(f"GDS overlay set: shape={gds_overlay.shape}, dtype={gds_overlay.dtype}, non-zero={np.count_nonzero(gds_overlay)}")
         self._invalidate_cache()
         self.update()
     
@@ -127,7 +130,9 @@ class ImageViewer(QWidget):
     
     def set_overlay_visible(self, visible):
         """Set overlay visibility."""
+        print(f"Setting overlay visibility to: {visible}")
         self._overlay_visible = visible
+        self._invalidate_cache()
         self.update()
     
     def set_overlay_alpha(self, alpha):
@@ -254,6 +259,8 @@ class ImageViewer(QWidget):
         if overlay_data is None:
             return base_pixmap
         
+        print(f"Creating overlay pixmap: shape={overlay_data.shape}, dtype={overlay_data.dtype}")
+        
         if overlay_data.dtype != np.uint8:
             if overlay_data.max() <= 1.0:
                 overlay_8bit = (overlay_data * 255).astype(np.uint8)
@@ -262,11 +269,26 @@ class ImageViewer(QWidget):
         else:
             overlay_8bit = overlay_data
         
+        print(f"Overlay 8bit: shape={overlay_8bit.shape}, non-zero={np.count_nonzero(overlay_8bit)}")
+        
         if len(overlay_8bit.shape) == 2:
-            # Grayscale overlay
+            # Grayscale overlay - convert to colored overlay with transparency
             h, w = overlay_8bit.shape
-            overlay_qimage = QImage(overlay_8bit.data, w, h, w, QImage.Format_Grayscale8)
+            
+            # Create RGBA overlay (red/cyan colored)
+            rgba_overlay = np.zeros((h, w, 4), dtype=np.uint8)
+            
+            # Where overlay has content (non-zero), make it colored and semi-transparent
+            mask = overlay_8bit > 0
+            rgba_overlay[mask, 0] = 255  # Red channel
+            rgba_overlay[mask, 1] = 255  # Green channel (makes it yellow/cyan)
+            rgba_overlay[mask, 2] = 0    # Blue channel
+            rgba_overlay[mask, 3] = int(self._overlay_alpha * 255)  # Alpha channel
+            
+            bytes_per_line = w * 4
+            overlay_qimage = QImage(rgba_overlay.data, w, h, bytes_per_line, QImage.Format_RGBA8888)
             overlay_pixmap = QPixmap.fromImage(overlay_qimage)
+            
         elif len(overlay_8bit.shape) == 3 and overlay_8bit.shape[2] == 3:
             # RGB overlay
             h, w, c = overlay_8bit.shape
@@ -283,13 +305,22 @@ class ImageViewer(QWidget):
         painter = QPainter(result_pixmap)
         painter.setRenderHint(QPainter.Antialiasing)
         
+        # Draw base image first
         painter.drawPixmap(0, 0, base_pixmap)
         
-        painter.setOpacity(self._overlay_alpha)
-        painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
-        painter.drawPixmap(0, 0, overlay_pixmap)
+        # Draw overlay with composition mode
+        if len(overlay_8bit.shape) == 2:
+            # For grayscale overlays, we already handled alpha in RGBA conversion
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            painter.drawPixmap(0, 0, overlay_pixmap)
+        else:
+            # For RGB overlays, apply alpha
+            painter.setOpacity(self._overlay_alpha)
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            painter.drawPixmap(0, 0, overlay_pixmap)
         
         painter.end()
+        print(f"Overlay pixmap created successfully")
         return result_pixmap
     
     def _get_composite_pixmap(self):

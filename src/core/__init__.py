@@ -1,11 +1,32 @@
 """
 Core package for SEM/GDS alignment tool.
 
-Basic models and utilities for the image analysis application.
+This package contains the fundamental data models and utilities that form the foundation
+of the SEM/GDS alignment application. It provides low-level functionality that is used
+throughout the application.
 
-Modules:
-    models: Basic data models for SEM images
-    utils: Common utilities for file handling, logging, and configuration
+Architecture:
+- models: Data structures for SEM images, GDS models, and alignment results
+- utils: Common utilities for file operations, logging, configuration management
+- gds_*: GDS file processing and image generation modules
+- simple_*: Simplified implementations for core functionality
+
+Key Components:
+- SemImage: Handles SEM image data and operations
+- GDS models: Handle GDS file loading and structure extraction
+- Display generators: Create visual representations of GDS structures
+- Alignment generators: Apply transformations to GDS data
+- Simple loaders: Streamlined GDS loading functionality
+
+Dependencies:
+- Used by: services package, ui package
+- Uses: External libraries (gdspy/gdstk, numpy, opencv, PIL)
+- Called by: All service classes and UI controllers
+
+Data Flow:
+1. Raw files (SEM images, GDS files) -> Core models
+2. Core models -> Services for processing
+3. Processed data -> UI for display
 """
 
 from .models import *

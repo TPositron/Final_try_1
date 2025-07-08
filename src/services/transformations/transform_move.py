@@ -59,13 +59,13 @@ class TransformMove:
             dy = self.translation_y
         
         h, w = image.shape[:2]
-        translation_matrix = np.float32([[1, 0, dx], [0, 1, dy]])
+        translation_matrix = np.array([[1, 0, dx], [0, 1, dy]], dtype=np.float32)
         
         import cv2
         return cv2.warpAffine(image, translation_matrix, (w, h), 
                              flags=cv2.INTER_LINEAR,
                              borderMode=cv2.BORDER_CONSTANT, 
-                             borderValue=0)
+                             borderValue=(0,))  # type: ignore
     
     def get_translation_matrix(self, dx: Optional[float] = None, dy: Optional[float] = None) -> np.ndarray:
         """

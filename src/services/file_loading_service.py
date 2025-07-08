@@ -53,13 +53,58 @@ class FileLoadingService(QObject):
         try:
             self.logger.info(f"Loading SEM image: {file_path}")
             
-            # Use SemImage.from_file() which includes automatic bottom cropping
-            sem_image = SemImage.from_file(file_path)
+            # Handle missing from_file method with fallback
+            try:
+                sem_image = SemImage.from_file(file_path)  # type: ignore
+            except AttributeError:
+                # Fallback: try direct constructor or other loading methods
+                if hasattr(SemImage, 'load_from_file'):
+                    sem_image = SemImage.load_from_file(file_path)  # type: ignore
+                else:
+                    # Manual loading with OpenCV and cropping
+                    image_array = cv2.imread(str(file_path), cv2.IMREAD_GRAYSCALE)
+                    if image_array is None:
+                        raise ValueError(f"Could not load image from {file_path}")
+                    
+                    # Apply automatic bottom cropping (1024x666)
+                    target_height, target_width = 666, 1024
+                    h, w = image_array.shape
+                    
+                    if h >= target_height and w >= target_width:
+                        # Crop from center horizontally, top vertically (remove bottom)
+                        start_x = (w - target_width) // 2
+                        start_y = 0  # Start from top
+                        cropped = image_array[start_y:start_y + target_height, 
+                                            start_x:start_x + target_width]
+                    else:
+                        # Resize if too small
+                        cropped = cv2.resize(image_array, (target_width, target_height))
+                    
+                    # Create SemImage object
+                    sem_image = SemImage(cropped, str(file_path))
             
             self._current_sem = sem_image
             self.sem_loaded.emit(sem_image)
             
-            self.logger.info(f"Successfully loaded SEM image with shape {sem_image.shape}")
+            # Handle missing shape attribute with fallback using getattr
+            shape_info = getattr(sem_image, 'shape', None)
+            if shape_info is None:
+                # Try alternative attributes
+                height = getattr(sem_image, 'height', None)
+                width = getattr(sem_image, 'width', None)
+                if height is not None and width is not None:
+                    shape_info = (height, width)
+                else:
+                    # Try to get shape from underlying image data
+                    image_data = (getattr(sem_image, 'image', None) or 
+                                getattr(sem_image, 'data', None) or 
+                                getattr(sem_image, '_image', None))
+                    if image_data is not None and hasattr(image_data, 'shape'):
+                        shape_info = image_data.shape
+                    else:
+                        shape_info = "unknown"
+            
+            self.logger.info(f"Successfully loaded SEM image with shape {shape_info}")
             return sem_image
             
         except Exception as e:
@@ -122,7 +167,7 @@ class FileLoadingService(QObject):
         """Get the currently loaded SEM image."""
         return self._current_sem
     
-    def get_current_gds(self) -> Optional[InitialGdsModel]:
+    def get_current_gds(self) -> Optional[AlignedGdsModel]:
         """Get the currently loaded GDS model."""
         return self._current_gds
     

@@ -48,7 +48,7 @@ class FileSelector(QWidget):
         main_layout = QVBoxLayout(self)
         
         # Create splitter for better layout but only for SEM files (GDS is auto-loaded)
-        splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(Qt.Orientation.Vertical)
         main_layout.addWidget(splitter)
         
         # SEM files section
@@ -69,7 +69,7 @@ class FileSelector(QWidget):
     def _create_sem_section(self) -> QFrame:
         """Create the SEM files selection section."""
         sem_frame = QFrame()
-        sem_frame.setFrameStyle(QFrame.StyledPanel)
+        sem_frame.setFrameStyle(QFrame.Shape.StyledPanel)
         sem_layout = QVBoxLayout(sem_frame)
         
         # Header with priority indicator
@@ -101,7 +101,7 @@ class FileSelector(QWidget):
     def _create_gds_section(self) -> QFrame:
         """Create the structure selection section (GDS file is auto-loaded)."""
         gds_frame = QFrame()
-        gds_frame.setFrameStyle(QFrame.StyledPanel)
+        gds_frame.setFrameStyle(QFrame.Shape.StyledPanel)
         gds_layout = QVBoxLayout(gds_frame)
         
         # Header - now shows structure selection only
@@ -135,7 +135,7 @@ class FileSelector(QWidget):
     def _create_info_section(self) -> QFrame:
         """Create the file information section."""
         info_frame = QFrame()
-        info_frame.setFrameStyle(QFrame.StyledPanel)
+        info_frame.setFrameStyle(QFrame.Shape.StyledPanel)
         info_layout = QVBoxLayout(info_frame)
         
         # Info header
@@ -147,7 +147,7 @@ class FileSelector(QWidget):
         self.info_display = QLabel("No file selected")
         self.info_display.setStyleSheet("color: gray; font-family: monospace; padding: 5px;")
         self.info_display.setWordWrap(True)
-        self.info_display.setAlignment(Qt.AlignTop)
+        self.info_display.setAlignment(Qt.AlignmentFlag.AlignTop)
         info_layout.addWidget(self.info_display)
         
         # Status label
@@ -171,7 +171,7 @@ class FileSelector(QWidget):
         self.sem_list.clear()
         for file_path in files:
             item = QListWidgetItem(file_path.name)
-            item.setData(Qt.UserRole, str(file_path))
+            item.setData(Qt.ItemDataRole.UserRole, str(file_path))
             self.sem_list.addItem(item)
         
         self._update_status()
@@ -192,26 +192,16 @@ class FileSelector(QWidget):
     
     def _on_sem_list_selection(self, item: QListWidgetItem) -> None:
         """Handle SEM list widget selection."""
-        file_path = item.data(Qt.UserRole)
+        file_path = item.data(Qt.ItemDataRole.UserRole)
         if file_path:
             self.selected_sem_file = file_path
             self._select_sem_file(file_path)
-    
-    def _on_gds_list_selection(self, item: QListWidgetItem) -> None:
-        """Handle GDS list widget selection - no longer used with auto-loaded GDS."""
-        # This method is kept for compatibility but shouldn't be called
-        print("Warning: GDS list selection attempted but GDS is auto-loaded")
     
     def _on_sem_selection_changed(self, text: str) -> None:
         """Handle SEM combo box selection change."""
         current_data = self.sem_combo.currentData()
         if current_data:
             self._select_sem_file(current_data)
-    
-    def _on_gds_selection_changed(self, text: str) -> None:
-        """Handle GDS combo box selection change - no longer used with auto-loaded GDS."""
-        # This method is kept for compatibility but shouldn't be called
-        print("Warning: GDS selection change attempted but GDS is auto-loaded")
     
     def _on_structure_selection_changed(self, index: int) -> None:
         """Handle structure selection change."""
@@ -292,7 +282,7 @@ class FileSelector(QWidget):
         """Get the default GDS file path (always Institute_Project_GDS1.gds)."""
         return "Data/GDS/Institute_Project_GDS1.gds"
     
-    def scan_directories(self, sem_dir: Path = None, gds_dir: Path = None) -> None:
+    def scan_directories(self, sem_dir: Optional[Path] = None, gds_dir: Optional[Path] = None) -> None:
         """
         Scan directories for SEM files only (GDS file is auto-loaded).
         
@@ -373,9 +363,7 @@ class FileSelector(QWidget):
         
         # Clear UI components
         self.sem_combo.clear()
-        self.gds_combo.clear()
         self.sem_list.clear()
-        self.gds_list.clear()
         
         self._update_info_display()
         self._update_status()
@@ -389,27 +377,3 @@ class FileSelector(QWidget):
             info_text = f"SEM: Not selected\nGDS: Institute_Project_GDS1.gds (auto-loaded)"
         
         self.info_display.setText(info_text)
-    
-    def populate_structure_dropdown(self):
-        """
-        Populate the structure dropdown with structures from the GDS file.
-        This is called when the GDS file is loaded.
-        """
-        try:
-            # Clear existing items
-            self.structure_combo.clear()
-            self.structure_combo.addItem("Select structure...", None)
-            
-            # Get all structures from the GDS file
-            structures_info = get_all_structures_info()
-            
-            # Add each structure to the dropdown
-            for structure_id, info in structures_info.items():
-                display_name = f"Structure{structure_id}: {info['name']}"
-                self.structure_combo.addItem(display_name, structure_id)
-                
-            print(f"Structure dropdown populated with {len(structures_info)} structures")
-            self.structure_combo.setEnabled(True)
-        except Exception as e:
-            print(f"Error populating structure dropdown: {str(e)}")
-            self.structure_combo.setEnabled(False)

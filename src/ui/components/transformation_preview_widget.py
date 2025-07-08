@@ -11,13 +11,13 @@ This component provides:
 
 import logging
 import numpy as np
-from typing import List, Tuple, Optional, Dict, Any
+from typing import List, Tuple, Optional, Dict, Any, Union, Sequence, cast
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QPushButton, 
                               QLabel, QFrame, QGroupBox, QTableWidget, QTableWidgetItem,
                               QHeaderView, QMessageBox, QDoubleSpinBox, QCheckBox,
-                              QTextEdit, QProgressBar)
+                              QTextEdit, QProgressBar, QMenu)
 from PySide6.QtCore import Qt, Signal, QTimer
-from PySide6.QtGui import QColor, QFont, QPalette
+from PySide6.QtGui import QColor, QFont, QPalette, QAction
 import cv2
 
 logger = logging.getLogger(__name__)
@@ -38,16 +38,16 @@ class TransformationPreviewWidget(QWidget):
         super().__init__(parent)
         
         # Transformation data
-        self._sem_points = []
-        self._gds_points = []
-        self._calculated_transform = None
-        self._transform_matrix = None
+        self._sem_points: List[Tuple[float, float]] = []
+        self._gds_points: List[Tuple[float, float]] = []
+        self._calculated_transform: Optional[Dict[str, Any]] = None
+        self._transform_matrix: Optional[np.ndarray] = None
         self._is_valid = False
-        self._preview_image = None
+        self._preview_image: Optional[np.ndarray] = None
         
         # Original images for preview
-        self._original_gds_image = None
-        self._sem_reference_image = None
+        self._original_gds_image: Optional[np.ndarray] = None
+        self._sem_reference_image: Optional[np.ndarray] = None
         
         # Validation parameters
         self._max_scale_factor = 5.0
@@ -134,26 +134,26 @@ class TransformationPreviewWidget(QWidget):
         
         # Configure table
         header = self.params_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
         
         self.params_table.setMaximumHeight(180)
         
         # Initialize parameter rows
         param_names = ["Translation X", "Translation Y", "Rotation (°)", "Scale X", "Scale Y"]
-        self._param_spinboxes = {}
+        self._param_spinboxes: Dict[str, QDoubleSpinBox] = {}
         
         for i, param_name in enumerate(param_names):
             # Parameter name
             name_item = QTableWidgetItem(param_name)
-            name_item.setFlags(Qt.ItemIsEnabled)
+            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.params_table.setItem(i, 0, name_item)
             
             # Calculated value (read-only)
             calc_item = QTableWidgetItem("-")
-            calc_item.setFlags(Qt.ItemIsEnabled)
-            calc_item.setTextAlignment(Qt.AlignCenter)
+            calc_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            calc_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.params_table.setItem(i, 1, calc_item)
             
             # Create spinbox for adjustment
@@ -315,8 +315,8 @@ class TransformationPreviewWidget(QWidget):
         
         # Configure quality table
         quality_header = self.quality_table.horizontalHeader()
-        quality_header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        quality_header.setSectionResizeMode(1, QHeaderView.Stretch)
+        quality_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        quality_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         
         self.quality_table.setMaximumHeight(140)
         
@@ -324,12 +324,12 @@ class TransformationPreviewWidget(QWidget):
         quality_metrics = ["Point Accuracy", "Scale Uniformity", "Distortion Level", "Overall Quality"]
         for i, metric_name in enumerate(quality_metrics):
             name_item = QTableWidgetItem(metric_name)
-            name_item.setFlags(Qt.ItemIsEnabled)
+            name_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
             self.quality_table.setItem(i, 0, name_item)
             
             value_item = QTableWidgetItem("-")
-            value_item.setFlags(Qt.ItemIsEnabled)
-            value_item.setTextAlignment(Qt.AlignCenter)
+            value_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            value_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.quality_table.setItem(i, 1, value_item)
         
         quality_layout.addWidget(self.quality_table)
@@ -364,6 +364,11 @@ class TransformationPreviewWidget(QWidget):
         
         return layout
     
+    def _show_error(self, message: str):
+        """Display error message to user."""
+        QMessageBox.critical(self, "Error", message)
+        logger.error(f"Error shown to user: {message}")
+    
     # Main functionality methods
     def set_point_pairs(self, sem_points: List[Tuple[float, float]], gds_points: List[Tuple[float, float]]):
         """
@@ -385,9 +390,9 @@ class TransformationPreviewWidget(QWidget):
             self._validate_point_format(sem_points, "SEM")
             self._validate_point_format(gds_points, "GDS")
             
-            # Store point pairs safely
-            self._sem_points = [tuple(point) for point in sem_points]
-            self._gds_points = [tuple(point) for point in gds_points]
+            # Store point pairs safely - ensure exactly 2-element tuples
+            self._sem_points = [(float(point[0]), float(point[1])) for point in sem_points]
+            self._gds_points = [(float(point[0]), float(point[1])) for point in gds_points]
             
             # Clear any previous calculation results
             self._calculated_transform = None
@@ -503,7 +508,7 @@ class TransformationPreviewWidget(QWidget):
                     }
                 """)
     
-    def set_images_for_preview(self, gds_image: np.ndarray, sem_image: np.ndarray):
+    def set_images_for_preview(self, gds_image: Optional[np.ndarray], sem_image: Optional[np.ndarray]):
         """
         Set images for transformation preview generation.
         
@@ -644,6 +649,9 @@ class TransformationPreviewWidget(QWidget):
             bool: True if verification passes, False otherwise
         """
         try:
+            if self._transform_matrix is None:
+                return False
+                
             # Apply transformation to SEM points
             sem_pts_homogeneous = np.column_stack([self._sem_points, np.ones(3)])
             transformed_pts = (self._transform_matrix @ sem_pts_homogeneous.T).T[:, :2]
@@ -666,6 +674,9 @@ class TransformationPreviewWidget(QWidget):
     
     def _handle_calculation_success(self):
         """Handle successful transformation calculation."""
+        if self._calculated_transform is None:
+            return
+            
         # Update UI displays
         self._update_parameters_display(self._calculated_transform)
         validation_result = self._validate_transformation(self._calculated_transform)
@@ -712,7 +723,7 @@ class TransformationPreviewWidget(QWidget):
             self.calc_status_label.setText("Calculation failed")
             self.calc_status_label.setStyleSheet("color: #dc3545; font-weight: bold;")
     
-    def _are_points_collinear(self, points: List[Tuple[float, float]]) -> bool:
+    def _are_points_collinear(self, points: Sequence[Tuple[float, float]]) -> bool:
         """Check if three points are collinear."""
         if len(points) != 3:
             return False
@@ -724,7 +735,7 @@ class TransformationPreviewWidget(QWidget):
         # Points are collinear if cross product is near zero
         return abs(cross_product) < 1e-6
     
-    def _extract_transformation_parameters(self, matrix: np.ndarray) -> Dict[str, float]:
+    def _extract_transformation_parameters(self, matrix: np.ndarray) -> Dict[str, Any]:
         """
         Extract transformation parameters from affine matrix.
         
@@ -875,7 +886,7 @@ class TransformationPreviewWidget(QWidget):
         # Normalize to [0, 360) range
         return snapped % 360
     
-    def _validate_transformation(self, params: Dict[str, float]) -> Dict[str, Any]:
+    def _validate_transformation(self, params: Dict[str, Any]) -> Dict[str, Any]:
         """
         Validate transformation parameters to check for extreme distortions or invalid transformations.
         
@@ -893,16 +904,16 @@ class TransformationPreviewWidget(QWidget):
         info_messages = []
         
         try:
-            # Extract parameters for validation
-            scale_x = params.get('scale_x', 1.0)
-            scale_y = params.get('scale_y', 1.0)
-            translation_x = params.get('translation_x', 0.0)
-            translation_y = params.get('translation_y', 0.0)
-            rotation = params.get('rotation', 0.0)
-            rotation_raw = params.get('rotation_raw', 0.0)
-            determinant = params.get('determinant', 1.0)
-            condition_number = params.get('condition_number', 1.0)
-            transform_type = params.get('transform_type', 'unknown')
+            # Extract parameters for validation with proper type handling
+            scale_x = float(params.get('scale_x', 1.0))
+            scale_y = float(params.get('scale_y', 1.0))
+            translation_x = float(params.get('translation_x', 0.0))
+            translation_y = float(params.get('translation_y', 0.0))
+            rotation = float(params.get('rotation', 0.0))
+            rotation_raw = float(params.get('rotation_raw', 0.0))
+            determinant = float(params.get('determinant', 1.0))
+            condition_number = float(params.get('condition_number', 1.0))
+            transform_type = str(params.get('transform_type', 'unknown'))
             
             # 1. Validate scale factors (check for extreme distortions)
             self._validate_scale_factors(scale_x, scale_y, issues, warnings)
@@ -1045,7 +1056,7 @@ class TransformationPreviewWidget(QWidget):
         if transform_type in ["translation", "rigid"] and (abs(scale_x - 1.0) > 0.1 or abs(scale_y - 1.0) > 0.1):
             warnings.append(f"Unexpected scaling in {transform_type} transformation")
     
-    def _validate_parameter_consistency(self, params: Dict[str, float], 
+    def _validate_parameter_consistency(self, params: Dict[str, Any], 
                                        issues: List[str], warnings: List[str]):
         """Validate consistency between different parameters."""
         # Check if the transformation is invertible
@@ -1083,7 +1094,7 @@ class TransformationPreviewWidget(QWidget):
         else:
             return f"Transformation valid ({status}) with {warning_count} consideration(s)"
     
-    def _create_detailed_assessment(self, params: Dict[str, float], is_valid: bool, quality_score: float) -> str:
+    def _create_detailed_assessment(self, params: Dict[str, Any], is_valid: bool, quality_score: float) -> str:
         """Create a detailed assessment summary."""
         assessment_parts = []
         
@@ -1093,9 +1104,11 @@ class TransformationPreviewWidget(QWidget):
             assessment_parts.append("✗ Invalid transformation")
         
         # Add parameter summary
-        tx, ty = params.get('translation_x', 0), params.get('translation_y', 0)
-        rot = params.get('rotation', 0)
-        sx, sy = params.get('scale_x', 1), params.get('scale_y', 1)
+        tx = float(params.get('translation_x', 0))
+        ty = float(params.get('translation_y', 0))
+        rot = float(params.get('rotation', 0))
+        sx = float(params.get('scale_x', 1))
+        sy = float(params.get('scale_y', 1))
         
         assessment_parts.append(f"Translation: ({tx:.1f}, {ty:.1f}) pixels")
         assessment_parts.append(f"Rotation: {rot:.0f}°")
@@ -1104,7 +1117,7 @@ class TransformationPreviewWidget(QWidget):
         
         return " | ".join(assessment_parts)
     
-    def _calculate_quality_score(self, params: Dict[str, float], issues: List[str], warnings: List[str]) -> float:
+    def _calculate_quality_score(self, params: Dict[str, Any], issues: List[str], warnings: List[str]) -> float:
         """Calculate overall quality score (0-1)."""
         if issues:
             return 0.0
@@ -1115,35 +1128,28 @@ class TransformationPreviewWidget(QWidget):
         score -= len(warnings) * 0.1
         
         # Deduct for scale distortion
-        scale_ratio = max(params['scale_x'], params['scale_y']) / min(params['scale_x'], params['scale_y'])
+        scale_x = float(params.get('scale_x', 1.0))
+        scale_y = float(params.get('scale_y', 1.0))
+        scale_ratio = max(scale_x, scale_y) / min(scale_x, scale_y)
         score -= max(0, (scale_ratio - 1.0) * 0.2)
         
         # Deduct for large rotation adjustments
-        rotation_diff = abs(params['rotation'] - params['rotation_raw'])
+        rotation = float(params.get('rotation', 0.0))
+        rotation_raw = float(params.get('rotation_raw', 0.0))
+        rotation_diff = abs(rotation - rotation_raw)
         score -= rotation_diff / 180.0 * 0.3
         
         return max(0.0, min(1.0, score))
     
-    def _update_parameters_display(self, params: Dict[str, float]):
-        """
-        Update the parameters table with calculated transformation values.
-        
-        This method displays transformation parameters in a clear, organized table
-        with both calculated and user-adjustable values for review.
-        
-        Args:
-            params: Dictionary containing transformation parameters
-        """
+    def _update_parameters_display(self, params: Dict[str, Any]):
+        """Update the parameters table with calculated transformation values."""
         try:
             # Extract parameters with safe defaults
-            translation_x = params.get('translation_x', 0.0)
-            translation_y = params.get('translation_y', 0.0)
-            rotation = params.get('rotation', 0.0)
-            rotation_raw = params.get('rotation_raw', 0.0)
-            scale_x = params.get('scale_x', 1.0)
-            scale_y = params.get('scale_y', 1.0)
-            scale_uniform = params.get('scale_uniform', 1.0)
-            transform_type = params.get('transform_type', 'unknown')
+            translation_x = float(params.get('translation_x', 0.0))
+            translation_y = float(params.get('translation_y', 0.0))
+            rotation = float(params.get('rotation', 0.0))
+            scale_x = float(params.get('scale_x', 1.0))
+            scale_y = float(params.get('scale_y', 1.0))
             
             # Update main parameters table
             param_data = [
@@ -1187,19 +1193,19 @@ class TransformationPreviewWidget(QWidget):
             logger.error(f"Failed to update parameters display: {e}")
             self._show_error(f"Display update failed: {str(e)}")
     
-    def _update_additional_parameters_info(self, params: Dict[str, float]):
+    def _update_additional_parameters_info(self, params: Dict[str, Any]):
         """Update additional transformation information display."""
         try:
             # Create additional info text
             info_lines = []
             
             # Transformation type and characteristics
-            transform_type = params.get('transform_type', 'unknown')
+            transform_type = str(params.get('transform_type', 'unknown'))
             info_lines.append(f"Transformation Type: {transform_type.title()}")
             
             # Raw vs snapped rotation
-            rotation_raw = params.get('rotation_raw', 0.0)
-            rotation_snapped = params.get('rotation', 0.0)
+            rotation_raw = float(params.get('rotation_raw', 0.0))
+            rotation_snapped = float(params.get('rotation', 0.0))
             rotation_diff = abs(rotation_snapped - rotation_raw)
             if rotation_diff > 0.1:
                 info_lines.append(f"Rotation Adjustment: {rotation_raw:.1f}° → {rotation_snapped:.0f}° (snapped)")
@@ -1207,8 +1213,8 @@ class TransformationPreviewWidget(QWidget):
                 info_lines.append(f"Rotation: {rotation_snapped:.0f}° (no adjustment needed)")
             
             # Scale information
-            scale_x = params.get('scale_x', 1.0)
-            scale_y = params.get('scale_y', 1.0)
+            scale_x = float(params.get('scale_x', 1.0))
+            scale_y = float(params.get('scale_y', 1.0))
             if abs(scale_x - scale_y) < 0.01:
                 info_lines.append(f"Uniform Scaling: {scale_x:.3f}×")
             else:
@@ -1216,12 +1222,13 @@ class TransformationPreviewWidget(QWidget):
                 info_lines.append(f"Non-uniform Scaling: {scale_ratio:.2f}:1 ratio")
             
             # Translation magnitude
-            tx, ty = params.get('translation_x', 0.0), params.get('translation_y', 0.0)
+            tx = float(params.get('translation_x', 0.0))
+            ty = float(params.get('translation_y', 0.0))
             translation_magnitude = np.sqrt(tx*tx + ty*ty)
             info_lines.append(f"Translation Distance: {translation_magnitude:.1f} pixels")
             
             # Matrix properties
-            determinant = params.get('determinant', 1.0)
+            determinant = float(params.get('determinant', 1.0))
             if determinant < 0:
                 info_lines.append("⚠ Includes reflection component")
             elif abs(determinant - 1.0) > 0.1:
@@ -1237,15 +1244,15 @@ class TransformationPreviewWidget(QWidget):
         except Exception as e:
             logger.error(f"Failed to update additional parameters info: {e}")
     
-    def _update_parameter_summary(self, params: Dict[str, float]):
+    def _update_parameter_summary(self, params: Dict[str, Any]):
         """Update a concise parameter summary for quick review."""
         try:
             # Create a concise summary
-            tx = params.get('translation_x', 0.0)
-            ty = params.get('translation_y', 0.0)
-            rotation = params.get('rotation', 0.0)
-            scale_x = params.get('scale_x', 1.0)
-            scale_y = params.get('scale_y', 1.0)
+            tx = float(params.get('translation_x', 0.0))
+            ty = float(params.get('translation_y', 0.0))
+            rotation = float(params.get('rotation', 0.0))
+            scale_x = float(params.get('scale_x', 1.0))
+            scale_y = float(params.get('scale_y', 1.0))
             
             # Format summary components
             summary_parts = []
@@ -1289,15 +1296,7 @@ class TransformationPreviewWidget(QWidget):
             logger.error(f"Failed to update parameter summary: {e}")
     
     def _update_validation_display(self, validation: Dict[str, Any]):
-        """
-        Update validation status and warnings display.
-        
-        This method provides comprehensive feedback about transformation quality,
-        including visual indicators, detailed messages, and actionable warnings.
-        
-        Args:
-            validation: Validation result dictionary from _validate_transformation
-        """
+        """Update validation status and warnings display."""
         try:
             status = validation.get('status', 'unknown')
             message = validation.get('message', 'No validation message')
@@ -1430,17 +1429,7 @@ class TransformationPreviewWidget(QWidget):
         """)
     
     def _update_validation_indicators(self, is_valid: bool, status: str, quality_score: float):
-        """
-        Update visual indicators and enable/disable confirmation based on validation.
-        
-        This method implements Step 12 requirement to only allow confirmation
-        when transformation passes validation checks.
-        
-        Args:
-            is_valid: Whether transformation is valid
-            status: Validation status string
-            quality_score: Quality score (0-1)
-        """
+        """Update visual indicators and enable/disable confirmation based on validation."""
         # Update button states based on validation
         self._update_confirmation_button_state(is_valid, status, quality_score)
         self._update_rejection_button_state()
@@ -1596,25 +1585,7 @@ class TransformationPreviewWidget(QWidget):
         try:
             # Update any progress bars, status indicators, or other visual elements
             # This can be extended as needed for additional UI feedback
-            
-            # Example: Update a quality progress bar if it exists
-            if hasattr(self, 'quality_progress_bar'):
-                self.quality_progress_bar.setValue(int(quality_score * 100))
-                if is_valid:
-                    if quality_score >= 0.8:
-                        color = "#28a745"  # Green
-                    elif quality_score >= 0.6:
-                        color = "#ffc107"  # Yellow
-                    else:
-                        color = "#fd7e14"  # Orange
-                else:
-                    color = "#dc3545"  # Red
-                
-                self.quality_progress_bar.setStyleSheet(f"""
-                    QProgressBar::chunk {{
-                        background-color: {color};
-                    }}
-                """)
+            pass
                 
         except Exception as e:
             logger.error(f"Failed to update visual feedback: {e}")
@@ -1698,20 +1669,23 @@ class TransformationPreviewWidget(QWidget):
         """)
         self.validation_details.setText("An error occurred during validation. Please try recalculating the transformation.")
     
-    def _update_quality_metrics(self, params: Dict[str, float]):
+    def _update_quality_metrics(self, params: Dict[str, Any]):
         """Update quality metrics display."""
         # Calculate point accuracy (theoretical - would need actual point transformation)
         point_accuracy = 0.95  # Placeholder
         
         # Scale uniformity
-        scale_ratio = min(params['scale_x'], params['scale_y']) / max(params['scale_x'], params['scale_y'])
+        scale_x = float(params.get('scale_x', 1.0))
+        scale_y = float(params.get('scale_y', 1.0))
+        scale_ratio = min(scale_x, scale_y) / max(scale_x, scale_y)
         scale_uniformity = scale_ratio
         
         # Distortion level (inverse of scale ratio)
         distortion_level = 1.0 - scale_uniformity
         
         # Overall quality
-        overall_quality = self._calculated_transform.get('quality_score', 0.0) if self._calculated_transform else 0.0
+        overall_quality = params.get('quality_score', 0.0) if self._calculated_transform else 0.0
+        overall_quality = float(overall_quality) if overall_quality is not None else 0.0
         
         metrics = [
             f"{point_accuracy:.1%}",
@@ -1721,15 +1695,12 @@ class TransformationPreviewWidget(QWidget):
         ]
         
         for i, metric_value in enumerate(metrics):
-            self.quality_table.item(i, 1).setText(metric_value)
+            item = self.quality_table.item(i, 1)
+            if item is not None:
+                item.setText(metric_value)
     
     def _generate_preview(self):
-        """
-        Generate transformation preview by overlaying transformed GDS on SEM image.
-        
-        This method implements Step 13 requirement to show preview of the transformation
-        before applying it, allowing users to visualize the alignment result.
-        """
+        """Generate transformation preview by overlaying transformed GDS on SEM image."""
         try:
             # Validate prerequisites
             if not self._can_generate_preview():
@@ -1790,6 +1761,9 @@ class TransformationPreviewWidget(QWidget):
     def _apply_transformation_to_gds(self) -> Optional[np.ndarray]:
         """Apply the calculated transformation to the GDS image."""
         try:
+            if self._original_gds_image is None or self._transform_matrix is None:
+                return None
+                
             # Get original image dimensions
             height, width = self._original_gds_image.shape[:2]
             
@@ -1797,14 +1771,14 @@ class TransformationPreviewWidget(QWidget):
             # Use the 2x3 transformation matrix (first 2 rows of the 3x3 matrix)
             transform_2x3 = self._transform_matrix[:2, :].astype(np.float32)
             
-            # Apply transformation with proper interpolation and border handling
+            # Apply transformation with FIXED OpenCV parameters
             transformed_gds = cv2.warpAffine(
                 self._original_gds_image,
                 transform_2x3,
                 (width, height),
                 flags=cv2.INTER_LINEAR,  # Smooth interpolation
                 borderMode=cv2.BORDER_CONSTANT,  # Fill with black
-                borderValue=0
+                borderValue=(0,)  # FIXED: Use tuple for scalar border value
             )
             
             logger.debug(f"Applied transformation to GDS image: {width}x{height}")
@@ -1837,6 +1811,9 @@ class TransformationPreviewWidget(QWidget):
     
     def _prepare_sem_for_overlay(self) -> np.ndarray:
         """Prepare SEM image for overlay creation."""
+        if self._sem_reference_image is None:
+            raise ValueError("No SEM reference image available")
+            
         sem_image = self._sem_reference_image.copy()
         
         # Convert to RGB if grayscale
@@ -2160,14 +2137,18 @@ class TransformationPreviewWidget(QWidget):
         
         # Reset UI
         for i in range(5):
-            self.params_table.item(i, 1).setText("-")
+            item = self.params_table.item(i, 1)
+            if item is not None:
+                item.setText("-")
         
         for spinbox in self._param_spinboxes.values():
             spinbox.setEnabled(False)
             spinbox.setValue(0)
         
         for i in range(4):
-            self.quality_table.item(i, 1).setText("-")
+            item = self.quality_table.item(i, 1)
+            if item is not None:
+                item.setText("-")
         
         self.validation_label.setText("No calculation performed")
         self.validation_label.setStyleSheet("")
@@ -2192,8 +2173,15 @@ class TransformationPreviewWidget(QWidget):
         # Reset all parameter spinboxes to calculated values
         if hasattr(self, '_param_spinboxes'):
             for param_name, spinbox in self._param_spinboxes.items():
-                if param_name in self._calculated_transform:
-                    spinbox.setValue(self._calculated_transform[param_name])
+                param_map = {
+                    "Translation X": 'translation_x',
+                    "Translation Y": 'translation_y',
+                    "Rotation (°)": 'rotation',
+                    "Scale X": 'scale_x',
+                    "Scale Y": 'scale_y'
+                }
+                if param_name in param_map and param_map[param_name] in self._calculated_transform:
+                    spinbox.setValue(self._calculated_transform[param_map[param_name]])
         
         # Update status
         if hasattr(self, 'adjustment_status_label'):
@@ -2206,8 +2194,6 @@ class TransformationPreviewWidget(QWidget):
     
     def _show_quick_adjustments(self):
         """Show quick adjustment options menu."""
-        from PySide6.QtWidgets import QMenu, QAction
-        
         menu = QMenu(self)
         
         # Common adjustment options
@@ -2232,10 +2218,19 @@ class TransformationPreviewWidget(QWidget):
     
     def _adjust_parameter(self, param_name: str, delta: float):
         """Apply small adjustment to a parameter."""
-        if param_name in self._param_spinboxes:
-            current_value = self._param_spinboxes[param_name].value()
+        param_map = {
+            'rotation': "Rotation (°)",
+            'scale_x': "Scale X",
+            'scale_y': "Scale Y", 
+            'translation_x': "Translation X",
+            'translation_y': "Translation Y"
+        }
+        
+        ui_param_name = param_map.get(param_name)
+        if ui_param_name and ui_param_name in self._param_spinboxes:
+            current_value = self._param_spinboxes[ui_param_name].value()
             new_value = current_value + delta
-            self._param_spinboxes[param_name].setValue(new_value)
+            self._param_spinboxes[ui_param_name].setValue(new_value)
             
             # Update status
             if hasattr(self, 'adjustment_status_label'):

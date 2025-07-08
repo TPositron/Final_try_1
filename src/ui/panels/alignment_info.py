@@ -5,7 +5,7 @@ Displays current transform parameters and alignment status.
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QFrame
 from PySide6.QtCore import Qt
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 
 class AlignmentInfoPanel(QWidget):
@@ -29,27 +29,27 @@ class AlignmentInfoPanel(QWidget):
         transform_layout.addWidget(self.translate_x_label)
         transform_layout.addWidget(self.translate_y_label)
         
-        # Add separator
+        # Add separator - FIXED: Use proper enum namespace
         separator1 = QFrame()
-        separator1.setFrameShape(QFrame.HLine)
+        separator1.setFrameShape(QFrame.Shape.HLine)
         transform_layout.addWidget(separator1)
         
         # Rotation info
         self.rotation_label = QLabel("Rotation: 0.0°")
         transform_layout.addWidget(self.rotation_label)
         
-        # Add separator
+        # Add separator - FIXED: Use proper enum namespace
         separator2 = QFrame()
-        separator2.setFrameShape(QFrame.HLine)
+        separator2.setFrameShape(QFrame.Shape.HLine)
         transform_layout.addWidget(separator2)
         
         # Scale info
         self.scale_label = QLabel("Scale: 1.00x")
         transform_layout.addWidget(self.scale_label)
         
-        # Add separator
+        # Add separator - FIXED: Use proper enum namespace
         separator3 = QFrame()
-        separator3.setFrameShape(QFrame.HLine)
+        separator3.setFrameShape(QFrame.Shape.HLine)
         transform_layout.addWidget(separator3)
         
         # Transparency info
@@ -109,8 +109,9 @@ class AlignmentInfoPanel(QWidget):
         gds_status = "Loaded" if gds_loaded else "Not loaded"
         self.image_info_label.setText(f"SEM: {sem_status}\nGDS: {gds_status}")
         
-    def update_metrics(self, correlation: float = None, overlap: float = None):
+    def update_metrics(self, correlation: Optional[float] = None, overlap: Optional[float] = None):
         """Update alignment quality metrics."""
+        # FIXED: Use proper Optional type annotations instead of float = None
         corr_text = f"{correlation:.3f}" if correlation is not None else "N/A"
         overlap_text = f"{overlap:.3f}" if overlap is not None else "N/A"
         

@@ -395,7 +395,11 @@ if __name__ == "__main__":
     
     for name in manager.list_structures():
         struct = manager.get_structure(name)
-        print(f"  {name}: bounds={struct.bounds}, layers={struct.layers}")
+        # FIX: Add null check before accessing struct attributes
+        if struct is not None:
+            print(f"  {name}: bounds={struct.bounds}, layers={struct.layers}")
+        else:
+            print(f"  {name}: structure not found")
     
     # Test region search
     print(f"\nStructures in region (900, 6000, 1100, 6200):")

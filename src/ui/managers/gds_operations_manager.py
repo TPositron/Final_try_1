@@ -152,6 +152,11 @@ class GDSOperationsManager(QObject):
                 
                 # Emit signal
                 self.gds_file_loaded.emit(file_path)
+                
+                # Auto-select Structure 1 if no structure is currently selected
+                if not self.current_structure_name:
+                    print("Auto-selecting Structure 1...")
+                    self.select_structure_by_id(1)
             else:
                 raise RuntimeError(f"Failed to load GDS file: {gds_filename}")
                 
@@ -213,19 +218,21 @@ class GDSOperationsManager(QObject):
             overlay_image = self.new_gds_service.generate_structure_display(structure_num, (1024, 666))
             
             if overlay_image is not None:
-                print(f"Overlay image generated successfully, shape: {overlay_image.shape}")
+                print(f"Overlay image generated successfully, shape: {overlay_image.shape}, dtype: {overlay_image.dtype}")
+                print(f"Overlay min/max values: {overlay_image.min()}/{overlay_image.max()}")
                 
-                # Convert grayscale to colored overlay
-                if len(overlay_image.shape) == 2:
-                    overlay = np.zeros((overlay_image.shape[0], overlay_image.shape[1], 3), dtype=np.uint8)
-                    structure_mask = overlay_image < 128  # Black pixels are structures
-                    overlay[structure_mask] = [0, 255, 255]  # Cyan color
-                elif len(overlay_image.shape) == 3:
-                    overlay = overlay_image  # Already RGB
-                else:
-                    raise ValueError("Unexpected image format")
+                # Ensure proper format for display
+                if overlay_image.dtype != np.uint8:
+                    if overlay_image.max() <= 1.0:
+                        overlay_image = (overlay_image * 255).astype(np.uint8)
+                    else:
+                        overlay_image = overlay_image.astype(np.uint8)
+                
+                # Use the binary image directly as grayscale overlay
+                # The ImageViewer will handle the transparency
+                overlay = overlay_image
                     
-                print(f"Overlay format: {overlay.shape}, dtype: {overlay.dtype}")
+                print(f"Final overlay format: {overlay.shape}, dtype: {overlay.dtype}, non-zero pixels: {np.count_nonzero(overlay)}")
             else:
                 raise ValueError(f"Failed to generate image for structure: {structure_name}")
             
@@ -237,11 +244,16 @@ class GDSOperationsManager(QObject):
             
             # Display the overlay
             if hasattr(self.main_window, 'image_viewer'):
+                print(f"Setting GDS overlay in image viewer...")
                 self.main_window.image_viewer.set_gds_overlay(overlay)
                 
                 # Make sure overlay is visible
-                if hasattr(self.main_window.image_viewer, '_overlay_visible'):
-                    self.main_window.image_viewer._overlay_visible = True
+                self.main_window.image_viewer.set_overlay_visible(True)
+                print(f"Overlay visibility set to: {self.main_window.image_viewer.get_overlay_visible()}")
+                
+                # Force refresh
+                self.main_window.image_viewer.refresh()
+                print(f"Image viewer refreshed")
             
             # Update status
             if hasattr(self.main_window, 'status_bar'):
@@ -356,25 +368,24 @@ class GDSOperationsManager(QObject):
     def load_gds_file_from_path(self, file_path: str):
         """Load GDS file from given file path (for FileSelector integration)."""
         if file_path:
+            print(f"Loading GDS file from path: {file_path}")
             self._load_gds_file_internal(file_path)
     
     def select_structure_by_id(self, structure_id: int):
         """Select structure by ID (for FileSelector integration)."""
         try:
-            # Map structure ID to structure name using existing service
-            structures_info = self.new_gds_service.get_all_structures_info()
+            print(f"Selecting structure by ID: {structure_id}")
             
-            if structure_id in structures_info:
-                structure_info = structures_info[structure_id]
-                structure_name = structure_info.get('name', f'Structure {structure_id}')
-                
-                # Call existing structure selection method
-                self.on_structure_selected(structure_name)
-                print(f"Structure {structure_id} ({structure_name}) selected via FileSelector")
-            else:
-                print(f"Warning: Structure ID {structure_id} not found in available structures")
+            # Map structure ID to structure name
+            structure_name = f"Structure {structure_id}"
+            
+            # Call existing structure selection method
+            self.on_structure_selected(structure_name)
+            print(f"Structure {structure_id} ({structure_name}) selected via FileSelector")
                 
         except Exception as e:
             error_msg = f"Failed to select structure {structure_id}: {str(e)}"
             print(error_msg)
+            import traceback
+            traceback.print_exc()
             self.gds_operation_error.emit("select_structure", str(e))

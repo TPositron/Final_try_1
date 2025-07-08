@@ -69,7 +69,7 @@ class TransformRotate:
         return cv2.warpAffine(image, rotation_matrix, (w, h),
                              flags=cv2.INTER_LINEAR,
                              borderMode=cv2.BORDER_CONSTANT,
-                             borderValue=0)
+                             borderValue=(0,))  # type: ignore
     
     def get_rotation_matrix(self, degrees: Optional[float] = None, center: Optional[Tuple[float, float]] = None) -> np.ndarray:
         """

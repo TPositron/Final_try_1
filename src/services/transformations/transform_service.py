@@ -39,8 +39,8 @@ class TransformService(QObject):
         
         # Current transformation state
         self.current_transforms = {
-            'translation_x': 0.0,
-            'translation_y': 0.0,
+            'translate_x': 0.0,
+            'translate_y': 0.0,
             'rotation': 0.0,
             'scale': 1.0
         }
@@ -71,9 +71,9 @@ class TransformService(QObject):
                 return False
             
             # Update current state
-            old_value = (self.current_transforms['translation_x'], self.current_transforms['translation_y'])
-            self.current_transforms['translation_x'] = dx
-            self.current_transforms['translation_y'] = dy
+            old_value = (self.current_transforms['translate_x'], self.current_transforms['translate_y'])
+            self.current_transforms['translate_x'] = dx
+            self.current_transforms['translate_y'] = dy
             
             # Log the change
             logger.debug(f"Transform translation changed from {old_value} to ({dx}, {dy})")
@@ -166,7 +166,7 @@ class TransformService(QObject):
             self.transform_error.emit(error_msg)
             return False
     
-    def get_transformation_matrix(self) -> Optional[any]:
+    def get_transformation_matrix(self) -> Optional[Any]:
         """
         Get the current transformation matrix.
         
@@ -175,8 +175,8 @@ class TransformService(QObject):
         """
         try:
             matrix = create_transformation_matrix(
-                translation=(self.current_transforms['translation_x'], 
-                           self.current_transforms['translation_y']),
+                translation=(self.current_transforms['translate_x'], 
+                           self.current_transforms['translate_y']),
                 rotation_degrees=self.current_transforms['rotation'],
                 scale=self.current_transforms['scale']
             )
@@ -192,8 +192,8 @@ class TransformService(QObject):
         """Reset all transformations to identity."""
         try:
             self.current_transforms = {
-                'translation_x': 0.0,
-                'translation_y': 0.0,
+                'translate_x': 0.0,
+                'translate_y': 0.0,
                 'rotation': 0.0,
                 'scale': 1.0
             }
@@ -248,6 +248,37 @@ class TransformService(QObject):
             logger.error(f"Error converting GDS to pixels: {e}")
             return (0.0, 0.0)
     
+    def apply_transform_from_dict(self, transform_params: dict) -> bool:
+        """
+        Apply transformation from dictionary parameters.
+        
+        Args:
+            transform_params: Dictionary with transform parameters
+            
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            # Apply translation
+            if 'translate_x' in transform_params and 'translate_y' in transform_params:
+                self.apply_translation(transform_params['translate_x'], transform_params['translate_y'])
+            
+            # Apply rotation
+            if 'rotation' in transform_params:
+                self.apply_rotation(transform_params['rotation'])
+            
+            # Apply scale
+            if 'scale' in transform_params:
+                self.apply_scale(transform_params['scale'])
+            
+            return True
+            
+        except Exception as e:
+            error_msg = f"Error applying transform from dict: {e}"
+            logger.error(error_msg)
+            self.transform_error.emit(error_msg)
+            return False
+    
     def _emit_transform_applied(self, transform_type: str, value: Any) -> None:
         """Emit transform_applied signal with current state."""
         transform_data = {
@@ -264,3 +295,4 @@ class TransformService(QObject):
             'value': value,
             'transforms_after': self.current_transforms.copy()
         })
+

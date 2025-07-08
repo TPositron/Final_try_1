@@ -1,6 +1,6 @@
 """Slider input component with numeric input and ±1/±10 buttons."""
 
-from typing import Optional, Callable
+from typing import Optional, Callable, Union
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 
                               QSlider, QSpinBox, QDoubleSpinBox, QPushButton)
 from PySide6.QtCore import Signal, Qt
@@ -21,6 +21,9 @@ class SliderInput(QWidget):
         self.decimals = decimals
         self.step = step
         self._updating = False  # Flag to prevent circular updates
+        
+        # Type annotation for spinbox (will be set in _setup_ui)
+        self.spinbox: Union[QSpinBox, QDoubleSpinBox]
         
         self._setup_ui(label, initial_value)
         self.set_value(initial_value)
@@ -75,16 +78,18 @@ class SliderInput(QWidget):
         
         layout.addLayout(controls_layout)
         
-        # Slider
-        self.slider = QSlider(Qt.Horizontal)
-        self.slider.setRange(0, int((self.max_value - self.min_value) / self.step))
+        # Slider - Fixed Qt enum and type conversion
+        self.slider = QSlider(Qt.Orientation.Horizontal)
+        # Convert float range to integer range for slider
+        self.slider_range = int((self.max_value - self.min_value) / self.step)
+        self.slider.setRange(0, self.slider_range)
         self.slider.valueChanged.connect(self._on_slider_changed)
         layout.addWidget(self.slider)
         
-        # Value display
+        # Value display - Fixed Qt enum
         self.value_label = QLabel()
         self.value_label.setStyleSheet("color: blue; font-family: monospace;")
-        self.value_label.setAlignment(Qt.AlignCenter)
+        self.value_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.value_label)
     
     def _on_slider_changed(self, slider_value: int):
@@ -115,14 +120,17 @@ class SliderInput(QWidget):
         # Clamp value to range
         value = max(self.min_value, min(self.max_value, value))
         
-        # Update slider
+        # Update slider - Fixed type conversion
         if update_slider:
             slider_value = int((value - self.min_value) / self.step)
             self.slider.setValue(slider_value)
         
-        # Update spinbox
+        # Update spinbox - Fix type conversion for QSpinBox vs QDoubleSpinBox
         if update_spinbox:
-            self.spinbox.setValue(value)
+            if isinstance(self.spinbox, QSpinBox):
+                self.spinbox.setValue(int(value))  # QSpinBox expects int
+            else:
+                self.spinbox.setValue(value)  # QDoubleSpinBox accepts float
         
         # Update value display
         if self.decimals == 0:
@@ -148,11 +156,15 @@ class SliderInput(QWidget):
         self.min_value = min_value
         self.max_value = max_value
         
-        # Update spinbox range
-        self.spinbox.setRange(min_value, max_value)
+        # Update spinbox range - Fix type conversion
+        if isinstance(self.spinbox, QSpinBox):
+            self.spinbox.setRange(int(min_value), int(max_value))  # QSpinBox expects int
+        else:
+            self.spinbox.setRange(min_value, max_value)  # QDoubleSpinBox accepts float
         
-        # Update slider range
-        self.slider.setRange(0, int((max_value - min_value) / self.step))
+        # Update slider range - Fixed type conversion
+        self.slider_range = int((max_value - min_value) / self.step)
+        self.slider.setRange(0, self.slider_range)
         
         # Clamp current value to new range
         current_value = self.get_value()

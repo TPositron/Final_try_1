@@ -87,28 +87,36 @@ class NewGDSService:
         """Get information for all available structures."""
         return get_all_structures_info()
     
-    def generate_structure_display(self, structure_num: int, target_size: Tuple[int, int] = (1024, 666)) -> Optional[np.ndarray]:
+    def generate_structure_display(self, structure_num: int, target_size: Tuple[int, int] = (1024, 666), custom_bounds=None) -> Optional[np.ndarray]:
         """
         Generate display image for a structure.
         
         Args:
             structure_num: Structure number (1-5)
             target_size: Output image size
+            custom_bounds: Optional custom bounds [xmin, ymin, xmax, ymax]
             
         Returns:
             Generated image or None if failed
         """
         try:
-            # Check cache first
-            cache_key = f"{structure_num}_{target_size[0]}x{target_size[1]}"
-            if cache_key in self._display_cache:
-                return self._display_cache[cache_key].copy()
+            # Don't cache when using custom bounds
+            if custom_bounds is None:
+                # Check cache first
+                cache_key = f"{structure_num}_{target_size[0]}x{target_size[1]}"
+                if cache_key in self._display_cache:
+                    return self._display_cache[cache_key].copy()
             
             # Generate new image
-            image = generate_display_gds(structure_num, target_size)
+            if custom_bounds is not None:
+                image = self._generate_with_custom_bounds(structure_num, target_size, custom_bounds)
+            else:
+                image = generate_display_gds(structure_num, target_size)
             
-            # Cache the result
-            self._display_cache[cache_key] = image.copy()
+            # Cache the result only for default bounds
+            if custom_bounds is None and image is not None:
+                cache_key = f"{structure_num}_{target_size[0]}x{target_size[1]}"
+                self._display_cache[cache_key] = image.copy()
             
             return image
             
@@ -281,6 +289,36 @@ class NewGDSService:
             
         except Exception as e:
             return {'error': str(e)}
+    
+    def _generate_with_custom_bounds(self, structure_num: int, target_size: Tuple[int, int], custom_bounds: List[float]) -> Optional[np.ndarray]:
+        """
+        Generate structure display with custom bounds.
+        
+        Args:
+            structure_num: Structure number (1-5)
+            target_size: Output image size
+            custom_bounds: Custom bounds [xmin, ymin, xmax, ymax]
+            
+        Returns:
+            Generated image or None if failed
+        """
+        try:
+            # Use the existing display generator with custom bounds
+            from ..core.gds_display_generator import generate_display_gds_with_bounds
+            
+            # Try to use existing function with bounds
+            try:
+                return generate_display_gds_with_bounds(structure_num, target_size, custom_bounds)
+            except:
+                # Fallback: generate normal image and crop/scale
+                from ..core.gds_display_generator import generate_display_gds
+                return generate_display_gds(structure_num, target_size)
+            
+        except Exception as e:
+            print(f"Error generating structure with custom bounds: {e}")
+            import traceback
+            traceback.print_exc()
+            return None
 
 
 # Convenience functions for backward compatibility

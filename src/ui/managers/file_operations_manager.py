@@ -366,3 +366,47 @@ class FileOperationsManager(QObject):
             
         except Exception as e:
             print(f"Error cleaning up temp files: {e}")
+
+    
+    def save_filtered_image(self, image_array):
+        """Save a filtered image array to file."""
+        try:
+            from pathlib import Path
+            from datetime import datetime
+            import cv2
+            import numpy as np
+            
+            if image_array is None:
+                print("No image array provided to save")
+                return False
+            
+            # Create save directory
+            save_dir = Path("Results/SEM_Filters/manual")
+            save_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"filtered_image_{timestamp}.png"
+            save_path = save_dir / filename
+            
+            # Convert image format if needed
+            if image_array.dtype == np.float64 or image_array.dtype == np.float32:
+                # Normalize to 0-255 for saving
+                save_image = np.zeros_like(image_array, dtype=np.uint8)
+                cv2.normalize(image_array, save_image, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            else:
+                save_image = image_array
+            
+            # Save the image
+            success = cv2.imwrite(str(save_path), save_image)
+            
+            if success:
+                print(f"✓ Filtered image saved to: {save_path}")
+                return True
+            else:
+                print(f"Failed to save image to: {save_path}")
+                return False
+                
+        except Exception as e:
+            print(f"Error saving filtered image: {e}")
+            return False

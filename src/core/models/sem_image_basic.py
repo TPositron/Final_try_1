@@ -46,6 +46,11 @@ class SemImage:
     
     def _load_from_file(self) -> None:
         """Load image from file path."""
+        # FIX 1: Check if file_path is None before using it
+        if self.file_path is None:
+            raise RuntimeError("No file path set for loading")
+        
+        # FIX 2: Now we know file_path is not None, safe to use
         if not self.file_path.exists():
             raise FileNotFoundError(f"Image file not found: {self.file_path}")
         

@@ -8,7 +8,7 @@ from PySide6.QtCore import QObject, Signal, QThread
 import numpy as np
 
 from src.core.models import AlignedGdsModel, SemImage
-from .transformations.auto_alignment_service import AutoAlignmentWorker
+from .transformations.auto_alignment_service import AutoAlignmentWorkerQt as AutoAlignmentWorker
 
 
 class AutoAlignmentService(QObject):

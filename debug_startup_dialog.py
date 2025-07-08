@@ -41,7 +41,7 @@ def trace_message_box():
     
     try:
         # Import and create MainWindow
-        from src.ui.modular_main_window_clean import MainWindow
+        from src.ui.main_window import MainWindow
         print("Creating MainWindow...")
         main_window = MainWindow()
         print("MainWindow created successfully")

@@ -1,21 +1,76 @@
 """
-Simple File Service for basic file management (Steps 71-75).
+Simple File Service - Core File Management System (Implementation Steps 71-75)
 
-This service provides:
-- Basic file loading/saving (Step 71)
-- Directory scanning (Step 72) 
-- SEM and GDS file loading with validation (Step 73)
-- Result saving with file organization (Step 74)
-- File operation signals and error reporting (Step 75)
+This service provides comprehensive file management capabilities for the SEM/GDS alignment
+application. It handles all file I/O operations with proper validation, error handling,
+and progress reporting.
+
+Core Capabilities:
+- SEM image loading with automatic cropping to 1024x666 pixels
+- GDS file loading with structure extraction and validation
+- Result saving with organized directory structure
+- File format validation and conversion
+- Recent files tracking and management
+
+Directory Structure Management:
+- Data/SEM/: SEM image files (TIFF, PNG)
+- Data/GDS/: GDS layout files
+- Results/Aligned/: Alignment results (manual/auto)
+- Results/SEM_Filters/: Filter processing results
+- Results/Scoring/: Analysis and scoring results
+- Results/cut/: Cropped SEM images
+
+Key Methods:
+- load_sem_file(): Loads and crops SEM images with validation
+- load_gds_file(): Loads GDS files with structure extraction
+- save_alignment_result(): Saves alignment data with timestamps
+- scan_data_directories(): Discovers available files
+- get_recent_files(): Manages recent file history
+
+File Format Support:
+- SEM: TIFF, PNG (automatically cropped to standard size)
+- GDS: GDS, GDS2 (with structure validation)
+- Results: JSON, CSV, TXT (with proper encoding)
+
+Dependencies:
+- Uses: pathlib, json, csv (file operations)
+- Uses: PIL/Pillow (image processing)
+- Uses: src.core.models (SemImage, GDS models)
+- Uses: src.core.models.simple_gds_extraction (structure extraction)
+- Called by: ui/file_handler.py, ui/file_operations.py
+- Called by: services/file_loading_service.py
+
+Signals (Step 75):
+- files_scanned: Emitted when directory scanning completes
+- file_loaded: Emitted when files are successfully loaded
+- loading_progress: Emitted during loading operations
+- loading_error: Emitted when loading fails
+- file_saved: Emitted when files are saved
+- recent_files_changed: Emitted when recent files list updates
+
+Critical Features:
+- Automatic SEM image cropping to 1024x666 (removes bottom 102 pixels)
+- GDS structure validation against predefined structure definitions
+- Comprehensive error handling with user-friendly messages
+- Progress reporting for long operations
+- File history management with configurable limits
 """
 
 import logging
 from pathlib import Path
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 from PySide6.QtCore import QObject, Signal
 import numpy as np
 
 logger = logging.getLogger(__name__)
+
+# Try to import optional dependencies
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    pd = None  # type: ignore
+    HAS_PANDAS = False
 
 
 class FileService(QObject):
@@ -177,12 +232,14 @@ class FileService(QObject):
                 cropped_array = np.array(cropped_img)
             
             # Create SemImage object for better integration
-            from src.core.models import SemImage
-            
-            self.loading_progress.emit("Creating SemImage object...")
-            
-            # Create SemImage with the cropped data
-            sem_image = SemImage(cropped_array, str(file_path))
+            try:
+                from src.core.models import SemImage
+                self.loading_progress.emit("Creating SemImage object...")
+                # Create SemImage with the cropped data
+                sem_image = SemImage(cropped_array, str(file_path))
+            except ImportError:
+                logger.warning("SemImage class not available, creating basic result without SemImage object")
+                sem_image = None
             
             # Prepare result data
             result_data = {
@@ -206,7 +263,7 @@ class FileService(QObject):
             
             # Emit success signal
             self.file_loaded.emit("SEM", str(file_path))
-            self.add_recent_file("SEM", file_path)
+            self.add_recent_file("SEM", str(file_path))
             
             # Save cropped image to Results/cut/ folder
             self.loading_progress.emit("Saving cropped image...")
@@ -261,10 +318,14 @@ class FileService(QObject):
                 raise ValueError(f"GDS file is empty: {file_path}")
             
             # Import extraction utilities
-            from src.core.models.simple_initial_gds_model import InitialGdsModel
-            from src.core.models.simple_gds_extraction import (
-                get_structure_info, extract_frame, PREDEFINED_STRUCTURES
-            )
+            try:
+                from src.core.models.simple_initial_gds_model import InitialGdsModel
+                from src.core.models.simple_gds_extraction import (
+                    get_structure_info, extract_frame, PREDEFINED_STRUCTURES
+                )
+            except ImportError as e:
+                logger.error(f"Failed to import GDS models: {e}")
+                raise ImportError(f"GDS processing modules not available: {e}")
             
             self.loading_progress.emit("Initializing GDS model...")
             
@@ -322,7 +383,7 @@ class FileService(QObject):
             
             # Emit success signal
             self.file_loaded.emit("GDS", str(file_path))
-            self.add_recent_file("GDS", file_path)
+            self.add_recent_file("GDS", str(file_path))
             
             # Store last loaded GDS data
             self._last_loaded_gds_data = result_data
@@ -387,9 +448,9 @@ class FileService(QObject):
                     transformed_points.append([img_x, img_y])
                 
                 if len(transformed_points) >= 3:
-                    # Fill polygon
+                    # Fill polygon - fix cv2.fillPoly arguments
                     points_array = np.array(transformed_points, dtype=np.int32)
-                    cv2.fillPoly(binary_image, [points_array], 255)
+                    cv2.fillPoly(binary_image, [points_array], (255,))  # Color as tuple
             
             logger.debug(f"Binary image created: shape={binary_image.shape}, non-zero pixels={np.count_nonzero(binary_image)}")
             return binary_image
@@ -431,7 +492,7 @@ class FileService(QObject):
             
             # Emit signal
             self.file_saved.emit("RESULT", str(output_path))
-            self.add_recent_file("RESULT", output_path)
+            self.add_recent_file("RESULT", str(output_path))
             
             return output_path
             
@@ -471,7 +532,7 @@ class FileService(QObject):
             
             # Emit signal
             self.file_saved.emit("filter", str(output_path))
-            self.add_recent_file("filter", output_path)
+            self.add_recent_file("filter", str(output_path))
             
             return output_path
             
@@ -517,7 +578,7 @@ class FileService(QObject):
             
             # Emit signal
             self.file_saved.emit("scoring", str(output_path))
-            self.add_recent_file("scoring", output_path)
+            self.add_recent_file("scoring", str(output_path))
             
             return output_path
             
@@ -555,7 +616,7 @@ class FileService(QObject):
             logger.error(f"Failed to get file info: {e}")
             return {"error": str(e)}
     
-    def save_file(self, file_path: str, data: Any, file_type: str = "json") -> bool:
+    def save_file(self, file_path: Union[str, Path], data: Any, file_type: str = "json") -> bool:
         """
         Save data to file with specified format.
         
@@ -569,7 +630,6 @@ class FileService(QObject):
         """
         try:
             import json
-            from pathlib import Path
             
             file_path = Path(file_path)
             file_path.parent.mkdir(parents=True, exist_ok=True)
@@ -578,8 +638,7 @@ class FileService(QObject):
                 with open(file_path, 'w', encoding='utf-8') as f:
                     json.dump(data, f, indent=2, ensure_ascii=False)
             elif file_type.lower() == 'csv':
-                try:
-                    import pandas as pd
+                if HAS_PANDAS and pd is not None:
                     if isinstance(data, dict):
                         df = pd.DataFrame([data])
                     elif isinstance(data, list):
@@ -587,7 +646,7 @@ class FileService(QObject):
                     else:
                         df = pd.DataFrame({'data': [data]})
                     df.to_csv(file_path, index=False)
-                except ImportError:
+                else:
                     # Fallback to basic CSV writing if pandas not available
                     import csv
                     with open(file_path, 'w', newline='', encoding='utf-8') as f:
@@ -624,7 +683,7 @@ class FileService(QObject):
             self.error_occurred.emit(f"Failed to save file: {e}")
             return False
     
-    def load_file(self, file_path: str, file_type: str = "json") -> Optional[Any]:
+    def load_file(self, file_path: Union[str, Path], file_type: str = "json") -> Optional[Any]:
         """
         Load data from file with specified format.
         
@@ -637,7 +696,6 @@ class FileService(QObject):
         """
         try:
             import json
-            from pathlib import Path
             
             file_path = Path(file_path)
             if not file_path.exists():
@@ -649,11 +707,10 @@ class FileService(QObject):
                 with open(file_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
             elif file_type.lower() == 'csv':
-                try:
-                    import pandas as pd
+                if HAS_PANDAS and pd is not None:
                     df = pd.read_csv(file_path)
                     data = df.to_dict('records')
-                except ImportError:
+                else:
                     # Fallback to basic CSV reading if pandas not available
                     import csv
                     data = []
@@ -683,7 +740,7 @@ class FileService(QObject):
             self.error_occurred.emit(f"Failed to load file: {e}")
             return None
     
-    def add_recent_file(self, file_type: str, file_path: str):
+    def add_recent_file(self, file_type: str, file_path: Union[str, Path]):
         """
         Add a file to the recent files list.
         
@@ -718,7 +775,7 @@ class FileService(QObject):
         self.recent_files = files[:self.MAX_RECENT_FILES]
         self.recent_files_changed.emit(self.recent_files)
     
-    def set_data_directories(self, sem_dir: Path = None, gds_dir: Path = None):
+    def set_data_directories(self, sem_dir: Optional[Path] = None, gds_dir: Optional[Path] = None):
         """
         Set custom data directories.
         
@@ -793,8 +850,12 @@ class FileService(QObject):
         Returns:
             Dictionary mapping structure IDs to structure info
         """
-        from src.core.models.simple_gds_extraction import PREDEFINED_STRUCTURES
-        return PREDEFINED_STRUCTURES.copy()
+        try:
+            from src.core.models.simple_gds_extraction import PREDEFINED_STRUCTURES
+            return PREDEFINED_STRUCTURES.copy()
+        except ImportError:
+            logger.warning("PREDEFINED_STRUCTURES not available")
+            return {}
 
     def get_sem_image_cropped(self, file_path: Path) -> Optional[np.ndarray]:
         """
@@ -811,7 +872,7 @@ class FileService(QObject):
             return result['cropped_array']
         return None
     
-    def get_sem_image_object(self, file_path: Path) -> Optional['SemImage']:
+    def get_sem_image_object(self, file_path: Path) -> Optional[Any]:
         """
         Convenience method to load SEM file and return SemImage object.
         
@@ -822,7 +883,7 @@ class FileService(QObject):
             SemImage object or None if failed
         """
         result = self.load_sem_file(file_path)
-        if result:
+        if result and result['sem_image'] is not None:
             return result['sem_image']
         return None
 
@@ -844,8 +905,13 @@ class FileService(QObject):
             True if saved successfully, False otherwise
         """
         try:
-            from .gds_transformation_service import GdsTransformationService
-            import gdstk
+            try:
+                from .gds_transformation_service import GdsTransformationService
+                import gdstk
+            except ImportError as e:
+                logger.error(f"Required modules not available for GDS transformation: {e}")
+                self.error_occurred.emit(f"GDS transformation modules not available: {e}")
+                return False
             
             # Get the original GDS file path and structure info
             initial_model = aligned_model.initial_model

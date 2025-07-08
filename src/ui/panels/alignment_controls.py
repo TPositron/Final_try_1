@@ -93,7 +93,8 @@ class AlignmentControlsPanel(QWidget):
         transparency_group = QGroupBox("Transparency")
         transparency_layout = QVBoxLayout(transparency_group)
         
-        self.transparency_slider = QSlider(Qt.Horizontal)
+        # FIXED: Use proper enum namespace for Qt.Orientation.Horizontal
+        self.transparency_slider = QSlider(Qt.Orientation.Horizontal)
         self.transparency_slider.setRange(0, 100)
         self.transparency_slider.setValue(50)
         self.transparency_slider.valueChanged.connect(self._on_transparency_changed)

@@ -1,6 +1,79 @@
 """
-GDS Manager Module
-Handles all GDS-related operations including file loading, structure selection, and overlay generation.
+GDS Manager - Comprehensive GDS File and Structure Management
+
+This module provides centralized management for all GDS-related operations in the
+SEM/GDS alignment application. It handles GDS file loading, structure selection,
+overlay generation, and coordinates between the UI and GDS services.
+
+Core Responsibilities:
+1. GDS File Management:
+   - Loading and validation of GDS files
+   - File format verification and error handling
+   - Integration with NewGDSService for modern GDS processing
+   - Automatic loading of default GDS files
+
+2. Structure Management:
+   - Population of structure selection interfaces
+   - Structure metadata retrieval and caching
+   - Structure-to-number mapping and validation
+   - Structure information display and organization
+
+3. Overlay Generation:
+   - Real-time structure visualization generation
+   - Canvas size adaptation based on SEM images
+   - Overlay caching and optimization
+   - Integration with image viewer for display
+
+Predefined Structures (Consistent with core modules):
+1. Circpol_T2 (Structure 1) - Layer 14
+2. IP935Left_11 (Structure 2) - Layers 1,2
+3. IP935Left_14 (Structure 3) - Layer 1
+4. QC855GC_CROSS_Bottom (Structure 4) - Layers 1,2
+5. QC935_46 (Structure 5) - Layer 1
+
+Dependencies:
+- Uses: services/new_gds_service.py (modern GDS processing)
+- Uses: core/simple_gds_loader.py (fallback GDS loading)
+- Uses: PySide6.QtCore (signals and QObject)
+- Called by: ui/main_window.py (structure selection events)
+- Coordinates with: ui/image_viewer.py (overlay display)
+- Coordinates with: ui/alignment_controller.py (alignment operations)
+
+Signals Emitted:
+- gds_file_loaded: When GDS files are successfully loaded
+- structure_selected: When structures are selected and overlays generated
+- structure_combo_updated: When structure lists are refreshed
+
+State Management:
+- current_gds_filename: Active GDS file name
+- current_gds_filepath: Full path to active GDS file
+- current_gds_overlay: Generated structure overlay image
+- current_structure_name: Selected structure identifier
+
+Key Methods:
+- load_gds_file(): Loads GDS files with validation
+- populate_structure_combo(): Updates structure selection UI
+- on_structure_selected(): Handles structure selection events
+- auto_load_default_gds(): Automatically loads default files
+- get_current_structure_info(): Provides structure metadata
+
+Canvas Size Adaptation:
+- Automatically detects SEM image dimensions
+- Adapts overlay generation to match display requirements
+- Maintains aspect ratios and scaling consistency
+- Provides fallback to standard dimensions (1024x666)
+
+Error Handling:
+- Graceful handling of missing or corrupted GDS files
+- User-friendly error messages for file loading issues
+- Recovery from structure selection failures
+- Validation of structure numbers and mappings
+
+Integration Features:
+- Seamless integration with alignment workflows
+- Real-time overlay updates during transformations
+- Export capabilities for structure overlays
+- Structure information display and management
 """
 
 import os

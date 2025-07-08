@@ -4,7 +4,7 @@ Entry point for running the main window as a module.
 """
 import sys
 from PySide6.QtWidgets import QApplication
-from .main_window_v2 import MainWindow
+from .main_window import MainWindow
 
 def main():
     print("Creating QApplication...")

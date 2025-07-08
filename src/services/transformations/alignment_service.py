@@ -1,6 +1,6 @@
 import numpy as np
 import cv2
-from typing import Tuple, Dict, Optional, Union, List
+from typing import Tuple, Dict, Optional, Union, List, Any
 from pathlib import Path
 from src.core.models import SemImage
 
@@ -17,7 +17,7 @@ class AlignmentService:
                             y_offset: int = 0,
                             rotation: float = 0.0,
                             scale: float = 1.0,
-                            transparency: int = 70) -> Dict:
+                            transparency: int = 70) -> Dict[str, Any]:
         """
         Apply transformations to a single structure overlay and return alignment results.
         structure_data: {structure_name: (binary_image, coordinates)}
@@ -32,13 +32,22 @@ class AlignmentService:
         transformed_gds = binary_image.copy().astype(np.float32)
         if transformed_gds.shape != (self.canvas_height, self.canvas_width):
             # Resize to canvas if needed
-            import cv2
             transformed_gds = cv2.resize(transformed_gds, (self.canvas_width, self.canvas_height), interpolation=cv2.INTER_NEAREST)
         transformed_gds = self._apply_zoom(transformed_gds, scale)
         transformed_gds = self._apply_rotation(transformed_gds, rotation)
         transformed_gds = self._apply_translation(transformed_gds, x_offset, y_offset)
         transformation_matrix = self._compute_transformation_matrix(x_offset, y_offset, rotation, scale)
-        sem_array = sem_image.to_array()
+        
+        # Handle SemImage.to_array() - provide fallback if method doesn't exist
+        try:
+            sem_array = sem_image.to_array()  # type: ignore
+        except AttributeError:
+            # Fallback: try other common attributes using getattr to avoid Pylance warnings
+            sem_array = (getattr(sem_image, 'image', None) or 
+                        getattr(sem_image, 'data', None) or 
+                        getattr(sem_image, '_image', None) or 
+                        np.array(sem_image))
+        
         alignment_score = self._compute_alignment_score(sem_array, transformed_gds)
         overlay_preview = self._create_overlay_preview(sem_array, transformed_gds, transparency)
         difference_map = self._create_difference_map(sem_array, transformed_gds)
@@ -66,7 +75,7 @@ class AlignmentService:
                                            y_offset: int = 0,
                                            rotation: float = 0.0,
                                            scale: float = 1.0,
-                                           transparency: int = 70) -> Dict[str, Dict]:
+                                           transparency: int = 70) -> Dict[str, Dict[str, Any]]:
         """
         Apply transformations to all structures in structure_data.
         """
@@ -80,7 +89,7 @@ class AlignmentService:
         h, w = image.shape[:2]
         M = cv2.getRotationMatrix2D((w // 2, h // 2), 0, scale)
         return cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_LINEAR,
-                              borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+                              borderMode=cv2.BORDER_CONSTANT, borderValue=(0,))  # type: ignore
     
     def _apply_rotation(self, image: np.ndarray, angle_degrees: float) -> np.ndarray:
         h, w = image.shape[:2]
@@ -88,13 +97,13 @@ class AlignmentService:
         M = cv2.getRotationMatrix2D(center, angle_degrees, 1.0)
         return cv2.warpAffine(image, M, (w, h),
                               flags=cv2.INTER_LINEAR,
-                              borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+                              borderMode=cv2.BORDER_CONSTANT, borderValue=(0,))  # type: ignore
     
     def _apply_translation(self, image: np.ndarray, dx: int, dy: int) -> np.ndarray:
         h, w = image.shape[:2]
-        M = np.float32([[1, 0, dx], [0, 1, dy]])
+        M = np.array([[1, 0, dx], [0, 1, dy]], dtype=np.float32)
         return cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_LINEAR,
-                              borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+                              borderMode=cv2.BORDER_CONSTANT, borderValue=(0,))  # type: ignore
     
     def _compute_transformation_matrix(self, x_offset: int, y_offset: int, 
                                      rotation: float, scale: float) -> np.ndarray:
@@ -134,11 +143,40 @@ class AlignmentService:
             sem_norm = (sem_array - sem_array.min()) / (sem_array.max() - sem_array.min() + 1e-8)
             gds_norm = (gds_array - gds_array.min()) / (gds_array.max() - gds_array.min() + 1e-8)
             
-            score = ssim(sem_norm, gds_norm, data_range=1.0)
+            score_result = ssim(sem_norm, gds_norm, data_range=1.0)
+            # Handle different return types from ssim
+            if isinstance(score_result, tuple):
+                score = float(score_result[0])  # Take first element if tuple
+            else:
+                score = float(score_result)
             return max(0.0, score)
         except Exception:
-            correlation = np.corrcoef(sem_array.flatten(), gds_array.flatten())[0, 1]
-            return max(0.0, correlation) if not np.isnan(correlation) else 0.0
+            # Manual correlation calculation to avoid type issues
+            return self._calculate_correlation_score(sem_array, gds_array)
+    
+    def _calculate_correlation_score(self, img1: np.ndarray, img2: np.ndarray) -> float:
+        """Calculate correlation-based alignment score."""
+        try:
+            # Ensure same shape
+            if img1.shape != img2.shape:
+                img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
+            
+            # Flatten arrays for correlation calculation
+            flat1 = img1.flatten().astype(np.float64)
+            flat2 = img2.flatten().astype(np.float64)
+            
+            # Calculate correlation coefficient manually
+            mean1, mean2 = np.mean(flat1), np.mean(flat2)
+            std1, std2 = np.std(flat1), np.std(flat2)
+            
+            if std1 == 0 or std2 == 0:
+                return 0.0
+            
+            correlation = np.mean((flat1 - mean1) * (flat2 - mean2)) / (std1 * std2)
+            
+            return max(0.0, float(correlation)) if not np.isnan(correlation) else 0.0
+        except Exception:
+            return 0.0
     
     def _create_overlay_preview(self, sem_array: np.ndarray, gds_array: np.ndarray, transparency: int) -> np.ndarray:
         alpha = transparency / 100.0
@@ -167,7 +205,7 @@ class AlignmentService:
                              x_range: Tuple[int, int, int] = (-20, 21, 5),
                              y_range: Tuple[int, int, int] = (-20, 21, 5),
                              rotation_range: Tuple[float, float, float] = (-5.0, 5.5, 0.5),
-                             scale_range: Tuple[float, float, float] = (0.9, 1.11, 0.05)) -> Dict:
+                             scale_range: Tuple[float, float, float] = (0.9, 1.11, 0.05)) -> Dict[str, Any]:
         
         best_score = -1
         best_params = {}
@@ -185,7 +223,7 @@ class AlignmentService:
                         try:
                             result = self.apply_transformations(
                                 sem_image, structure_data, structure_name,
-                                x, y, rotation, scale)
+                                x, y, float(rotation), float(scale))  # Convert numpy types to float
                             
                             score = result['alignment_score']
                             if score > best_score:
@@ -193,8 +231,8 @@ class AlignmentService:
                                 best_params = {
                                     'x_offset': x,
                                     'y_offset': y,
-                                    'rotation': rotation,
-                                    'scale': scale
+                                    'rotation': float(rotation),
+                                    'scale': float(scale)
                                 }
                                 best_result = result
                         except Exception:
@@ -212,7 +250,7 @@ class AlignmentService:
                                             x_range: Tuple[int, int, int] = (-20, 21, 5),
                                             y_range: Tuple[int, int, int] = (-20, 21, 5),
                                             rotation_range: Tuple[float, float, float] = (-5.0, 5.5, 0.5),
-                                            scale_range: Tuple[float, float, float] = (0.9, 1.11, 0.05)) -> Dict[str, Dict]:
+                                            scale_range: Tuple[float, float, float] = (0.9, 1.11, 0.05)) -> Dict[str, Dict[str, Any]]:
         
         results = {}
         for structure_name in structure_data.keys():
@@ -226,7 +264,7 @@ class AlignmentService:
         
         return results
     
-    def save_alignment_result(self, result: Dict, output_dir: Union[str, Path]) -> Dict[str, Path]:
+    def save_alignment_result(self, result: Dict[str, Any], output_dir: Union[str, Path]) -> Dict[str, Path]:
         output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
         
@@ -265,7 +303,7 @@ def align_gds_to_sem(sem_image: 'SemImage',
                     y_offset: int = 0,
                     rotation: float = 0.0,
                     scale: float = 1.0,
-                    transparency: int = 70) -> Dict:
+                    transparency: int = 70) -> Dict[str, Any]:
     service = AlignmentService()
     return service.apply_transformations(
         sem_image, structure_data, structure_name, x_offset, y_offset, rotation, scale, transparency)

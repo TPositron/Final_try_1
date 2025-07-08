@@ -79,27 +79,27 @@ class ThreePointSelectionController(QWidget):
         
         # SEM progress
         sem_frame = QFrame()
-        sem_frame.setFrameStyle(QFrame.StyledPanel)
+        sem_frame.setFrameStyle(QFrame.Shape.StyledPanel)
         sem_layout = QVBoxLayout(sem_frame)
         sem_layout.addWidget(QLabel("SEM Image"))
         self.sem_progress_label = QLabel("0/3 points")
-        self.sem_progress_label.setAlignment(Qt.AlignCenter)
+        self.sem_progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         sem_layout.addWidget(self.sem_progress_label)
         progress_layout.addWidget(sem_frame)
         
         # Arrow
         arrow_label = QLabel("↔")
-        arrow_label.setAlignment(Qt.AlignCenter)
+        arrow_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         arrow_label.setStyleSheet("font-size: 24px; font-weight: bold;")
         progress_layout.addWidget(arrow_label)
         
         # GDS progress
         gds_frame = QFrame()
-        gds_frame.setFrameStyle(QFrame.StyledPanel)
+        gds_frame.setFrameStyle(QFrame.Shape.StyledPanel)
         gds_layout = QVBoxLayout(gds_frame)
         gds_layout.addWidget(QLabel("GDS Image"))
         self.gds_progress_label = QLabel("0/3 points")
-        self.gds_progress_label.setAlignment(Qt.AlignCenter)
+        self.gds_progress_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         gds_layout.addWidget(self.gds_progress_label)
         progress_layout.addWidget(gds_frame)
         
@@ -107,7 +107,7 @@ class ThreePointSelectionController(QWidget):
         
         # Overall status
         self.overall_status_label = QLabel("Select 3 corresponding points on each image")
-        self.overall_status_label.setAlignment(Qt.AlignCenter)
+        self.overall_status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.overall_status_label.setStyleSheet("padding: 5px; background-color: #f0f0f0; border-radius: 3px;")
         layout.addWidget(self.overall_status_label)
         
@@ -124,10 +124,10 @@ class ThreePointSelectionController(QWidget):
         
         # Configure table
         header = self.points_table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.Stretch)
-        header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         
         self.points_table.setMaximumHeight(120)
         
@@ -135,26 +135,26 @@ class ThreePointSelectionController(QWidget):
         for i in range(3):
             # Point number
             point_item = QTableWidgetItem(f"Point {i + 1}")
-            point_item.setFlags(Qt.ItemIsEnabled)
-            point_item.setTextAlignment(Qt.AlignCenter)
+            point_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            point_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.points_table.setItem(i, 0, point_item)
             
             # SEM coordinates
             sem_item = QTableWidgetItem("-")
-            sem_item.setFlags(Qt.ItemIsEnabled)
-            sem_item.setTextAlignment(Qt.AlignCenter)
+            sem_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            sem_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.points_table.setItem(i, 1, sem_item)
             
             # GDS coordinates
             gds_item = QTableWidgetItem("-")
-            gds_item.setFlags(Qt.ItemIsEnabled)
-            gds_item.setTextAlignment(Qt.AlignCenter)
+            gds_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            gds_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             self.points_table.setItem(i, 2, gds_item)
             
             # Status
             status_item = QTableWidgetItem("Missing")
-            status_item.setFlags(Qt.ItemIsEnabled)
-            status_item.setTextAlignment(Qt.AlignCenter)
+            status_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            status_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
             status_item.setBackground(QColor(255, 200, 200))  # Light red
             self.points_table.setItem(i, 3, status_item)
         
@@ -307,32 +307,37 @@ class ThreePointSelectionController(QWidget):
         # Update table
         for i in range(3):
             # SEM coordinates
-            if i < len(self._sem_points):
-                x, y = self._sem_points[i]
-                sem_text = f"({x:.1f}, {y:.1f})"
-            else:
-                sem_text = "-"
-            self.points_table.item(i, 1).setText(sem_text)
+            sem_item = self.points_table.item(i, 1)
+            if sem_item is not None:
+                if i < len(self._sem_points):
+                    x, y = self._sem_points[i]
+                    sem_text = f"({x:.1f}, {y:.1f})"
+                else:
+                    sem_text = "-"
+                sem_item.setText(sem_text)
             
             # GDS coordinates
-            if i < len(self._gds_points):
-                x, y = self._gds_points[i]
-                gds_text = f"({x:.1f}, {y:.1f})"
-            else:
-                gds_text = "-"
-            self.points_table.item(i, 2).setText(gds_text)
+            gds_item = self.points_table.item(i, 2)
+            if gds_item is not None:
+                if i < len(self._gds_points):
+                    x, y = self._gds_points[i]
+                    gds_text = f"({x:.1f}, {y:.1f})"
+                else:
+                    gds_text = "-"
+                gds_item.setText(gds_text)
             
             # Status
             status_item = self.points_table.item(i, 3)
-            if i < len(self._sem_points) and i < len(self._gds_points):
-                status_item.setText("Complete")
-                status_item.setBackground(QColor(200, 255, 200))  # Light green
-            elif i < len(self._sem_points) or i < len(self._gds_points):
-                status_item.setText("Partial")
-                status_item.setBackground(QColor(255, 255, 200))  # Light yellow
-            else:
-                status_item.setText("Missing")
-                status_item.setBackground(QColor(255, 200, 200))  # Light red
+            if status_item is not None:
+                if i < len(self._sem_points) and i < len(self._gds_points):
+                    status_item.setText("Complete")
+                    status_item.setBackground(QColor(200, 255, 200))  # Light green
+                elif i < len(self._sem_points) or i < len(self._gds_points):
+                    status_item.setText("Partial")
+                    status_item.setBackground(QColor(255, 255, 200))  # Light yellow
+                else:
+                    status_item.setText("Missing")
+                    status_item.setBackground(QColor(255, 200, 200))  # Light red
     
     def _check_alignment_readiness(self):
         """Check if alignment calculation is ready and update UI accordingly."""

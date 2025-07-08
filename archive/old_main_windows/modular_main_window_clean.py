@@ -1,13 +1,16 @@
 """
-Core Main Window - Modular Version
+Core Main Window - Combined Version with Both Filtering Types
+File: src/main_window.py
+
 Clean, focused main window that coordinates the different manager modules.
-This replaces the monolithic main_window_v2.py with a maintainable, modular structure.
+Now includes BOTH Advanced Filtering AND Phase 3 Sequential Filtering as separate tabs.
 """
 
 import sys
 import cv2
 import numpy as np
 from pathlib import Path
+from typing import Optional, Union
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QMenuBar, QMenu, QFileDialog, QMessageBox, QDockWidget,
                                QApplication, QStatusBar, QSplitter, QPushButton, QComboBox, QLabel,
@@ -31,8 +34,20 @@ from src.ui.managers.image_processing_manager import ImageProcessingManager
 from src.ui.managers.alignment_operations_manager import AlignmentOperationsManager
 from src.ui.managers.scoring_operations_manager import ScoringOperationsManager
 
-# Import alignment components for Step 3
+# Import alignment components
 from src.ui.panels.alignment_left_panel import ManualAlignmentTab, ThreePointAlignmentTab
+
+# IMPORT BOTH FILTERING PANEL TYPES
+from src.ui.panels.advanced_filtering_panels import (
+    AdvancedFilteringLeftPanel, 
+    AdvancedFilteringRightPanel
+)
+
+from src.ui.panels.sequential_filtering_panels import (
+    SequentialFilteringLeftPanel,
+    SequentialFilteringRightPanel,
+    ProcessingStage
+)
 
 # Import core models
 from src.core.models.structure_definitions import get_default_structures
@@ -43,17 +58,17 @@ DEFAULT_GDS_FILE = "Institute_Project_GDS1.gds"
 
 class MainWindow(QMainWindow):
     """
-    Main Window for the Image Analysis Tool - Modular Version.
+    Main Window for the Image Analysis Tool - Combined Version.
     
-    This is a clean, focused main window that coordinates different manager modules
-    rather than containing all functionality in one monolithic class.
+    This version includes BOTH Advanced Filtering AND Phase 3 Sequential Filtering
+    as separate tabs for maximum flexibility.
     """
     
     def __init__(self):
         """Initialize the main window and all manager modules."""
         print("MainWindow constructor called")
         super().__init__()
-        self.setWindowTitle("Image Analysis - SEM/GDS Alignment Tool")
+        self.setWindowTitle("Image Analysis - SEM/GDS Alignment Tool (Combined)")
         self.setGeometry(100, 100, 1400, 900)
         
         # Initialize core services
@@ -68,6 +83,10 @@ class MainWindow(QMainWindow):
         self.current_alignment_result = None
         self.current_scoring_results = {}
         self.current_scoring_method = "SSIM"
+        
+        # Phase 3: Initialize sequential processing state
+        self.sequential_images = {}  # Store intermediate results
+        self.current_processing_stage = None
         
         # Initialize manager modules
         self._initialize_managers()
@@ -112,17 +131,15 @@ class MainWindow(QMainWindow):
             main_layout = QHBoxLayout(central_widget)
             
             # Create main splitter
-            self.main_splitter = QSplitter(Qt.Horizontal)
+            self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
             main_layout.addWidget(self.main_splitter)
             
             # Setup left panel container with tabs
             self.left_panel_container = QWidget()
-            self.left_panel_container.setMaximumWidth(220)  # Make it a bit wider
-            self.left_panel_container.setMinimumWidth(180)  # Ensure minimum usability
             self.left_panel_layout = QVBoxLayout(self.left_panel_container)
             self.left_panel_layout.setContentsMargins(0, 0, 0, 0)
             
-            # Create main tab widget for Alignment, Filtering, Scoring
+            # Create main tab widget for ALL tabs
             self.main_tab_widget = QTabWidget()
             self.main_tab_widget.setStyleSheet("""
                 QTabWidget::pane {
@@ -154,23 +171,22 @@ class MainWindow(QMainWindow):
                 }
             """)
             
-            # Create tab content areas
+            # Create ALL tab content areas
             self.alignment_tab = QWidget()
-            self.filtering_tab = QWidget()
+            self.advanced_filtering_tab = QWidget()  # Original Advanced Filtering
+            self.sequential_filtering_tab = QWidget()  # New Sequential Filtering
             self.scoring_tab = QWidget()
             
-            # Setup alignment tab content with existing ManualAlignmentTab
+            # Setup all tab contents
             self._setup_alignment_tab_content()
-            
-            # Setup filtering tab content
-            self._setup_filtering_tab_content()
-            
-            # Setup scoring tab content
+            self._setup_advanced_filtering_tab_content()  # Original
+            self._setup_sequential_filtering_tab_content()  # New
             self._setup_scoring_tab_content()
             
-            # Add tabs
+            # Add ALL tabs
             self.main_tab_widget.addTab(self.alignment_tab, "Alignment")
-            self.main_tab_widget.addTab(self.filtering_tab, "Filtering") 
+            self.main_tab_widget.addTab(self.advanced_filtering_tab, "Advanced Filtering") 
+            self.main_tab_widget.addTab(self.sequential_filtering_tab, "Sequential Filtering")
             self.main_tab_widget.addTab(self.scoring_tab, "Scoring")
             
             # Add tab widget to left panel
@@ -189,17 +205,17 @@ class MainWindow(QMainWindow):
             
             self.main_splitter.addWidget(self.image_viewer)
             
-            # Setup right panel container with file selection moved to top
+            # Setup right panel container
             self.right_panel_container = QWidget()
             self.right_panel_layout = QVBoxLayout(self.right_panel_container)
             
-            # Move file selection to top-right panel
+            # Setup file selection panel
             self._setup_file_selection_panel()
             
-            # Add histogram display below file selection
+            # Add histogram display
             self._setup_histogram_panel()
             
-            # Common controls below file selection
+            # Common controls
             self._setup_common_controls()
             
             # Add view-specific content area
@@ -209,10 +225,10 @@ class MainWindow(QMainWindow):
             
             self.main_splitter.addWidget(self.right_panel_container)
             
-            # Set initial splitter sizes - expand canvas height
-            self.main_splitter.setSizes([220, 1320, 250])  # Adjust for slightly wider left panel
+            # Set initial splitter sizes
+            self.main_splitter.setSizes([400, 1000, 350]) 
             
-            # Setup menus (toolbar removed - using tabs instead)
+            # Setup menus and status bar
             self._setup_menu()
             self._setup_status_bar()
             
@@ -223,12 +239,12 @@ class MainWindow(QMainWindow):
             raise
     
     def _setup_file_selection_panel(self):
-        """Setup enhanced file selection panel using FileSelector component."""
+        """Setup file selection panel using FileSelector component."""
         try:
             # Create FileSelector component
             self.file_selector = FileSelector()
             
-            # Connect FileSelector signals to existing methods
+            # Connect FileSelector signals
             self.file_selector.sem_file_selected.connect(self.load_sem_image_from_path)
             self.file_selector.gds_file_loaded.connect(self.load_gds_file_from_path)
             self.file_selector.gds_structure_selected.connect(self.handle_structure_selection)
@@ -239,13 +255,13 @@ class MainWindow(QMainWindow):
             # Initialize file scanning
             self.file_selector.scan_directories()
             
-            print("✓ File selection panel setup with FileSelector component")
+            print("✓ File selection panel setup completed")
             
         except Exception as e:
             print(f"Error setting up file selection panel: {e}")
     
     def load_sem_image_from_path(self, file_path: str):
-        """Load SEM image from file path (adapter for FileSelector signal)."""
+        """Load SEM image from file path."""
         try:
             self.file_operations_manager.load_sem_image_from_path(file_path)
             print(f"SEM image loaded: {Path(file_path).name}")
@@ -253,7 +269,7 @@ class MainWindow(QMainWindow):
             print(f"Error loading SEM image: {e}")
     
     def load_gds_file_from_path(self, file_path: str):
-        """Load GDS file from file path (adapter for FileSelector signal)."""
+        """Load GDS file from file path."""
         try:
             self.gds_operations_manager.load_gds_file_from_path(file_path)
             print(f"GDS file loaded: {Path(file_path).name}")
@@ -263,19 +279,18 @@ class MainWindow(QMainWindow):
     def handle_structure_selection(self, gds_file_path: str, structure_id: int):
         """Handle structure selection from FileSelector."""
         try:
-            # Use the GDS operations manager to handle structure selection
             self.gds_operations_manager.select_structure_by_id(structure_id)
             print(f"Structure {structure_id} selected from {Path(gds_file_path).name}")
         except Exception as e:
             print(f"Error handling structure selection: {e}")
     
     def _setup_histogram_panel(self):
-        """Setup histogram display panel in the right panel."""
+        """Setup histogram display panel."""
         try:
             # Create histogram view component
             self.histogram_view = HistogramView()
             
-            # Set appropriate size constraints for right panel
+            # Set appropriate size constraints
             self.histogram_view.setMaximumHeight(200)
             self.histogram_view.setMinimumHeight(150)
             
@@ -290,8 +305,7 @@ class MainWindow(QMainWindow):
     def _setup_common_controls(self):
         """Setup common controls in the right panel."""
         try:
-            # Note: File selection and structure selection are now handled by FileSelector component
-            # This method is kept for any additional common controls that might be needed
+            # Additional common controls can be added here
             pass
             
         except Exception as e:
@@ -318,6 +332,11 @@ class MainWindow(QMainWindow):
             save_results_action = QAction("Save Results", self)
             save_results_action.triggered.connect(self.save_results)
             file_menu.addAction(save_results_action)
+            
+            # Export actions for both filtering types
+            export_workflow_action = QAction("Export Sequential Workflow", self)
+            export_workflow_action.triggered.connect(self.export_sequential_workflow)
+            file_menu.addAction(export_workflow_action)
             
             file_menu.addSeparator()
             
@@ -355,7 +374,7 @@ class MainWindow(QMainWindow):
         try:
             self.status_bar = QStatusBar()
             self.setStatusBar(self.status_bar)
-            self.status_bar.showMessage("Ready")
+            self.status_bar.showMessage("Ready - Combined Filtering")
             
         except Exception as e:
             print(f"Error setting up status bar: {e}")
@@ -364,9 +383,6 @@ class MainWindow(QMainWindow):
         """Connect signals between different managers."""
         try:
             print("Connecting manager signals...")
-            
-            # Note: Structure combo signal is now handled by FileSelector component
-            # No need to connect old structure_combo since it's replaced by FileSelector
             
             # File operations signals
             self.file_operations_manager.sem_image_loaded.connect(self.on_sem_image_loaded)
@@ -388,8 +404,7 @@ class MainWindow(QMainWindow):
             # Scoring operations signals
             self.scoring_operations_manager.scores_calculated.connect(self.on_scores_calculated)
             
-            # Ensure default GDS file is auto-loaded after signals are connected
-            from PySide6.QtCore import QTimer
+            # Auto-load default GDS file
             QTimer.singleShot(500, self.gds_operations_manager._auto_load_default_gds)
             
             print("✓ Manager signals connected")
@@ -403,7 +418,7 @@ class MainWindow(QMainWindow):
             # Initialize view manager
             self.view_manager = ViewManager(self)
             
-            # Initialize panel manager for view-specific panels
+            # Initialize panel manager
             self.panel_manager = ViewPanelManager(self)
             
             # Connect view manager signals
@@ -427,7 +442,6 @@ class MainWindow(QMainWindow):
         """Handle view manager view change signal."""
         try:
             print(f"View changed from {old_view} to {new_view}")
-            # Additional view change handling can be added here
         except Exception as e:
             print(f"Error handling view change: {e}")
     
@@ -435,7 +449,6 @@ class MainWindow(QMainWindow):
         """Handle view manager data update signal."""
         try:
             print(f"View data updated for {view_mode}: {list(data.keys())}")
-            # Additional data update handling can be added here
         except Exception as e:
             print(f"Error handling view data update: {e}")
     
@@ -487,17 +500,17 @@ class MainWindow(QMainWindow):
             # Add sub-tabs to main alignment tab
             alignment_layout.addWidget(self.alignment_sub_tabs)
             
-            # Connect alignment sub-tab changes to manage point selection mode
+            # Connect alignment sub-tab changes
             self.alignment_sub_tabs.currentChanged.connect(self._on_alignment_subtab_changed)
             
-            # Add action buttons at the bottom of alignment tab
+            # Add action buttons
             self._setup_alignment_action_buttons(alignment_layout)
             
-            print("✓ Alignment tab content setup with ManualAlignmentTab component")
+            print("✓ Alignment tab content setup completed")
             
         except Exception as e:
             print(f"Error setting up alignment tab content: {e}")
-    
+
     def _setup_manual_alignment_content(self):
         """Setup the manual alignment tab content."""
         try:
@@ -505,10 +518,10 @@ class MainWindow(QMainWindow):
             manual_layout = QVBoxLayout(self.manual_alignment_tab)
             manual_layout.setContentsMargins(5, 5, 5, 5)
             
-            # Create and add the existing ManualAlignmentTab component
+            # Create and add the ManualAlignmentTab component
             self.manual_alignment_controls = ManualAlignmentTab()
             
-            # Connect the manual alignment signals to the alignment operations manager
+            # Connect signals
             self.manual_alignment_controls.alignment_changed.connect(
                 self.alignment_operations_manager.apply_manual_transformation
             )
@@ -516,14 +529,14 @@ class MainWindow(QMainWindow):
                 self.alignment_operations_manager.reset_alignment
             )
             
-            # Add manual alignment controls to the tab
+            # Add to layout
             manual_layout.addWidget(self.manual_alignment_controls)
             
             print("✓ Manual alignment tab content setup completed")
             
         except Exception as e:
             print(f"Error setting up manual alignment content: {e}")
-    
+
     def _setup_hybrid_alignment_content(self):
         """Setup the hybrid alignment tab content with SEM/GDS sub-tabs."""
         try:
@@ -572,10 +585,10 @@ class MainWindow(QMainWindow):
             # Add sub-tabs to hybrid alignment tab
             hybrid_layout.addWidget(self.hybrid_sub_tabs)
             
-            # Connect hybrid sub-tab changes to manage point selection mode
+            # Connect hybrid sub-tab changes
             self.hybrid_sub_tabs.currentChanged.connect(self._on_hybrid_subtab_changed)
             
-            # Add status display for selected points
+            # Add status display
             self._setup_hybrid_status_display(hybrid_layout)
             
             # Add control buttons
@@ -585,7 +598,7 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Error setting up hybrid alignment content: {e}")
-    
+
     def _setup_sem_image_subtab(self):
         """Setup the SEM Image sub-tab for point selection."""
         try:
@@ -640,7 +653,7 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Error setting up SEM image sub-tab: {e}")
-    
+
     def _setup_gds_subtab(self):
         """Setup the GDS sub-tab for point selection."""
         try:
@@ -695,7 +708,7 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Error setting up GDS sub-tab: {e}")
-    
+
     def _setup_hybrid_status_display(self, parent_layout):
         """Setup status display for hybrid alignment."""
         try:
@@ -734,7 +747,7 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Error setting up hybrid status display: {e}")
-    
+
     def _setup_hybrid_control_buttons(self, parent_layout):
         """Setup control buttons for hybrid alignment."""
         try:
@@ -766,23 +779,21 @@ class MainWindow(QMainWindow):
             """)
             buttons_layout.addWidget(self.calculate_alignment_btn)
             
-            # Add spacing
             buttons_layout.addSpacing(10)
-            
             parent_layout.addLayout(buttons_layout)
             
             # Initialize point tracking
             self.sem_points = []
             self.gds_points = []
             
-            # Connect buttons (placeholder - actual functionality in Step 6)
+            # Connect buttons
             self.clear_sem_points_btn.clicked.connect(self._clear_sem_points)
             self.clear_gds_points_btn.clicked.connect(self._clear_gds_points)
             self.calculate_alignment_btn.clicked.connect(self._calculate_alignment)
             
         except Exception as e:
             print(f"Error setting up hybrid control buttons: {e}")
-    
+
     def _clear_sem_points(self):
         """Clear SEM points."""
         try:
@@ -792,7 +803,7 @@ class MainWindow(QMainWindow):
             print("SEM points cleared")
         except Exception as e:
             print(f"Error clearing SEM points: {e}")
-    
+
     def _clear_gds_points(self):
         """Clear GDS points."""
         try:
@@ -802,7 +813,7 @@ class MainWindow(QMainWindow):
             print("GDS points cleared")
         except Exception as e:
             print(f"Error clearing GDS points: {e}")
-    
+
     def _calculate_alignment(self):
         """Calculate alignment from selected points."""
         try:
@@ -817,15 +828,12 @@ class MainWindow(QMainWindow):
                 return
             
             print(f"Calculating alignment from {len(self.sem_points)} SEM points and {len(self.gds_points)} GDS points")
-            print(f"SEM points: {self.sem_points}")
-            print(f"GDS points: {self.gds_points}")
             
-            # Use the existing alignment operations manager for 3-point alignment
+            # Use alignment operations manager for 3-point alignment
             if hasattr(self, 'alignment_operations_manager'):
                 self.alignment_operations_manager.manual_align_3_point(self.sem_points, self.gds_points)
                 print("✓ 3-point alignment calculation completed")
                 
-                # Update status
                 if hasattr(self, 'status_bar'):
                     self.status_bar.showMessage("3-point alignment calculation completed")
             else:
@@ -833,9 +841,7 @@ class MainWindow(QMainWindow):
                 
         except Exception as e:
             print(f"Error calculating alignment: {e}")
-            import traceback
-            traceback.print_exc()
-    
+
     def _update_hybrid_status(self):
         """Update hybrid alignment status display."""
         try:
@@ -872,11 +878,11 @@ class MainWindow(QMainWindow):
                 
         except Exception as e:
             print(f"Error updating hybrid status: {e}")
-    
+
     def _setup_alignment_action_buttons(self, parent_layout):
         """Setup action buttons at the bottom of alignment tab."""
         try:
-            # Add some spacing before buttons
+            # Add spacing before buttons
             parent_layout.addSpacing(20)
             
             # Create action buttons group
@@ -921,10 +927,6 @@ class MainWindow(QMainWindow):
                 QPushButton:pressed {
                     background-color: #444444;
                 }
-                QPushButton:disabled {
-                    background-color: #7f8c8d;
-                    color: #bdc3c7;
-                }
             """)
             
             self.reset_transformation_btn = QPushButton("Reset Transformation")
@@ -951,7 +953,7 @@ class MainWindow(QMainWindow):
             row1_layout.addWidget(self.reset_transformation_btn)
             action_layout.addLayout(row1_layout)
             
-            # Second row: Generate Aligned GDS (prominent button)
+            # Second row: Generate Aligned GDS
             self.generate_aligned_gds_btn = QPushButton("Generate Aligned GDS")
             self.generate_aligned_gds_btn.setStyleSheet("""
                 QPushButton {
@@ -991,133 +993,97 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Error setting up alignment action buttons: {e}")
+    
+    # ADVANCED FILTERING TAB (Original from first file)
+    def _setup_advanced_filtering_tab_content(self):
+        """Setup the advanced filtering tab content with unified panels."""
+        try:
+            # Create layout for advanced filtering tab
+            filtering_layout = QHBoxLayout(self.advanced_filtering_tab)
+            filtering_layout.setContentsMargins(5, 5, 5, 5)
+            
+            # Create splitter for left and right panels
+            filtering_splitter = QSplitter(Qt.Orientation.Horizontal)
+            
+            # LEFT PANEL: Advanced Filtering Controls
+            self.advanced_filtering_left_panel = AdvancedFilteringLeftPanel()
+            
+            # Connect advanced filtering signals
+            self.advanced_filtering_left_panel.filter_applied.connect(self._on_advanced_filter_applied)
+            self.advanced_filtering_left_panel.filter_previewed.connect(self._on_advanced_filter_previewed)
+            self.advanced_filtering_left_panel.filter_reset.connect(self._on_advanced_filter_reset)
+            self.advanced_filtering_left_panel.save_image_requested.connect(self._on_advanced_save_image_requested)
+            
+            # Add left panel to splitter
+            filtering_splitter.addWidget(self.advanced_filtering_left_panel)
+            
+            # RIGHT PANEL: Advanced Info Display
+            self.advanced_filtering_right_panel = AdvancedFilteringRightPanel()
+            
+            # Add right panel to splitter
+            filtering_splitter.addWidget(self.advanced_filtering_right_panel)
+            
+            # Set splitter sizes
+            filtering_splitter.setSizes([450, 300])
+            
+            # Add splitter to main filtering layout
+            filtering_layout.addWidget(filtering_splitter)
+            
+            # Store references for compatibility
+            self.filter_panel = self.advanced_filtering_left_panel
+            
+            print("✓ Advanced Filtering panels setup completed")
+            
+        except Exception as e:
+            print(f"Error setting up advanced filtering panels: {e}")
 
-    def _setup_filtering_tab_content(self):
-        """Setup the filtering tab content with Manual Filtering sub-tab."""
+    # SEQUENTIAL FILTERING TAB (From second file)
+    def _setup_sequential_filtering_tab_content(self):
+        """Setup the sequential filtering tab content with Phase 3 Sequential Workflow."""
         try:
-            # Create layout for filtering tab
-            filtering_layout = QVBoxLayout(self.filtering_tab)
-            filtering_layout.setContentsMargins(10, 10, 10, 10)
+            # Create layout for sequential filtering tab
+            filtering_layout = QHBoxLayout(self.sequential_filtering_tab)
+            filtering_layout.setContentsMargins(5, 5, 5, 5)
             
-            # Create sub-tab widget for filtering modes
-            self.filtering_sub_tabs = QTabWidget()
-            self.filtering_sub_tabs.setStyleSheet("""
-                QTabWidget::pane {
-                    border: 1px solid #555555;
-                    background-color: #2b2b2b;
-                    color: #ffffff;
-                }
-                QTabBar::tab {
-                    background-color: #3c3c3c;
-                    border: 1px solid #555555;
-                    padding: 6px 10px;
-                    margin-right: 1px;
-                    color: #ffffff;
-                    border-top-left-radius: 3px;
-                    border-top-right-radius: 3px;
-                }
-                QTabBar::tab:selected {
-                    background-color: #2b2b2b;
-                    border-bottom-color: #2b2b2b;
-                    color: #ffffff;
-                }
-                QTabBar::tab:hover {
-                    background-color: #4a4a4a;
-                    color: #ffffff;
-                }
-            """)
+            # Create splitter for left and right panels
+            filtering_splitter = QSplitter(Qt.Orientation.Horizontal)
             
-            # Create Manual Filtering tab
-            self.manual_filtering_tab = QWidget()
-            self._setup_manual_filtering_content()
-            self.filtering_sub_tabs.addTab(self.manual_filtering_tab, "Manual Filtering")
+            # LEFT PANEL: Sequential Filtering Controls (Phase 3)
+            self.sequential_filtering_left_panel = SequentialFilteringLeftPanel()
             
-            # Create Automatic Filtering tab
-            self.automatic_filtering_tab = QWidget()
-            self._setup_automatic_filtering_content()
-            self.filtering_sub_tabs.addTab(self.automatic_filtering_tab, "Automatic Filtering")
+            # Connect sequential filtering signals
+            self.sequential_filtering_left_panel.stage_preview_requested.connect(self._on_stage_preview_requested)
+            self.sequential_filtering_left_panel.stage_apply_requested.connect(self._on_stage_apply_requested)
+            self.sequential_filtering_left_panel.stage_reset_requested.connect(self._on_stage_reset_requested)
+            self.sequential_filtering_left_panel.stage_save_requested.connect(self._on_stage_save_requested)
+            self.sequential_filtering_left_panel.reset_all_requested.connect(self._on_reset_all_stages_requested)
             
-            # Add sub-tabs to main filtering tab
-            filtering_layout.addWidget(self.filtering_sub_tabs)
+            # Add left panel to splitter
+            filtering_splitter.addWidget(self.sequential_filtering_left_panel)
             
-            print("✓ Filtering tab content setup completed")
+            # RIGHT PANEL: Sequential Progress Display (Phase 3)
+            self.sequential_filtering_right_panel = SequentialFilteringRightPanel()
+            
+            # Add right panel to splitter
+            filtering_splitter.addWidget(self.sequential_filtering_right_panel)
+            
+            # Set splitter sizes
+            filtering_splitter.setSizes([450, 300])
+            
+            # Add splitter to main filtering layout
+            filtering_layout.addWidget(filtering_splitter)
+            
+            print("✓ Phase 3 Sequential Filtering panels setup completed")
             
         except Exception as e:
-            print(f"Error setting up filtering tab content: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    def _setup_manual_filtering_content(self):
-        """Setup the manual filtering tab content."""
-        try:
-            # Create layout for manual filtering tab
-            manual_layout = QVBoxLayout(self.manual_filtering_tab)
-            manual_layout.setContentsMargins(5, 5, 5, 5)
-            
-            # Import and create the existing FilterPanel component
-            from src.ui.panels.filter_panel import FilterPanel
-            
-            # Create filter panel
-            self.filter_panel = FilterPanel()
-            
-            # Connect filter panel signals to image processing manager
-            self.filter_panel.filter_applied.connect(self.image_processing_manager.on_filter_applied)
-            self.filter_panel.filter_previewed.connect(self.image_processing_manager.on_filter_preview)
-            self.filter_panel.filter_reset.connect(self.image_processing_manager.on_reset_filters)
-            self.filter_panel.save_image_requested.connect(self.image_processing_manager.save_current_image)
-            
-            # Initialize filter panel with available filters
-            try:
-                available_filters = self.image_processing_service.get_available_filters()
-                self.filter_panel.set_available_filters(available_filters)
-            except Exception as filter_error:
-                print(f"Error initializing filters: {filter_error}")
-                # Set some basic filters as fallback
-                fallback_filters = ["gaussian_blur", "threshold", "edge_detection"]
-                self.filter_panel.set_available_filters(fallback_filters)
-            
-            # Add the filter panel to the manual filtering tab
-            manual_layout.addWidget(self.filter_panel)
-            
-            print("✓ Manual filtering content setup with FilterPanel component")
-            
-        except Exception as e:
-            print(f"Error setting up manual filtering content: {e}")
-            import traceback
-            traceback.print_exc()
-    
-    def _setup_automatic_filtering_content(self):
-        """Setup the automatic filtering tab content."""
-        try:
-            # Create layout for automatic filtering tab
-            automatic_layout = QVBoxLayout(self.automatic_filtering_tab)
-            automatic_layout.setContentsMargins(5, 5, 5, 5)
-            
-            # Import and create the AutomaticFilterPanel component
-            from src.ui.panels.automatic_filter_panel import AutomaticFilterPanel
-            
-            # Create automatic filter panel
-            self.automatic_filter_panel = AutomaticFilterPanel()
-            
-            # Connect automatic filter panel signals (placeholder for future functionality)
-            self.automatic_filter_panel.automatic_filtering_requested.connect(self._on_automatic_filtering_requested)
-            
-            # Add the automatic filter panel to the automatic filtering tab
-            automatic_layout.addWidget(self.automatic_filter_panel)
-            
-            print("✓ Automatic filtering content setup with AutomaticFilterPanel component")
-            
-        except Exception as e:
-            print(f"Error setting up automatic filtering content: {e}")
-            import traceback
-            traceback.print_exc()
-    
+            print(f"Error setting up Phase 3 sequential filtering panels: {e}")
+
     def _setup_scoring_tab_content(self):
-        """Setup the scoring tab content with clean white background design."""
+        """Setup the scoring tab content."""
         try:
             # Create layout for scoring tab
             scoring_layout = QVBoxLayout(self.scoring_tab)
-            scoring_layout.setContentsMargins(0, 0, 0, 0)  # No margins for full white background
+            scoring_layout.setContentsMargins(0, 0, 0, 0)
             
             # Import and create the ScoringTabPanel component
             from src.ui.panels.scoring_tab_panel import ScoringTabPanel
@@ -1125,19 +1091,17 @@ class MainWindow(QMainWindow):
             # Create scoring tab panel
             self.scoring_tab_panel = ScoringTabPanel()
             
-            # Connect scoring tab panel signals to scoring operations manager
+            # Connect scoring tab panel signals
             self.scoring_tab_panel.scoring_method_changed.connect(self._on_scoring_method_changed)
             self.scoring_tab_panel.calculate_scores_requested.connect(self._on_calculate_scores_requested)
             
             # Add the scoring tab panel to the scoring tab
             scoring_layout.addWidget(self.scoring_tab_panel)
             
-            print("✓ Scoring tab content setup with ScoringTabPanel component")
+            print("✓ Scoring tab content setup completed")
             
         except Exception as e:
             print(f"Error setting up scoring tab content: {e}")
-            import traceback
-            traceback.print_exc()
 
     def _on_scoring_method_changed(self, method_name):
         """Handle scoring method change from scoring tab."""
@@ -1165,19 +1129,16 @@ class MainWindow(QMainWindow):
             
             # Use existing scoring operations manager to calculate scores
             if hasattr(self, 'scoring_operations_manager'):
-                # Set the method and calculate scores
                 self.scoring_operations_manager.current_scoring_method = method_name
                 self.scoring_operations_manager.calculate_scores()
             else:
                 print("Warning: Scoring operations manager not available")
                 
-                # Fallback: use scoring calculator directly if available
                 if hasattr(self, 'calculate_scores'):
                     self.calculate_scores()
                 else:
                     print("Error: No scoring calculation method available")
                     
-                    # Update status to show error
                     if hasattr(self, 'status_bar'):
                         self.status_bar.showMessage("Error: No scoring system available")
             
@@ -1189,23 +1150,615 @@ class MainWindow(QMainWindow):
                 self.scoring_tab_panel.calculate_button.setEnabled(True)
                 self.scoring_tab_panel.status_label.setText("Error occurred during calculation")
 
-    def _on_automatic_filtering_requested(self, filter_selections):
-        """Handle automatic filtering request (placeholder functionality)."""
+    # ADVANCED FILTERING SIGNAL HANDLERS (from first file)
+    def _on_advanced_filter_applied(self, filter_name: str, parameters: dict):
+        """Enhanced handler with better debugging for advanced filtering."""
         try:
-            print("Automatic filtering requested with selections:")
-            for category, filter_data in filter_selections.items():
-                if filter_data:
-                    print(f"  {category}: {filter_data['filter']} with parameters {filter_data}")
+            print(f"🔧 FILTER APPLICATION DEBUG:")
+            print(f"   Filter Name: '{filter_name}'")
+            print(f"   Parameters: {parameters}")
             
-            # Update status
+            # Check if image processing manager exists
+            if not hasattr(self, 'image_processing_manager'):
+                print(f"❌ ERROR: image_processing_manager not found")
+                return
+                
+            # Check if service exists
+            if not hasattr(self.image_processing_manager, 'image_processing_service'):
+                print(f"❌ ERROR: image_processing_service not found")
+                return
+                
+            # Check available filters in service
+            service = self.image_processing_manager.image_processing_service
+            available_filters = service.get_available_filters()
+            print(f"   Available filters in service: {available_filters}")
+            
+            # Check if the filter exists
+            if filter_name not in available_filters:
+                print(f"❌ ERROR: Filter '{filter_name}' not found in service!")
+                print(f"   Did you mean one of: {available_filters}")
+                return
+                
+            # Show status in right panel with status type
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status(f"Applying {filter_name}...", "processing")
+            
+            # Try the primary method
+            try:
+                print(f"   Trying: image_processing_manager.on_filter_applied()")
+                self.image_processing_manager.on_filter_applied(filter_name, parameters)
+                print(f"✅ SUCCESS: Filter applied via on_filter_applied()")
+            except Exception as e:
+                print(f"❌ ERROR in on_filter_applied(): {e}")
+                
+                # Try alternative method
+                try:
+                    print(f"   Trying: image_processing_service.apply_filter()")
+                    result = service.apply_filter(filter_name, parameters)
+                    if result is not None:
+                        # Update display manually
+                        self.current_sem_image = result
+                        self.image_viewer.set_sem_image(result)
+                        print(f"✅ SUCCESS: Filter applied via direct service call")
+                    else:
+                        print(f"❌ ERROR: Service returned None")
+                except Exception as e2:
+                    print(f"❌ ERROR in direct service call: {e2}")
+                    raise e2
+            
+            # Success feedback
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status(f"✓ Applied {filter_name}", "success")
+            
+            # Update status bar
             if hasattr(self, 'status_bar'):
-                filter_count = len(filter_selections)
-                self.status_bar.showMessage(f"Automatic filtering requested with {filter_count} filters (placeholder)")
+                self.status_bar.showMessage(f"Applied advanced filter: {filter_name}", 3000)
+                    
+        except Exception as e:
+            print(f"💥 FATAL ERROR in filter application: {e}")
+            import traceback
+            traceback.print_exc()
             
-            print("Note: Automatic filtering functionality to be implemented in future steps")
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status(f"❌ Error: {e}", "error")
+    def _on_advanced_filter_previewed(self, filter_name: str, parameters: dict):
+        """Enhanced preview handler for advanced filtering."""
+        try:
+            print(f"Previewing advanced filter: {filter_name} with params: {parameters}")
+            
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status(f"👁️ Previewing {filter_name}...", "processing")
+            
+            if hasattr(self, 'image_processing_manager'):
+                if hasattr(self.image_processing_manager, 'preview_filter'):
+                    self.image_processing_manager.preview_filter(filter_name, parameters)
+                elif hasattr(self.image_processing_manager, 'on_filter_preview'):
+                    # Use alternative method
+                    self.image_processing_manager.on_filter_preview(filter_name, parameters)
+                else:
+                    print("ERROR: No suitable preview method found")
+                    # Try preview using direct application
+                    if hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
+                        preview_result = self._apply_filter_directly(filter_name, parameters, self.current_sem_image)
+                        if preview_result is not None:
+                            self.image_viewer.set_sem_image(preview_result)
+                    
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status(f"👁️ Preview: {filter_name}", "info")
+                    
+        except Exception as e:
+            print(f"Error previewing advanced filter: {e}")
+
+    def _on_advanced_filter_reset(self):
+        """Enhanced reset handler for advanced filtering."""
+        try:
+            print("Resetting advanced filters")
+            
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status("🔄 Resetting filters...", "processing")
+            
+            if hasattr(self, 'image_processing_manager'):
+                if hasattr(self.image_processing_manager, 'reset_filters'):
+                    self.image_processing_manager.reset_filters()
+                elif hasattr(self.image_processing_manager, 'on_reset_filters'):
+                    # Use alternative method
+                    self.image_processing_manager.on_reset_filters()
+                else:
+                    print("ERROR: No suitable reset method found")
+                    # Reset manually by restoring original image
+                    if hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj is not None:
+                        original_image = getattr(self.current_sem_image_obj, 'cropped_array', None)
+                        if original_image is not None:
+                            self.image_viewer.set_sem_image(original_image)
+                            self.current_sem_image = original_image
+                    
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status("✓ Filters reset", "success")
+                    
+        except Exception as e:
+            print(f"Error resetting advanced filters: {e}")
+
+    def _apply_filter_fallback(self, filter_name: str, parameters: dict):
+        """Fallback method to apply filters when the manager methods don't exist."""
+        try:
+            if self.current_sem_image is None:
+                print("No image available for filtering")
+                return
+                
+            # Apply filter directly
+            filtered_image = self._apply_filter_directly(filter_name, parameters, self.current_sem_image)
+            
+            if filtered_image is not None:
+                # Update the display
+                self.image_viewer.set_sem_image(filtered_image)
+                self.current_sem_image = filtered_image
+                
+                # Update histogram
+                if hasattr(self, 'histogram_view'):
+                    self.histogram_view.update_histogram(filtered_image)
+                
+                if hasattr(self, 'advanced_filtering_right_panel'):
+                    self.advanced_filtering_right_panel.update_histogram(filtered_image)
+                
+                print(f"✓ Filter applied successfully using fallback: {filter_name}")
+            else:
+                print(f"❌ Filter application failed: {filter_name}")
+                
+        except Exception as e:
+            print(f"Error in filter fallback: {e}")
+
+    def _on_advanced_save_image_requested(self):
+        """Handle save image request from advanced filtering panel."""
+        try:
+            print("Save image requested from advanced filtering panel")
+            
+            # Show status in right panel
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status("💾 Saving image...", "processing")
+            
+            # Use file operations manager to save image
+            if hasattr(self, 'file_operations_manager'):
+                # Try to save the current filtered image
+                if hasattr(self, 'image_processing_service') and self.image_processing_service.current_image is not None:
+                    # Save the filtered image
+                    self.file_operations_manager.save_filtered_image(self.image_processing_service.current_image)
+                elif hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
+                    # Save the current SEM image if no filtered version
+                    self.file_operations_manager.save_filtered_image(self.current_sem_image)
+                else:
+                    print("No image available to save")
+                    if hasattr(self, 'advanced_filtering_right_panel'):
+                        self.advanced_filtering_right_panel.show_status("❌ No image to save", "error")
+                    return
+                
+                # Success feedback
+                if hasattr(self, 'advanced_filtering_right_panel'):
+                    self.advanced_filtering_right_panel.show_status("✓ Image saved", "success")
+                    
+            else:
+                print("Warning: File operations manager not available")
+                if hasattr(self, 'advanced_filtering_right_panel'):
+                    self.advanced_filtering_right_panel.show_status("❌ Save failed", "error")
+            
+            # Update status bar
+            if hasattr(self, 'status_bar'):
+                self.status_bar.showMessage("Advanced filtered image saved successfully", 3000)
+                
+        except Exception as e:
+            print(f"Error saving advanced filtered image: {e}")
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                self.advanced_filtering_right_panel.show_status(f"❌ Save error: {e}", "error")
+
+    # SEQUENTIAL FILTERING SIGNAL HANDLERS (from second file with fixes)
+    def _prepare_histogram_image(self, image_data) -> Optional[np.ndarray]:
+        """
+        Prepare image data for histogram processing.
+        
+        Args:
+            image_data: Input image data (can be various types)
+            
+        Returns:
+            Properly typed numpy array or None if conversion fails
+        """
+        try:
+            if image_data is None:
+                return None
+                
+            # Convert to numpy array with proper dtype
+            if isinstance(image_data, np.ndarray):
+                # If already numpy array, ensure correct dtype
+                if image_data.dtype != np.uint8:
+                    # Convert to uint8 if needed
+                    if image_data.dtype in [np.float32, np.float64]:
+                        # Assume float values are in range [0, 1] or [0, 255]
+                        if image_data.max() <= 1.0:
+                            image_data = (image_data * 255).astype(np.uint8)
+                        else:
+                            image_data = np.clip(image_data, 0, 255).astype(np.uint8)
+                    else:
+                        image_data = image_data.astype(np.uint8)
+                return image_data
+            else:
+                # Convert other types to numpy array
+                array_data = np.asarray(image_data, dtype=np.uint8)
+                return array_data
+                
+        except Exception as e:
+            print(f"Error preparing histogram image: {e}")
+            return None
+
+    def _safe_set_image(self, image_data) -> bool:
+        """
+        Safely set image in image processing service with proper None checking.
+        
+        Args:
+            image_data: Image data to set
+            
+        Returns:
+            True if image was set successfully, False otherwise
+        """
+        try:
+            if image_data is None:
+                print("Warning: Cannot set None image")
+                return False
+                
+            # Ensure it's a proper numpy array
+            processed_image = self._ensure_numpy_array(image_data)
+            if processed_image is None:
+                print("Warning: Failed to convert image data to numpy array")
+                return False
+                
+            # Set the image
+            if hasattr(self, 'image_processing_manager'):
+                self.image_processing_manager.image_processing_service.set_image(processed_image)
+                return True
+            else:
+                print("Warning: Image processing manager not available")
+                return False
+                
+        except Exception as e:
+            print(f"Error in safe_set_image: {e}")
+            return False
+
+    def _on_stage_preview_requested(self, stage_index: int, filter_name: str, parameters: dict):
+        """Handle stage preview request in sequential workflow - FIXED VERSION."""
+        try:
+            print(f"Stage {stage_index} preview requested: {filter_name} with params: {parameters}")
+            
+            # Get the input image for this stage
+            input_image = self._get_stage_input_image(stage_index)
+            if input_image is None:
+                print(f"No input image available for stage {stage_index}")
+                self.sequential_filtering_right_panel.set_processing_status("❌ No input image")
+                return
+            
+            # Update right panel status
+            self.sequential_filtering_right_panel.set_processing_status(f"Previewing Stage {stage_index + 1}...")
+            
+            # Store current state
+            original_image = None
+            if hasattr(self, 'image_processing_manager'):
+                original_image = self.image_processing_manager.image_processing_service.current_image
+            
+            # Use safe image setting
+            if self._safe_set_image(input_image):
+                # Apply filter using the service directly (for preview)
+                preview_result = self._apply_filter_directly(filter_name, parameters, input_image)
+                
+                if preview_result is not None:
+                    # Update image viewer with preview
+                    self.image_viewer.set_sem_image(preview_result)
+                    
+                    # Update histogram safely
+                    histogram_image = self._prepare_histogram_image(preview_result)
+                    if histogram_image is not None:
+                        self.sequential_filtering_right_panel.update_histogram(histogram_image, stage_index)
+                
+                    # Update status
+                    self.sequential_filtering_right_panel.set_processing_status(f"👁️ Previewing Stage {stage_index + 1}")
+                    
+                    print(f"✓ Stage {stage_index} preview completed")
+                else:
+                    print(f"❌ Stage {stage_index} preview failed")
+                    self.sequential_filtering_right_panel.set_processing_status("❌ Preview failed")
+                
+                # Restore original current image if it existed
+                if original_image is not None:
+                    self._safe_set_image(original_image)
+            else:
+                print("Failed to set input image for preview")
+                self.sequential_filtering_right_panel.set_processing_status("❌ Failed to set input image")
             
         except Exception as e:
-            print(f"Error handling automatic filtering request: {e}")
+            print(f"Error in stage preview: {e}")
+            self.sequential_filtering_right_panel.set_processing_status("❌ Preview error")
+
+    def _on_stage_apply_requested(self, stage_index: int, filter_name: str, parameters: dict):
+        """Handle stage apply request in sequential workflow - FIXED VERSION."""
+        try:
+            print(f"Stage {stage_index} apply requested: {filter_name} with params: {parameters}")
+            
+            # Get the input image for this stage
+            input_image = self._get_stage_input_image(stage_index)
+            if input_image is None:
+                print(f"No input image available for stage {stage_index}")
+                self.sequential_filtering_right_panel.set_processing_status("❌ No input image")
+                return
+            
+            # Update right panel status
+            self.sequential_filtering_right_panel.set_processing_status(f"Applying Stage {stage_index + 1}...")
+            
+            # Apply filter using direct method
+            if hasattr(self, 'image_processing_manager'):
+                # Apply the filter directly to the input image
+                result_image = self._apply_filter_directly(filter_name, parameters, input_image)
+                
+                if result_image is not None:
+                    # Store the result for this stage
+                    self.sequential_images[stage_index] = result_image.copy()
+                    
+                    # Update image viewer with result
+                    self.image_viewer.set_sem_image(result_image)
+                    
+                    # FIX: Ensure we pass a valid numpy array to update_histogram
+                    histogram_image = self._prepare_histogram_image(result_image)
+                    if histogram_image is not None:
+                        self.sequential_filtering_right_panel.update_histogram(histogram_image, stage_index)
+                    
+                    # Update progress in right panel
+                    self.sequential_filtering_right_panel.update_stage_progress(stage_index, "✓ Applied", True)
+                    
+                    # Mark stage as completed in left panel
+                    self.sequential_filtering_left_panel.set_stage_completed(stage_index, True)
+                    
+                    # Update status
+                    stage_name = ProcessingStage(stage_index).name.replace('_', ' ').title()
+                    self.sequential_filtering_right_panel.set_processing_status(f"✓ Stage {stage_index + 1} ({stage_name}) Applied")
+                    
+                    # Update main window's current image reference
+                    self.current_sem_image = result_image
+                    
+                    print(f"✓ Stage {stage_index} applied successfully")
+                    
+                    # Update status bar
+                    if hasattr(self, 'status_bar'):
+                        self.status_bar.showMessage(f"Sequential Stage {stage_index + 1} applied: {filter_name}", 3000)
+                    
+                else:
+                    print(f"❌ Stage {stage_index} application failed")
+                    self.sequential_filtering_right_panel.update_stage_progress(stage_index, "❌ Failed", False)
+                    self.sequential_filtering_left_panel.set_stage_completed(stage_index, False)
+                    self.sequential_filtering_right_panel.set_processing_status("❌ Application failed")
+            else:
+                print("ImageProcessingManager not available")
+                self.sequential_filtering_right_panel.set_processing_status("❌ Manager not available")
+            
+        except Exception as e:
+            print(f"Error in stage apply: {e}")
+            self.sequential_filtering_right_panel.update_stage_progress(stage_index, "❌ Error", False)
+            self.sequential_filtering_left_panel.set_stage_completed(stage_index, False)
+            self.sequential_filtering_right_panel.set_processing_status("❌ Application error")
+
+    def _on_stage_reset_requested(self, stage_index: int):
+        """Handle stage reset request in sequential workflow."""
+        try:
+            print(f"Stage {stage_index} reset requested")
+            
+            # Remove this stage and all subsequent stages from stored results
+            stages_to_remove = [i for i in self.sequential_images.keys() if i >= stage_index]
+            for stage_idx in stages_to_remove:
+                if stage_idx in self.sequential_images:
+                    del self.sequential_images[stage_idx]
+            
+            # Reset progress for this stage and subsequent stages
+            for i in range(stage_index, len(ProcessingStage)):
+                self.sequential_filtering_right_panel.update_stage_progress(i, "Pending", True)
+                # Reset the indicator to empty circle
+                stage = ProcessingStage(i)
+                progress_info = self.sequential_filtering_right_panel.stage_progress[stage]
+                progress_info['indicator'].setText("○")
+                progress_info['indicator'].setStyleSheet("""
+                    QLabel {
+                        color: #666666;
+                        font-size: 12px;
+                        font-weight: bold;
+                        min-width: 16px;
+                    }
+                """)
+            
+            # Revert to the input image for the reset stage
+            input_image = self._get_stage_input_image(stage_index)
+            if input_image is not None:
+                self.image_viewer.set_sem_image(input_image)
+                self.current_sem_image = input_image
+                
+                # Update histogram
+                histogram_image = self._prepare_histogram_image(input_image)
+                if histogram_image is not None:
+                    self.sequential_filtering_right_panel.update_histogram(histogram_image, stage_index - 1 if stage_index > 0 else None)
+            
+            # Update status
+            self.sequential_filtering_right_panel.set_processing_status(f"Stage {stage_index + 1} reset")
+            
+            print(f"✓ Stage {stage_index} reset completed")
+            
+        except Exception as e:
+            print(f"Error in stage reset: {e}")
+
+    def _on_stage_save_requested(self, stage_index: int):
+        """Handle stage save request in sequential workflow."""
+        try:
+            print(f"Stage {stage_index} save requested")
+            
+            # Get the result image for this stage
+            if stage_index in self.sequential_images:
+                stage_image = self.sequential_images[stage_index]
+                
+                # Create save directory
+                from pathlib import Path
+                from datetime import datetime
+                import cv2
+                
+                save_dir = Path("Results/SEM_Filters/sequential")
+                save_dir.mkdir(parents=True, exist_ok=True)
+                
+                # Generate filename
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                stage_name = ProcessingStage(stage_index).name.lower()
+                filename = f"stage_{stage_index + 1}_{stage_name}_{timestamp}.png"
+                save_path = save_dir / filename
+                
+                # Save the image
+                success = cv2.imwrite(str(save_path), stage_image)
+                
+                if success:
+                    self.sequential_filtering_right_panel.set_processing_status(f"💾 Stage {stage_index + 1} saved")
+                    print(f"✓ Stage {stage_index} saved to: {save_path}")
+                    
+                    if hasattr(self, 'status_bar'):
+                        self.status_bar.showMessage(f"Sequential Stage {stage_index + 1} saved: {filename}", 3000)
+                else:
+                    print(f"❌ Failed to save stage {stage_index}")
+                    self.sequential_filtering_right_panel.set_processing_status("❌ Save failed")
+            else:
+                print(f"No result available for stage {stage_index}")
+                self.sequential_filtering_right_panel.set_processing_status("❌ No result to save")
+            
+        except Exception as e:
+            print(f"Error saving stage {stage_index}: {e}")
+            self.sequential_filtering_right_panel.set_processing_status("❌ Save error")
+
+    def _on_reset_all_stages_requested(self):
+        """Handle reset all stages request."""
+        try:
+            print("Reset all stages requested")
+            
+            # Clear all sequential results
+            self.sequential_images.clear()
+            
+            # Reset all panels
+            self.sequential_filtering_left_panel.reset_all_stages()
+            self.sequential_filtering_right_panel.reset_all_progress()
+            
+            # Revert to original image
+            if hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj is not None:
+                original_image = getattr(self.current_sem_image_obj, 'cropped_array', self.current_sem_image)
+                if original_image is not None:
+                    self.image_viewer.set_sem_image(original_image)
+                    self.current_sem_image = original_image
+                    
+                    # Reset histogram to original
+                    histogram_image = self._prepare_histogram_image(original_image)
+                    if histogram_image is not None:
+                        self.sequential_filtering_right_panel.update_histogram(histogram_image)
+            
+            # Update status
+            self.sequential_filtering_right_panel.set_processing_status("All stages reset")
+            
+            print("✓ All stages reset completed")
+            
+            if hasattr(self, 'status_bar'):
+                self.status_bar.showMessage("All sequential stages reset", 3000)
+            
+        except Exception as e:
+            print(f"Error resetting all stages: {e}")
+
+    def _get_stage_input_image(self, stage_index: int) -> Optional[np.ndarray]:
+        """
+        Get the input image for a specific stage in the sequential workflow.
+        
+        Args:
+            stage_index: The stage index
+            
+        Returns:
+            Input image as numpy array or None if not available
+        """
+        try:
+            if stage_index == 0:
+                # Stage 0 (Contrast Enhancement) uses the original image
+                if hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj is not None:
+                    original_image = getattr(self.current_sem_image_obj, 'cropped_array', None)
+                    return self._ensure_numpy_array(original_image)
+                elif hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
+                    return self._ensure_numpy_array(self.current_sem_image)
+                else:
+                    return None
+            else:
+                # Subsequent stages use the result from the previous stage
+                previous_stage = stage_index - 1
+                if previous_stage in self.sequential_images:
+                    return self._ensure_numpy_array(self.sequential_images[previous_stage])
+                else:
+                    # If previous stage hasn't been applied, return None
+                    print(f"Warning: Previous stage {previous_stage} not applied yet")
+                    return None
+        
+        except Exception as e:
+            print(f"Error getting stage input image: {e}")
+            return None
+    
+    def export_sequential_workflow(self):
+        """Export the complete sequential workflow results."""
+        try:
+            if not self.sequential_images:
+                QMessageBox.warning(self, "No Sequential Results", "No sequential processing results to export.")
+                return
+            
+            # Get save directory
+            save_dir = QFileDialog.getExistingDirectory(
+                self, "Export Sequential Workflow Results", "Results/SEM_Filters/sequential"
+            )
+            
+            if save_dir:
+                from pathlib import Path
+                from datetime import datetime
+                import cv2
+                import json
+                
+                save_path = Path(save_dir)
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # Create workflow summary
+                workflow_summary = {
+                    "timestamp": timestamp,
+                    "original_image": str(self.current_sem_path) if hasattr(self, 'current_sem_path') else "Unknown",
+                    "stages_completed": len(self.sequential_images),
+                    "stages": {}
+                }
+                
+                # Save each stage result
+                for stage_index, stage_image in self.sequential_images.items():
+                    stage_name = ProcessingStage(stage_index).name.lower()
+                    
+                    # Save image
+                    image_filename = f"stage_{stage_index + 1}_{stage_name}_{timestamp}.png"
+                    image_path = save_path / image_filename
+                    cv2.imwrite(str(image_path), stage_image)
+                    
+                    # Add to summary
+                    workflow_summary["stages"][stage_index] = {
+                        "stage_name": stage_name,
+                        "image_file": image_filename,
+                        "shape": list(stage_image.shape)
+                    }
+                
+                # Save workflow summary
+                summary_path = save_path / f"sequential_workflow_summary_{timestamp}.json"
+                with open(summary_path, 'w') as f:
+                    json.dump(workflow_summary, f, indent=2)
+                
+                QMessageBox.information(
+                    self, "Export Complete", 
+                    f"Sequential workflow exported to:\n{save_path}\n\n"
+                    f"Stages exported: {len(self.sequential_images)}\n"
+                    f"Summary file: {summary_path.name}"
+                )
+                
+                print(f"✓ Sequential workflow exported to: {save_path}")
+            
+        except Exception as e:
+            print(f"Error exporting sequential workflow: {e}")
+            QMessageBox.critical(self, "Export Error", f"Failed to export sequential workflow:\n{str(e)}")
 
     # Delegate methods to managers (for compatibility)
     
@@ -1234,31 +1787,43 @@ class MainWindow(QMainWindow):
         self.scoring_operations_manager.calculate_scores()
     
     # Signal handler methods
-    
+        
     def on_sem_image_loaded(self, file_path, image_data):
-        """Handle SEM image loaded signal."""
+        """Handle SEM image loaded with both filtering systems - FIXED VERSION.""" 
         try:
             print(f"SEM image loaded: {file_path}")
             
-            # Set up image processing with the new image
             if 'cropped_array' in image_data:
-                self.image_processing_manager.image_processing_service.set_image(
-                    image_data['cropped_array']
-                )
-                
-                # Update histogram display
-                if hasattr(self, 'histogram_view'):
-                    self.histogram_view.update_histogram(image_data['cropped_array'])
-                
-                # Update histogram if filter panel exists
-                if hasattr(self, 'filter_panel') and hasattr(self.filter_panel, 'update_histogram'):
-                    self.filter_panel.update_histogram(image_data['cropped_array'])
+                # Use safe image setting
+                cropped_array = image_data['cropped_array']
+                if self._safe_set_image(cropped_array):
+                    # Update main histogram view
+                    if hasattr(self, 'histogram_view'):
+                        self.histogram_view.update_histogram(cropped_array)
+                    
+                    # Update advanced filtering right panel
+                    if hasattr(self, 'advanced_filtering_right_panel'):
+                        self.advanced_filtering_right_panel.update_histogram(cropped_array)
+                        self.advanced_filtering_right_panel.show_status("✓ Image loaded", "success")
+                    
+                    # Update sequential filtering right panel with proper type handling
+                    if hasattr(self, 'sequential_filtering_right_panel'):
+                        histogram_image = self._prepare_histogram_image(cropped_array)
+                        if histogram_image is not None:
+                            self.sequential_filtering_right_panel.update_histogram(histogram_image)
+                        self.sequential_filtering_right_panel.set_processing_status("✓ Image loaded - Ready for sequential processing")
+                        self.sequential_filtering_right_panel.reset_all_progress()
+                    
+                    # Clear any existing sequential results
+                    self.sequential_images.clear()
+                else:
+                    print("Warning: Failed to set SEM image")
             
             self._update_panel_availability()
             
         except Exception as e:
             print(f"Error handling SEM image loaded: {e}")
-    
+
     def on_gds_file_loaded(self, file_path):
         """Handle GDS file loaded signal."""
         try:
@@ -1290,23 +1855,6 @@ class MainWindow(QMainWindow):
     def _display_gds_in_alignment_tab(self, overlay):
         """Display GDS overlay in the alignment tab."""
         try:
-            # Check if we're currently on the alignment tab
-            current_tab = self.main_tab_widget.currentIndex()
-            is_alignment_tab = (current_tab == 0)  # Alignment is typically the first tab
-            
-            # Display in alignment tabs
-            if hasattr(self, 'manual_alignment_controls'):
-                # Display in manual alignment tab
-                if hasattr(self.manual_alignment_controls, '_display_gds_image'):
-                    self.manual_alignment_controls._display_gds_image(overlay)
-                    print("GDS displayed in manual alignment tab")
-                    
-            # Convert overlay to grayscale for binary display methods
-            if len(overlay.shape) == 3:
-                gds_binary = np.any(overlay > 0, axis=2).astype(np.uint8) * 255
-            else:
-                gds_binary = overlay
-                
             # Update image viewer if available
             if hasattr(self, 'image_viewer'):
                 self.image_viewer.set_gds_overlay(overlay)
@@ -1318,8 +1866,6 @@ class MainWindow(QMainWindow):
                 
         except Exception as e:
             print(f"Error displaying GDS in alignment tab: {e}")
-            import traceback
-            traceback.print_exc()
     
     def on_structure_combo_populated(self, count):
         """Handle structure combo populated signal."""
@@ -1339,6 +1885,12 @@ class MainWindow(QMainWindow):
                 if self.current_sem_image is not None:
                     self.histogram_view.update_histogram(self.current_sem_image)
             
+            # Update advanced filtering right panel
+            if hasattr(self, 'advanced_filtering_right_panel') and hasattr(self, 'current_sem_image'):
+                if self.current_sem_image is not None:
+                    self.advanced_filtering_right_panel.update_histogram(self.current_sem_image)
+                    self.advanced_filtering_right_panel.show_status(f"Applied: {filter_name}")
+            
             # Update alignment display if needed
             if self.current_gds_overlay is not None:
                 self.update_alignment_display()
@@ -1356,6 +1908,14 @@ class MainWindow(QMainWindow):
                 if self.current_sem_image is not None:
                     self.histogram_view.update_histogram(self.current_sem_image)
             
+            # Update advanced filtering right panel
+            if hasattr(self, 'advanced_filtering_right_panel'):
+                if hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
+                    self.advanced_filtering_right_panel.update_histogram(self.current_sem_image)
+                self.advanced_filtering_right_panel.show_status("Filters reset")
+                if hasattr(self.advanced_filtering_right_panel, 'update_kernel'):
+                    self.advanced_filtering_right_panel.update_kernel(None)
+            
             # Update alignment display if needed
             if self.current_gds_overlay is not None:
                 self.update_alignment_display()
@@ -1367,7 +1927,6 @@ class MainWindow(QMainWindow):
         """Handle alignment completed signal."""
         try:
             print("Alignment completed")
-            # Update current alignment result for compatibility
             self.current_alignment_result = alignment_result
             self._update_panel_availability()
             
@@ -1396,7 +1955,6 @@ class MainWindow(QMainWindow):
         """Handle scores calculated signal."""
         try:
             print(f"Scores calculated: {scores}")
-            # Update current scoring results for compatibility
             self.current_scoring_results = scores
             
             # Update the scoring tab panel with the results
@@ -1418,12 +1976,12 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'view_manager'):
                 self.view_manager.switch_to_view(view_mode)
             
-            # Update tab selection
+            # Update tab selection - NOW HANDLES 4 TABS
             if hasattr(self, 'main_tab_widget'):
                 tab_index = {
                     ViewMode.ALIGNMENT: 0,
-                    ViewMode.FILTERING: 1, 
-                    ViewMode.SCORING: 2
+                    ViewMode.FILTERING: 1,  # Advanced Filtering
+                    ViewMode.SCORING: 3      # Scoring is now tab 3 (Sequential is tab 2)
                 }.get(view_mode, 0)
                 self.main_tab_widget.setCurrentIndex(tab_index)
             
@@ -1435,7 +1993,6 @@ class MainWindow(QMainWindow):
     def update_alignment_display(self):
         """Update the alignment display."""
         try:
-            # This method provides compatibility with existing panel code
             if hasattr(self, 'image_viewer') and self.current_gds_overlay is not None:
                 self.image_viewer.set_gds_overlay(self.current_gds_overlay)
                 
@@ -1445,13 +2002,12 @@ class MainWindow(QMainWindow):
     def _update_panel_availability(self):
         """Update panel availability based on current application state."""
         try:
-            # Update tab availability
+            # Update tab availability - NOW HANDLES 4 TABS
             if hasattr(self, 'main_tab_widget'):
-                # All tabs are always available - let the user switch between them
-                # The individual tab content will handle cases where data is not available
                 self.main_tab_widget.setTabEnabled(0, True)  # Alignment
-                self.main_tab_widget.setTabEnabled(1, True)  # Filtering  
-                self.main_tab_widget.setTabEnabled(2, True)  # Scoring
+                self.main_tab_widget.setTabEnabled(1, True)  # Advanced Filtering  
+                self.main_tab_widget.setTabEnabled(2, True)  # Sequential Filtering
+                self.main_tab_widget.setTabEnabled(3, True)  # Scoring
             
             # Update panel manager if available
             if hasattr(self, 'panel_manager'):
@@ -1459,15 +2015,6 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Error updating panel availability: {e}")
-    
-    def _update_score_overlays(self):
-        """Update score overlays (compatibility method)."""
-        try:
-            # This method provides compatibility with existing scoring code
-            pass
-            
-        except Exception as e:
-            print(f"Error updating score overlays: {e}")
     
     def closeEvent(self, event):
         """Handle window close event."""
@@ -1478,77 +2025,111 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'file_operations_manager'):
                 self.file_operations_manager.cleanup_temp_files()
             
-            # Accept the close event
             event.accept()
-            
             print("✓ Application closed successfully")
             
         except Exception as e:
             print(f"Error during application close: {e}")
-            event.accept()  # Close anyway
+            event.accept()
     
     def _on_tab_changed(self, index):
-        """Handle tab change to switch view mode."""
+        """Handle tab change to switch view mode - NOW HANDLES 4 TABS."""
         try:
-            # Save current tab state before switching
-            self._save_current_tab_state()
+            # Map tab indices to view modes and display methods
+            tab_mapping = {
+                0: ('alignment', ViewMode.ALIGNMENT, self._switch_to_alignment_display),
+                1: ('advanced_filtering', None, self._switch_to_advanced_filtering_display),
+                2: ('sequential_filtering', None, self._switch_to_sequential_filtering_display),
+                3: ('scoring', ViewMode.SCORING, self._switch_to_scoring_display)
+            }
             
-            view_modes = [ViewMode.ALIGNMENT, ViewMode.FILTERING, ViewMode.SCORING]
-            if 0 <= index < len(view_modes):
-                view_mode = view_modes[index]
-                if hasattr(self, 'view_manager'):
+            if index in tab_mapping:
+                tab_name, view_mode, display_method = tab_mapping[index]
+                
+                # Switch view mode if applicable
+                if view_mode and hasattr(self, 'view_manager'):
                     self.view_manager.switch_to_view(view_mode)
                 
-                # Restore state for the new tab
-                self._restore_tab_state(view_mode)
-                
-                # Handle display based on view mode
-                if view_mode == ViewMode.FILTERING:
-                    # Show only SEM image in filtering mode
-                    self._switch_to_filtering_display()
-                elif view_mode == ViewMode.ALIGNMENT:
-                    # Show SEM + GDS overlay in alignment mode
-                    self._switch_to_alignment_display()
-                elif view_mode == ViewMode.SCORING:
-                    # Show comparison results in scoring mode
-                    self._switch_to_scoring_display()
+                # Switch display
+                if display_method:
+                    display_method()
                     
                 self._update_panel_availability()
                 
-                # Sync view manager data after switching
-                self._sync_view_manager_data()
+                print(f"✓ Switched to {tab_name} tab")
                 
         except Exception as e:
             print(f"Error handling tab change: {e}")
     
-    def _switch_to_filtering_display(self):
-        """Switch image viewer to filtering display mode (SEM only)."""
+    def _switch_to_advanced_filtering_display(self):
+        """Switch image viewer to advanced filtering display mode (SEM only)."""
         try:
             if hasattr(self, 'image_viewer'):
                 # Hide GDS overlay in filtering mode
                 if hasattr(self.image_viewer, 'set_overlay_visible'):
                     self.image_viewer.set_overlay_visible(False)
                 
-                # Get the current filtered image from view manager data
-                view_data = self.view_manager.get_view_data(ViewMode.FILTERING)
-                filtered_image = view_data.get('filtered_image')
-                
-                # Show filtered image if available, otherwise show original SEM
-                if filtered_image is not None:
-                    self.image_viewer.set_sem_image(filtered_image)
-                    # Update current reference to filtered image
-                    self.current_sem_image = filtered_image
-                elif self.current_sem_image is not None:
+                # Show current SEM image
+                if self.current_sem_image is not None:
                     self.image_viewer.set_sem_image(self.current_sem_image)
                 
                 # Update histogram with current image
                 if hasattr(self, 'histogram_view') and self.current_sem_image is not None:
                     self.histogram_view.update_histogram(self.current_sem_image)
                 
-                print("✓ Switched to filtering display mode")
+                # Update advanced filtering right panel
+                if hasattr(self, 'advanced_filtering_right_panel') and self.current_sem_image is not None:
+                    self.advanced_filtering_right_panel.update_histogram(self.current_sem_image)
+                
+                print("✓ Switched to advanced filtering display mode")
                 
         except Exception as e:
-            print(f"Error switching to filtering display: {e}")
+            print(f"Error switching to advanced filtering display: {e}")
+
+    def _switch_to_sequential_filtering_display(self):
+        """Switch image viewer to sequential filtering display mode."""
+        try:
+            if hasattr(self, 'image_viewer'):
+                # Hide GDS overlay in filtering mode
+                if hasattr(self.image_viewer, 'set_overlay_visible'):
+                    self.image_viewer.set_overlay_visible(False)
+                
+                # Show the original image or latest sequential result
+                if self.sequential_images:
+                    # Show the result from the highest completed stage
+                    latest_stage = max(self.sequential_images.keys())
+                    latest_image = self.sequential_images[latest_stage]
+                    self.image_viewer.set_sem_image(latest_image)
+                    self.current_sem_image = latest_image
+                    
+                    # Update right panel with proper type handling
+                    histogram_image = self._prepare_histogram_image(latest_image)
+                    if histogram_image is not None:
+                        self.sequential_filtering_right_panel.update_histogram(histogram_image, latest_stage)
+                else:
+                    # Show original SEM image
+                    if hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj is not None:
+                        original_image = getattr(self.current_sem_image_obj, 'cropped_array', self.current_sem_image)
+                        if original_image is not None:
+                            self.image_viewer.set_sem_image(original_image)
+                            self.current_sem_image = original_image
+                            
+                            # Update right panel with proper type handling
+                            histogram_image = self._prepare_histogram_image(original_image)
+                            if histogram_image is not None:
+                                self.sequential_filtering_right_panel.update_histogram(histogram_image)
+                    elif self.current_sem_image is not None:
+                        self.image_viewer.set_sem_image(self.current_sem_image)
+                        
+                        # Update right panel with proper type handling
+                        histogram_image = self._prepare_histogram_image(self.current_sem_image)
+                        if histogram_image is not None:
+                            self.sequential_filtering_right_panel.update_histogram(histogram_image)
+                
+                print("✓ Switched to sequential filtering display mode")
+                
+        except Exception as e:
+            print(f"Error switching to sequential filtering display: {e}")
     
     def _switch_to_alignment_display(self):
         """Switch image viewer to alignment display mode (SEM + GDS)."""
@@ -1556,7 +2137,6 @@ class MainWindow(QMainWindow):
             if hasattr(self, 'image_viewer'):
                 # Ensure we're showing the original SEM image (not filtered) for alignment
                 if hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj is not None:
-                    # Get original unfiltered image
                     original_image = getattr(self.current_sem_image_obj, 'cropped_array', self.current_sem_image)
                     if original_image is not None:
                         self.image_viewer.set_sem_image(original_image)
@@ -1582,9 +2162,6 @@ class MainWindow(QMainWindow):
         """Switch image viewer to scoring display mode (comparison results)."""
         try:
             if hasattr(self, 'image_viewer'):
-                # For scoring, we want to show the aligned result
-                # This includes SEM image with aligned GDS overlay
-                
                 # Set SEM image (original unfiltered for accurate scoring)
                 if hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj is not None:
                     original_image = getattr(self.current_sem_image_obj, 'cropped_array', self.current_sem_image)
@@ -1652,10 +2229,8 @@ class MainWindow(QMainWindow):
         """Handle point selection from image viewer."""
         try:
             if x == -1 and y == -1:
-                # Point was removed
                 print(f"{point_type.upper()} point removed")
             else:
-                # Point was added
                 print(f"{point_type.upper()} point added at ({x}, {y})")
             
             # Update point tracking
@@ -1673,8 +2248,6 @@ class MainWindow(QMainWindow):
     def _validate_points(self):
         """Validate that points are within image bounds and properly formatted."""
         try:
-            # For testing purposes, if no SEM image is loaded, use default bounds
-            # In real usage, this would require a loaded SEM image
             max_width = 1024
             max_height = 666
             
@@ -1704,7 +2277,7 @@ class MainWindow(QMainWindow):
         """Show information message to user."""
         try:
             msg_box = QMessageBox()
-            msg_box.setIcon(QMessageBox.Information)
+            msg_box.setIcon(QMessageBox.Icon.Information)
             msg_box.setWindowTitle(title)
             msg_box.setText(message)
             msg_box.exec()
@@ -1715,7 +2288,7 @@ class MainWindow(QMainWindow):
         """Show error message to user."""
         try:
             msg_box = QMessageBox()
-            msg_box.setIcon(QMessageBox.Critical)
+            msg_box.setIcon(QMessageBox.Icon.Critical)
             msg_box.setWindowTitle(title)
             msg_box.setText(message)
             msg_box.exec()
@@ -1760,279 +2333,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             print(f"Error in generate aligned GDS: {e}")
     
-    def _save_current_tab_state(self):
-        """Save the current tab's state before switching to another tab."""
-        try:
-            if not hasattr(self, 'view_manager') or not hasattr(self, 'main_tab_widget'):
-                return
-            
-            current_index = self.main_tab_widget.currentIndex()
-            view_modes = [ViewMode.ALIGNMENT, ViewMode.FILTERING, ViewMode.SCORING]
-            
-            if 0 <= current_index < len(view_modes):
-                current_view = view_modes[current_index]
-                
-                # Save state based on current view
-                if current_view == ViewMode.ALIGNMENT:
-                    self._save_alignment_state()
-                elif current_view == ViewMode.FILTERING:
-                    self._save_filtering_state()
-                elif current_view == ViewMode.SCORING:
-                    self._save_scoring_state()
-                
-                # Save common canvas state
-                self._save_canvas_state(current_view)
-                
-        except Exception as e:
-            print(f"Error saving tab state: {e}")
-    
-    def _save_alignment_state(self):
-        """Save alignment tab specific state."""
-        try:
-            alignment_data = {}
-            
-            # Save manual alignment settings if available
-            if hasattr(self, 'manual_alignment_controls'):
-                # Get current transformation values from manual controls
-                # This will be implemented based on the actual manual alignment component
-                pass
-            
-            # Save hybrid alignment points
-            if hasattr(self, 'sem_points') and hasattr(self, 'gds_points'):
-                alignment_data['selected_points'] = {
-                    'sem': self.sem_points.copy(),
-                    'gds': self.gds_points.copy()
-                }
-            
-            # Save current alignment result
-            if self.current_alignment_result is not None:
-                alignment_data['alignment_result'] = self.current_alignment_result.copy()
-            else:
-                alignment_data['alignment_result'] = None
-            
-            # Save which alignment mode is active (manual vs hybrid)
-            if hasattr(self, 'alignment_sub_tabs'):
-                alignment_data['mode'] = 'hybrid' if self.alignment_sub_tabs.currentIndex() == 1 else 'manual'
-                if alignment_data['mode'] == 'hybrid' and hasattr(self, 'hybrid_sub_tabs'):
-                    alignment_data['hybrid_sub_mode'] = self.hybrid_sub_tabs.currentIndex()
-            
-            # Update view manager
-            self.view_manager.update_view_data(ViewMode.ALIGNMENT, alignment_data)
-            
-        except Exception as e:
-            print(f"Error saving alignment state: {e}")
-    
-    def _save_filtering_state(self):
-        """Save filtering tab specific state."""
-        try:
-            filtering_data = {}
-            
-            # Save filter history from image processing service
-            if hasattr(self, 'image_processing_service') and self.image_processing_service is not None:
-                if hasattr(self.image_processing_service, 'get_filter_history'):
-                    filtering_data['filter_history'] = self.image_processing_service.get_filter_history()
-                
-                # Save current filtered image if different from original
-                if hasattr(self.image_processing_service, 'current_image') and self.image_processing_service.current_image is not None:
-                    filtering_data['filtered_image'] = self.image_processing_service.current_image
-            
-            # Save active filter selection if available
-            if hasattr(self, 'filter_panel'):
-                # Get current filter selection from filter panel
-                # This will depend on the actual filter panel implementation
-                pass
-            
-            # Save which filtering mode is active (manual vs automatic)
-            if hasattr(self, 'filtering_sub_tabs'):
-                filtering_data['filter_mode'] = 'automatic' if self.filtering_sub_tabs.currentIndex() == 1 else 'manual'
-            
-            # Update view manager
-            self.view_manager.update_view_data(ViewMode.FILTERING, filtering_data)
-            
-        except Exception as e:
-            print(f"Error saving filtering state: {e}")
-    
-    def _save_scoring_state(self):
-        """Save scoring tab specific state."""
-        try:
-            scoring_data = {}
-            
-            # Save current scoring method and results
-            scoring_data['scoring_method'] = self.current_scoring_method
-            if self.current_scoring_results:
-                scoring_data['scores'] = self.current_scoring_results.copy()
-            
-            # Save scoring tab panel state if available
-            if hasattr(self, 'scoring_tab_panel'):
-                scoring_data['selected_method'] = self.scoring_tab_panel.get_selected_method()
-            
-            # Update view manager
-            self.view_manager.update_view_data(ViewMode.SCORING, scoring_data)
-            
-        except Exception as e:
-            print(f"Error saving scoring state: {e}")
-    
-    def _save_canvas_state(self, view_mode):
-        """Save canvas state for the current view mode."""
-        try:
-            if not hasattr(self, 'image_viewer'):
-                return
-            
-            canvas_data = {}
-            
-            # Save zoom and pan state
-            if hasattr(self.image_viewer, '_zoom_factor'):
-                canvas_data['zoom_factor'] = self.image_viewer._zoom_factor
-            if hasattr(self.image_viewer, '_pan_offset'):
-                canvas_data['pan_offset'] = (self.image_viewer._pan_offset.x(), self.image_viewer._pan_offset.y())
-            
-            # Save overlay visibility and transparency
-            if hasattr(self.image_viewer, '_overlay_visible'):
-                canvas_data['overlay_visible'] = self.image_viewer._overlay_visible
-            if hasattr(self.image_viewer, '_overlay_alpha'):
-                canvas_data['overlay_alpha'] = self.image_viewer._overlay_alpha
-            
-            # Update view manager with canvas data
-            current_data = self.view_manager.get_view_data(view_mode)
-            current_data['canvas_state'] = canvas_data
-            self.view_manager.update_view_data(view_mode, current_data)
-            
-        except Exception as e:
-            print(f"Error saving canvas state: {e}")
-
-    def _restore_tab_state(self, view_mode):
-        """Restore saved state when switching to a tab."""
-        try:
-            # Get saved data for this view mode
-            view_data = self.view_manager.get_view_data(view_mode)
-            
-            # Restore state based on view mode
-            if view_mode == ViewMode.ALIGNMENT:
-                self._restore_alignment_state(view_data)
-            elif view_mode == ViewMode.FILTERING:
-                self._restore_filtering_state(view_data)
-            elif view_mode == ViewMode.SCORING:
-                self._restore_scoring_state(view_data)
-            
-            # Restore canvas state
-            self._restore_canvas_state(view_data)
-            
-        except Exception as e:
-            print(f"Error restoring tab state: {e}")
-    
-    def _restore_alignment_state(self, view_data):
-        """Restore alignment tab specific state."""
-        try:
-            # Restore selected points
-            if 'selected_points' in view_data:
-                points_data = view_data['selected_points']
-                if 'sem' in points_data:
-                    self.sem_points = points_data['sem'].copy()
-                if 'gds' in points_data:
-                    self.gds_points = points_data['gds'].copy()
-                
-                # Update UI display
-                if hasattr(self, '_update_hybrid_status'):
-                    self._update_hybrid_status()
-            
-            # Restore alignment result
-            if 'alignment_result' in view_data and view_data['alignment_result'] is not None:
-                self.current_alignment_result = view_data['alignment_result'].copy()
-                
-                # Apply alignment to image viewer
-                if hasattr(self, 'image_viewer') and self.current_alignment_result:
-                    self.image_viewer.set_alignment_result(self.current_alignment_result)
-            
-            # Restore alignment mode (manual vs hybrid)
-            if 'mode' in view_data and hasattr(self, 'alignment_sub_tabs'):
-                mode_index = 1 if view_data['mode'] == 'hybrid' else 0
-                self.alignment_sub_tabs.setCurrentIndex(mode_index)
-                
-                # Restore hybrid sub-mode
-                if view_data['mode'] == 'hybrid' and 'hybrid_sub_mode' in view_data:
-                    if hasattr(self, 'hybrid_sub_tabs'):
-                        self.hybrid_sub_tabs.setCurrentIndex(view_data['hybrid_sub_mode'])
-            
-        except Exception as e:
-            print(f"Error restoring alignment state: {e}")
-    
-    def _restore_filtering_state(self, view_data):
-        """Restore filtering tab specific state."""
-        try:
-            # Restore filtered image if available
-            if 'filtered_image' in view_data and view_data['filtered_image'] is not None:
-                # Apply the filtered image to the image viewer
-                if hasattr(self, 'image_viewer'):
-                    self.image_viewer.set_sem_image(view_data['filtered_image'])
-                
-                # Update current SEM image reference to filtered version
-                self.current_sem_image = view_data['filtered_image']
-                
-                # Update histogram
-                if hasattr(self, 'histogram_view'):
-                    self.histogram_view.update_histogram(view_data['filtered_image'])
-            
-            # Restore filter mode (manual vs automatic)
-            if 'filter_mode' in view_data and hasattr(self, 'filtering_sub_tabs'):
-                mode_index = 1 if view_data['filter_mode'] == 'automatic' else 0
-                self.filtering_sub_tabs.setCurrentIndex(mode_index)
-            
-        except Exception as e:
-            print(f"Error restoring filtering state: {e}")
-    
-    def _restore_scoring_state(self, view_data):
-        """Restore scoring tab specific state."""
-        try:
-            # Restore scoring method
-            if 'scoring_method' in view_data:
-                self.current_scoring_method = view_data['scoring_method']
-                
-                # Update scoring tab panel if available
-                if hasattr(self, 'scoring_tab_panel'):
-                    # Set the radio button selection to match saved method
-                    method_key = view_data.get('selected_method', view_data['scoring_method'])
-                    if method_key in self.scoring_tab_panel.method_radios:
-                        self.scoring_tab_panel.method_radios[method_key].setChecked(True)
-                        self.scoring_tab_panel.current_method = method_key
-            
-            # Restore scoring results
-            if 'scores' in view_data:
-                self.current_scoring_results = view_data['scores'].copy()
-                
-                # Display results in scoring tab panel
-                if hasattr(self, 'scoring_tab_panel'):
-                    self.scoring_tab_panel.display_results(self.current_scoring_results)
-            
-        except Exception as e:
-            print(f"Error restoring scoring state: {e}")
-    
-    def _restore_canvas_state(self, view_data):
-        """Restore canvas state for the view mode."""
-        try:
-            if not hasattr(self, 'image_viewer') or 'canvas_state' not in view_data:
-                return
-            
-            canvas_data = view_data['canvas_state']
-            
-            # Restore zoom and pan
-            if 'zoom_factor' in canvas_data:
-                self.image_viewer._zoom_factor = canvas_data['zoom_factor']
-            if 'pan_offset' in canvas_data:
-                x, y = canvas_data['pan_offset']
-                self.image_viewer._pan_offset = QPoint(x, y)
-            
-            # Restore overlay settings
-            if 'overlay_visible' in canvas_data:
-                self.image_viewer._overlay_visible = canvas_data['overlay_visible']
-            if 'overlay_alpha' in canvas_data:
-                self.image_viewer._overlay_alpha = canvas_data['overlay_alpha']
-            
-            # Trigger canvas update
-            self.image_viewer.update()
-            
-        except Exception as e:
-            print(f"Error restoring canvas state: {e}")
-
     def _sync_view_manager_data(self):
         """Synchronize view manager data with current main window state."""
         try:
@@ -2055,5 +2355,245 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Error syncing view manager data: {e}")
+    
+    def _ensure_numpy_array(self, image_data) -> Optional[np.ndarray]:
+        """
+        Ensure the image data is properly typed as a numpy array.
+        
+        Args:
+            image_data: Input image data
+            
+        Returns:
+            Numpy array or None if conversion fails
+        """
+        try:
+            if image_data is None:
+                return None
+                
+            # Convert to numpy array if it's not already
+            if isinstance(image_data, np.ndarray):
+                return image_data.astype(np.uint8) if image_data.dtype != np.uint8 else image_data
+            else:
+                return np.asarray(image_data, dtype=np.uint8)
+                
+        except Exception as e:
+            print(f"Error ensuring numpy array: {e}")
+            return None
 
-    # ...existing code...
+    def _apply_filter_directly(self, filter_name: str, parameters: dict, input_image) -> Optional[np.ndarray]:
+        """Apply filter directly to an image using OpenCV operations - FIXED VERSION."""
+        try:
+            # Ensure input is a proper numpy array
+            image = self._ensure_numpy_array(input_image)
+            if image is None:
+                return None
+                
+            # Make a copy to avoid modifying the original
+            image = image.copy()
+            
+            # Apply different filters based on filter_name
+            if filter_name == "clahe":
+                # CLAHE (Contrast Limited Adaptive Histogram Equalization)
+                clip_limit = parameters.get('clip_limit', 2.0)
+                tile_grid_x = parameters.get('tile_grid_x', 8)
+                tile_grid_y = parameters.get('tile_grid_y', 8)
+                
+                if len(image.shape) == 3:
+                    # Convert to LAB color space for better results
+                    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+                    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_x, tile_grid_y))
+                    lab[:,:,0] = clahe.apply(lab[:,:,0])
+                    result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+                else:
+                    # Grayscale image
+                    clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_x, tile_grid_y))
+                    result = clahe.apply(image)
+                
+                return result.astype(np.uint8)
+                
+            elif filter_name == "gamma_correction":
+                # Gamma correction
+                gamma = parameters.get('gamma', 1.0)
+                inv_gamma = 1.0 / gamma
+                table = np.array([((i / 255.0) ** inv_gamma) * 255 for i in range(256)]).astype("uint8")
+                result = cv2.LUT(image, table)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "histogram_equalization":
+                # Histogram equalization
+                if len(image.shape) == 3:
+                    # Convert to YUV, equalize Y channel, convert back
+                    yuv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+                    yuv[:,:,0] = cv2.equalizeHist(yuv[:,:,0])
+                    result = cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR)
+                else:
+                    result = cv2.equalizeHist(image)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "gaussian_blur":
+                # Gaussian blur
+                kernel_size = parameters.get('kernel_size', 5)
+                sigma = parameters.get('sigma', 1.0)
+                if kernel_size % 2 == 0:
+                    kernel_size += 1  # Ensure odd kernel size
+                result = cv2.GaussianBlur(image, (kernel_size, kernel_size), sigma)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "median_filter":
+                # Median filter
+                kernel_size = parameters.get('kernel_size', 5)
+                if kernel_size % 2 == 0:
+                    kernel_size += 1  # Ensure odd kernel size
+                result = cv2.medianBlur(image, kernel_size)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "bilateral_filter":
+                # Bilateral filter
+                d = parameters.get('d', 9)
+                sigma_color = parameters.get('sigma_color', 75)
+                sigma_space = parameters.get('sigma_space', 75)
+                result = cv2.bilateralFilter(image, d, sigma_color, sigma_space)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "nlm_denoising":
+                # Non-local means denoising
+                h = parameters.get('h', 10)
+                template_window_size = parameters.get('template_window_size', 7)
+                search_window_size = parameters.get('search_window_size', 21)
+                
+                if len(image.shape) == 3:
+                    result = cv2.fastNlMeansDenoisingColored(image, None, h, h, template_window_size, search_window_size)
+                else:
+                    result = cv2.fastNlMeansDenoising(image, None, h, template_window_size, search_window_size)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "threshold":
+                # Simple threshold
+                threshold_value = parameters.get('threshold_value', 127)
+                max_value = parameters.get('max_value', 255)
+                
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                
+                _, result = cv2.threshold(gray, threshold_value, max_value, cv2.THRESH_BINARY)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "adaptive_threshold":
+                # Adaptive threshold
+                max_value = parameters.get('max_value', 255)
+                block_size = parameters.get('block_size', 11)
+                c = parameters.get('c', 2)
+                
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                
+                result = cv2.adaptiveThreshold(gray, max_value, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, block_size, c)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "otsu_threshold":
+                # Otsu threshold
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                
+                _, result = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "canny":
+                # Canny edge detection
+                low_threshold = parameters.get('low_threshold', 50)
+                high_threshold = parameters.get('high_threshold', 150)
+                aperture_size = parameters.get('aperture_size', 3)
+                
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                
+                result = cv2.Canny(gray, low_threshold, high_threshold, apertureSize=aperture_size)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "laplacian":
+                # Laplacian edge detection
+                ksize = parameters.get('ksize', 3)
+                scale = parameters.get('scale', 1)
+                delta = parameters.get('delta', 0)
+                
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                
+                result = cv2.Laplacian(gray, cv2.CV_64F, ksize=ksize, scale=scale, delta=delta)
+                result = np.absolute(result)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "sobel":
+                # Sobel edge detection
+                dx = parameters.get('dx', 1)
+                dy = parameters.get('dy', 1)
+                ksize = parameters.get('ksize', 3)
+                
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                
+                grad_x = cv2.Sobel(gray, cv2.CV_64F, dx, 0, ksize=ksize)
+                grad_y = cv2.Sobel(gray, cv2.CV_64F, 0, dy, ksize=ksize)
+                result = np.sqrt(grad_x**2 + grad_y**2)
+                return result.astype(np.uint8)
+                
+            elif filter_name == "sharpen":
+                # Sharpen filter
+                amount = parameters.get('amount', 1.5)
+                
+                # Create sharpening kernel
+                kernel = np.array([[-1,-1,-1],
+                                [-1, 9,-1],
+                                [-1,-1,-1]]) * amount
+                kernel[1,1] = kernel[1,1] - amount + 1
+                
+                result = cv2.filter2D(image, -1, kernel)
+                result = np.clip(result, 0, 255).astype(np.uint8)
+                return result
+                
+            else:
+                print(f"Unknown filter: {filter_name}")
+                return None
+                
+        except Exception as e:
+            print(f"Error applying filter {filter_name}: {e}")
+            return None
+
+
+def main():
+    """Main entry point for the application."""
+    try:
+        app = QApplication(sys.argv)
+        
+        # Set application properties
+        app.setApplicationName("SEM/GDS Image Analysis Tool - Combined")
+        app.setApplicationVersion("3.1.0")
+        app.setOrganizationName("Research Lab")
+        
+        # Create and show main window
+        main_window = MainWindow()
+        main_window.show()
+        
+        # Start event loop
+        sys.exit(app.exec())
+        
+    except Exception as e:
+        print(f"Error starting application: {e}")
+        import traceback
+        traceback.print_exc()
+
+
+if __name__ == "__main__":
+    main()

@@ -266,12 +266,15 @@ class AlignmentOperationsManager(QObject):
     def apply_manual_transformation(self, params: dict):
         """Apply manual alignment transformation from parameter dict (from ManualAlignmentTab)."""
         try:
+            print(f"Applying manual transformation: {params}")
             # Map parameter names from ManualAlignmentTab to expected format
-            dx = params.get('translation_x_pixels', 0.0)
-            dy = params.get('translation_y_pixels', 0.0)
-            angle = params.get('rotation_degrees', 0.0)
+            dx = params.get('x_offset', 0.0)
+            dy = params.get('y_offset', 0.0)
+            angle = params.get('rotation', 0.0)
             scale = params.get('scale', 1.0)
             transparency = params.get('transparency', 70)
+            
+            print(f"Extracted values: dx={dx}, dy={dy}, angle={angle}, scale={scale}, transparency={transparency}")
             
             # Handle transparency update separately for real-time feedback
             if hasattr(self.main_window, 'image_viewer'):
@@ -281,19 +284,24 @@ class AlignmentOperationsManager(QObject):
             
             # Only apply transformation matrix if there are actual transformations
             if dx != 0 or dy != 0 or angle != 0 or scale != 1.0:
-                # Build transformation matrix: scale, rotate, then translate
+                # Get image center for rotation
+                if hasattr(self.main_window, 'current_gds_overlay') and self.main_window.current_gds_overlay is not None:
+                    height, width = self.main_window.current_gds_overlay.shape[:2]
+                    center_x, center_y = width / 2, height / 2
+                else:
+                    center_x, center_y = 512, 333  # Default center for 1024x666
+                
+                # Build transformation matrix: rotate around center, scale, then translate
                 theta = np.deg2rad(angle)
                 cos_theta, sin_theta = np.cos(theta), np.sin(theta)
-                # 2x2 rotation+scale
-                M = np.array([
-                    [scale * cos_theta, -scale * sin_theta],
-                    [scale * sin_theta,  scale * cos_theta]
-                ])
-                # Translation vector
-                t = np.array([dx, dy])
                 
-                # Compose 2x3 affine matrix
-                transformation_matrix = np.hstack([M, t.reshape(2, 1)])
+                # Create rotation matrix around center
+                # T = T_translate * T_rotate * T_translate_back
+                transformation_matrix = cv2.getRotationMatrix2D((center_x, center_y), angle, scale)
+                
+                # Add translation to the existing matrix
+                transformation_matrix[0, 2] += dx
+                transformation_matrix[1, 2] += dy
                 
                 # Apply transformation for real-time preview
                 self._apply_real_time_transformation(transformation_matrix, transparency)

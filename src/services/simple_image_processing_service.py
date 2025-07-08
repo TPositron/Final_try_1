@@ -1,12 +1,71 @@
 """
-Simple Image Processing Service for basic filter management (Steps 76-80).
+Simple Image Processing Service - Core Image Filter Management (Implementation Steps 76-80)
 
-This service provides:
-- QObject for filter management with basic filter registry (Step 76)
-- Filter application to SEM images with basic parameter handling (Step 77)  
-- Filter presets save/load and basic preset management (Step 78)
-- Basic automatic filter selection with simple scoring (Step 79)
-- Processing signals when filters applied with progress reporting (Step 80)
+This service provides comprehensive image processing capabilities for SEM images,
+including filter application, preset management, and automatic filter selection.
+It serves as the central hub for all image enhancement and processing operations.
+
+Core Filter Registry (Step 76):
+- gaussian_blur: Noise reduction with configurable kernel size and sigma
+- threshold: Binary thresholding with adjustable threshold values
+- edge_detection: Canny edge detection with low/high threshold control
+- median_filter: Noise reduction using median filtering
+- clahe: Contrast Limited Adaptive Histogram Equalization
+
+Filter Management Features:
+- Parameter validation with min/max bounds checking
+- Filter preview without permanent application
+- Filter history tracking and undo capabilities
+- Cascading filter application (filter chains)
+- Real-time parameter adjustment
+
+Preset System (Step 78):
+- Predefined filter combinations for common tasks
+- Custom preset creation and management
+- Preset categories: noise_reduction, edge_enhancement, segmentation
+- JSON-based preset storage with metadata
+- Preset sharing and import/export
+
+Automatic Filter Selection (Step 79):
+- Image analysis for contrast, sharpness, and noise metrics
+- Intelligent filter recommendation based on image characteristics
+- Target-based optimization (contrast, sharpness, noise_reduction)
+- Simple scoring system for filter effectiveness
+
+Dependencies:
+- Uses: cv2 (OpenCV for image processing)
+- Uses: numpy (numerical operations)
+- Uses: json, pathlib (preset management)
+- Uses: PySide6.QtCore (signals and QObject)
+- Called by: ui/image_processor.py, ui/image_processing.py
+- Called by: services/workflow_service.py
+
+Signals (Step 80):
+- filter_applied: Emitted when filters are successfully applied
+- filter_progress: Emitted during filter processing
+- filter_error: Emitted when filter operations fail
+- filter_previewed: Emitted when filter previews are generated
+- preset_saved/loaded: Emitted for preset operations
+- processing_started/finished: Emitted for operation lifecycle
+
+Key Methods:
+- apply_filter(): Core filter application with parameter validation
+- preview_filter(): Generate filter previews without permanent changes
+- save_preset()/load_preset(): Preset management operations
+- auto_select_filters(): Intelligent filter recommendation
+- get_available_filters(): List available filters with metadata
+
+Filter Parameter Validation:
+- Type checking (int, float, bounds)
+- Range validation (min/max values)
+- Parameter clamping for safety
+- Default value fallbacks
+
+Image Analysis Metrics:
+- Contrast: Standard deviation of pixel intensities
+- Sharpness: Laplacian variance for edge detection
+- Noise: High-frequency content analysis
+- Brightness: Mean pixel intensity
 """
 
 import logging
@@ -58,11 +117,23 @@ class ImageProcessingService(QObject):
         def gaussian_blur(image: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
             """Apply Gaussian blur filter."""
             import cv2
+            
             kernel_size = params.get('kernel_size', 5)
+            
+            # FIXED: Handle both single sigma and sigma_x/sigma_y parameters
             sigma = params.get('sigma', 1.0)
+            sigma_x = params.get('sigma_x', sigma)
+            sigma_y = params.get('sigma_y', sigma)
+            
             if kernel_size % 2 == 0:
                 kernel_size += 1  # Ensure odd kernel size
-            return cv2.GaussianBlur(image, (kernel_size, kernel_size), sigma)
+            
+            return cv2.GaussianBlur(
+                image, 
+                (int(kernel_size), int(kernel_size)), 
+                float(sigma_x), 
+                sigmaY=float(sigma_y)
+            )
         
         def threshold(image: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
             """Apply threshold filter."""
@@ -76,9 +147,18 @@ class ImageProcessingService(QObject):
         def edge_detection(image: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
             """Apply Canny edge detection."""
             import cv2
+
             low_threshold = params.get('low_threshold', 50)
             high_threshold = params.get('high_threshold', 150)
-            return cv2.Canny(image.astype(np.uint8), low_threshold, high_threshold)
+            
+            # Ensure proper types and image format
+            image_uint8 = image.astype(np.uint8)
+            
+            return cv2.Canny(
+                image_uint8, 
+                int(low_threshold), 
+                int(high_threshold)
+            )
         
         def median_filter(image: np.ndarray, params: Dict[str, Any]) -> np.ndarray:
             """Apply median filter."""
@@ -92,60 +172,76 @@ class ImageProcessingService(QObject):
             """Apply CLAHE (Contrast Limited Adaptive Histogram Equalization)."""
             import cv2
             clip_limit = params.get('clip_limit', 2.0)
+            
+            # FIXED: Handle both single value and tuple for tile_grid_size
             tile_grid_size = params.get('tile_grid_size', 8)
-            clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(tile_grid_size, tile_grid_size))
+            if isinstance(tile_grid_size, (int, float)):
+                # Convert single value to tuple
+                tile_grid_tuple = (int(tile_grid_size), int(tile_grid_size))
+            elif isinstance(tile_grid_size, (list, tuple)) and len(tile_grid_size) >= 2:
+                # Use tuple values
+                tile_grid_tuple = (int(tile_grid_size[0]), int(tile_grid_size[1]))
+            else:
+                # Fallback to default
+                tile_grid_tuple = (8, 8)
+            
+            # Handle tile_grid_x and tile_grid_y parameters (from your UI)
+            tile_grid_x = params.get('tile_grid_x', tile_grid_tuple[0])
+            tile_grid_y = params.get('tile_grid_y', tile_grid_tuple[1])
+            
+            clahe = cv2.createCLAHE(
+                clipLimit=float(clip_limit), 
+                tileGridSize=(int(tile_grid_x), int(tile_grid_y))
+            )
             return clahe.apply(image.astype(np.uint8))
-        
-        # Register filters
+
+        # Register filters with metadata
         self.filter_registry = {
             'gaussian_blur': {
                 'function': gaussian_blur,
-                'name': 'Gaussian Blur',
-                'description': 'Smooth image using Gaussian kernel',
+                'description': 'Apply Gaussian blur for noise reduction',
                 'parameters': {
-                    'kernel_size': {'type': 'int', 'min': 3, 'max': 15, 'default': 5},
-                    'sigma': {'type': 'float', 'min': 0.1, 'max': 5.0, 'default': 1.0}
+                    'kernel_size': {'type': int, 'default': 5, 'min': 1, 'max': 31},
+                    'sigma': {'type': float, 'default': 1.0, 'min': 0.1, 'max': 10.0},
+                    'sigma_x': {'type': float, 'default': 1.0, 'min': 0.1, 'max': 10.0},
+                    'sigma_y': {'type': float, 'default': 1.0, 'min': 0.1, 'max': 10.0}
                 }
             },
             'threshold': {
                 'function': threshold,
-                'name': 'Threshold',
-                'description': 'Binary threshold segmentation',
+                'description': 'Apply binary threshold',
                 'parameters': {
-                    'threshold': {'type': 'int', 'min': 0, 'max': 255, 'default': 127},
-                    'max_value': {'type': 'int', 'min': 0, 'max': 255, 'default': 255}
+                    'threshold': {'type': int, 'default': 127, 'min': 0, 'max': 255},
+                    'max_value': {'type': int, 'default': 255, 'min': 0, 'max': 255}
                 }
             },
             'edge_detection': {
                 'function': edge_detection,
-                'name': 'Edge Detection',
-                'description': 'Canny edge detection',
+                'description': 'Detect edges using Canny edge detector',
                 'parameters': {
-                    'low_threshold': {'type': 'int', 'min': 0, 'max': 255, 'default': 50},
-                    'high_threshold': {'type': 'int', 'min': 0, 'max': 255, 'default': 150}
+                    'low_threshold': {'type': int, 'default': 50, 'min': 0, 'max': 255},
+                    'high_threshold': {'type': int, 'default': 150, 'min': 0, 'max': 255}
                 }
             },
             'median_filter': {
                 'function': median_filter,
-                'name': 'Median Filter',
-                'description': 'Noise reduction using median filter',
+                'description': 'Apply median filter for noise reduction',
                 'parameters': {
-                    'kernel_size': {'type': 'int', 'min': 3, 'max': 15, 'default': 5}
+                    'kernel_size': {'type': int, 'default': 5, 'min': 1, 'max': 31}
                 }
             },
             'clahe': {
                 'function': clahe_filter,
-                'name': 'CLAHE',
-                'description': 'Contrast Limited Adaptive Histogram Equalization',
+                'description': 'Apply CLAHE for contrast enhancement',
                 'parameters': {
-                    'clip_limit': {'type': 'float', 'min': 1.0, 'max': 10.0, 'default': 2.0},
-                    'tile_grid_size': {'type': 'int', 'min': 4, 'max': 16, 'default': 8}
+                    'clip_limit': {'type': float, 'default': 2.0, 'min': 0.1, 'max': 10.0},
+                    'tile_grid_size': {'type': int, 'default': 8, 'min': 2, 'max': 32},
+                    'tile_grid_x': {'type': int, 'default': 8, 'min': 2, 'max': 32},
+                    'tile_grid_y': {'type': int, 'default': 8, 'min': 2, 'max': 32}
                 }
             }
         }
-        
-        logger.info(f"Registered {len(self.filter_registry)} basic filters")
-    
+
     def get_available_filters(self) -> List[str]:
         """Get list of available filter names."""
         return list(self.filter_registry.keys())
@@ -180,13 +276,13 @@ class ImageProcessingService(QObject):
         self.set_image(image)
 
     # Step 77: Implement filter application with basic parameter handling
-    def apply_filter(self, filter_name: str, parameters: Dict[str, Any] = None, preview_only: bool = False) -> Optional[np.ndarray]:
+    def apply_filter(self, filter_name: str, parameters: Optional[Dict[str, Any]] = None, preview_only: bool = False) -> Optional[np.ndarray]:
         """
         Apply filter to current image with basic parameter handling.
         
         Args:
             filter_name: Name of filter to apply
-            parameters: Filter parameters
+            parameters: Filter parameters (will use empty dict if None)
             preview_only: If True, only preview without applying permanently
             
         Returns:
@@ -198,6 +294,10 @@ class ImageProcessingService(QObject):
             
             if filter_name not in self.filter_registry:
                 raise ValueError(f"Unknown filter: {filter_name}")
+            
+            # FIXED: Handle None parameters
+            if parameters is None:
+                parameters = {}
             
             # Emit processing started signal
             self.processing_started.emit(f"Applying {filter_name} filter")
@@ -212,21 +312,21 @@ class ImageProcessingService(QObject):
             for param_name, param_info in filter_info['parameters'].items():
                 final_params[param_name] = param_info['default']
             
-            if parameters:
-                # Validate and update parameters
-                for param_name, param_value in parameters.items():
-                    if param_name in filter_info['parameters']:
-                        param_info = filter_info['parameters'][param_name]
-                        
-                        # Validate parameter bounds
-                        if 'min' in param_info and param_value < param_info['min']:
-                            param_value = param_info['min']
-                            logger.warning(f"Parameter {param_name} clamped to minimum: {param_info['min']}")
-                        if 'max' in param_info and param_value > param_info['max']:
-                            param_value = param_info['max']
-                            logger.warning(f"Parameter {param_name} clamped to maximum: {param_info['max']}")
-                        
-                        final_params[param_name] = param_value
+            # FIXED: Only process if parameters is not None (already handled above)
+            # Validate and update parameters
+            for param_name, param_value in parameters.items():
+                if param_name in filter_info['parameters']:
+                    param_info = filter_info['parameters'][param_name]
+                    
+                    # Validate parameter bounds
+                    if 'min' in param_info and param_value < param_info['min']:
+                        param_value = param_info['min']
+                        logger.warning(f"Parameter {param_name} clamped to minimum: {param_info['min']}")
+                    if 'max' in param_info and param_value > param_info['max']:
+                        param_value = param_info['max']
+                        logger.warning(f"Parameter {param_name} clamped to maximum: {param_info['max']}")
+                    
+                    final_params[param_name] = param_value
             
             logger.info(f"Applying filter '{filter_name}' with parameters: {final_params}")
             
@@ -276,19 +376,23 @@ class ImageProcessingService(QObject):
             self.current_image = last_state['image']
             logger.info(f"Undid filter: {last_state['filter']}")
     
-    def preview_filter(self, filter_name: str, parameters: Dict[str, Any] = None, image: np.ndarray = None) -> Optional[np.ndarray]:
+    def preview_filter(self, filter_name: str, parameters: Optional[Dict[str, Any]] = None, image: Optional[np.ndarray] = None) -> Optional[np.ndarray]:
         """
         Preview filter without applying it permanently.
         
         Args:
             filter_name: Name of filter to preview
-            parameters: Filter parameters
+            parameters: Filter parameters (will use empty dict if None)
             image: Image to preview on (optional, uses current if not provided)
             
         Returns:
             Preview image or None if failed
         """
         try:
+            # FIXED: Handle None parameters
+            if parameters is None:
+                parameters = {}
+            
             # Temporarily set the image if provided
             original_current = self.current_image
             if image is not None:
@@ -301,7 +405,7 @@ class ImageProcessingService(QObject):
             self.current_image = original_current
             
             if preview_result is not None:
-                self.filter_previewed.emit(filter_name, parameters or {}, preview_result)
+                self.filter_previewed.emit(filter_name, parameters, preview_result)
             
             return preview_result
             
@@ -310,6 +414,7 @@ class ImageProcessingService(QObject):
             logger.error(error_msg)
             self.error_occurred.emit(error_msg)
             return None
+
     
     # Step 78: Add filter presets save/load and basic preset management
     def save_preset(self, preset_name: str, filters: List[Dict[str, Any]]) -> bool:
@@ -548,30 +653,35 @@ class ImageProcessingService(QObject):
             else:
                 gray = image
             
-            # Calculate basic metrics
-            contrast = np.std(gray)  # Standard deviation as contrast measure
-            brightness = np.mean(gray)  # Mean intensity
+            # FIXED: Ensure gray is numpy array and handle type issues
+            gray_array = np.asarray(gray, dtype=np.float64)
+            
+            # Calculate basic metrics with proper type handling
+            contrast = float(np.std(gray_array))  # Standard deviation as contrast measure
+            brightness = float(np.mean(gray_array))  # Mean intensity
             
             # Simple sharpness measure using Laplacian variance
             import cv2
-            laplacian = cv2.Laplacian(gray, cv2.CV_64F)
-            sharpness = laplacian.var()
+            laplacian = cv2.Laplacian(gray.astype(np.uint8), cv2.CV_64F)
+            laplacian_array = np.asarray(laplacian, dtype=np.float64)
+            sharpness = float(laplacian_array.var())
             
             # Simple noise estimate using high-frequency content
-            kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]])
+            kernel = np.array([[-1, -1, -1], [-1, 8, -1], [-1, -1, -1]], dtype=np.float32)
             noise_map = cv2.filter2D(gray.astype(np.float32), -1, kernel)
-            noise = np.std(noise_map)
+            noise_array = np.asarray(noise_map, dtype=np.float64)
+            noise = float(np.std(noise_array))
             
             return {
-                'contrast': float(contrast),
-                'brightness': float(brightness),
-                'sharpness': float(sharpness),
-                'noise': float(noise)
+                'contrast': contrast,
+                'brightness': brightness,
+                'sharpness': sharpness,
+                'noise': noise
             }
             
         except Exception as e:
             logger.error(f"Image analysis failed: {e}")
-            return {'contrast': 0, 'brightness': 0, 'sharpness': 0, 'noise': 0}
+            return {'contrast': 0.0, 'brightness': 0.0, 'sharpness': 0.0, 'noise': 0.0}
     
     def get_processing_history(self) -> List[Dict[str, Any]]:
         """Get the history of applied filters."""
@@ -654,5 +764,3 @@ class ImageProcessingService(QObject):
                 }
             }
         }
-
-    # Step 78: Preset management

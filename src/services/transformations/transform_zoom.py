@@ -67,7 +67,7 @@ class TransformZoom:
         return cv2.warpAffine(image, zoom_matrix, (w, h),
                              flags=cv2.INTER_LINEAR,
                              borderMode=cv2.BORDER_CONSTANT,
-                             borderValue=0)
+                             borderValue=(0,))  # type: ignore
     
     def get_zoom_matrix(self, scale: Optional[float] = None, center: Optional[Tuple[float, float]] = None) -> np.ndarray:
         """

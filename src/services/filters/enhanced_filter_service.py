@@ -5,7 +5,7 @@ Integrates the new filter parameter system with the existing filter service.
 
 import os
 import importlib.util
-from typing import Dict, List, Optional, Any, Callable
+from typing import Dict, List, Optional, Any, Callable, Union
 from PySide6.QtCore import QObject, Signal
 import numpy as np
 
@@ -17,12 +17,12 @@ class EnhancedFilterService(QObject):
     """Enhanced filter service with automatic parameter discovery and validation."""
     
     # Signals
-    filter_applied = Signal(str, dict, object)  # filter_name, parameters, result_image
+    filter_applied = Signal(str, dict, np.ndarray)  # filter_name, parameters, result_image
     filter_error = Signal(str, str)  # filter_name, error_message
     preset_loaded = Signal(str, list)  # preset_name, filter_chain
     filters_updated = Signal()  # Emitted when filter definitions are updated
     
-    def __init__(self, filters_directory: str = None):
+    def __init__(self, filters_directory: Optional[str] = None):
         super().__init__()
         self.logger = self._setup_logger()
         
@@ -35,9 +35,9 @@ class EnhancedFilterService(QObject):
         self.parameter_storage = FilterParameterStorage(filters_directory)
         
         # Filter registry
-        self._loaded_filter_functions = {}
-        self._presets = {}
-        self._filter_history = []
+        self._loaded_filter_functions: Dict[str, Dict[str, Any]] = {}
+        self._presets: Dict[str, List[Dict[str, Any]]] = {}
+        self._filter_history: List[Dict[str, Any]] = []
         
         # Initialize the system
         self._initialize_filters()
@@ -103,7 +103,8 @@ class EnhancedFilterService(QObject):
                 filter_def.module_path
             )
             
-            if spec is None:
+            if spec is None or spec.loader is None:
+                self.logger.error(f"Could not load spec for {filter_def.module_path}")
                 return None
             
             module = importlib.util.module_from_spec(spec)
@@ -185,17 +186,28 @@ class EnhancedFilterService(QObject):
             )
             
             # Apply the filter
+            result: Optional[np.ndarray] = None
+            
             if callable(filter_func):
                 # For functions, pass image as first argument
-                result = filter_func(image, **validated_params)
+                result_obj = filter_func(image, **validated_params)
             elif hasattr(filter_func, '__call__'):
                 # For callable objects (classes with __call__)
-                result = filter_func(image)
+                result_obj = filter_func(image)
             elif hasattr(filter_func, 'apply'):
                 # For objects with apply method
-                result = filter_func.apply(image)
+                result_obj = filter_func.apply(image)
             else:
                 raise ValueError(f"Filter function {filter_name} is not callable")
+            
+            # Ensure result is a numpy array or None
+            if isinstance(result_obj, np.ndarray):
+                result = result_obj
+            elif result_obj is None:
+                result = None
+            else:
+                self.logger.warning(f"Filter {filter_name} returned unexpected type: {type(result_obj)}")
+                return None
             
             # Add to history
             self._filter_history.append({
@@ -205,7 +217,9 @@ class EnhancedFilterService(QObject):
                 'output_shape': result.shape if result is not None else None
             })
             
-            self.filter_applied.emit(filter_name, validated_params, result)
+            if result is not None:
+                self.filter_applied.emit(filter_name, validated_params, result)
+            
             self.logger.info(f"Applied filter '{filter_name}' with parameters: {validated_params}")
             
             return result

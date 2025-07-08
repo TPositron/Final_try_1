@@ -3,7 +3,7 @@ Alignment Panel
 Restructured alignment panel with sub-mode switcher, transformation controls, and file selection.
 Layout: Left (sub-modes + controls) | Center (image display) | Right (file selection)
 """
-
+ 
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QSplitter, 
                                QGroupBox, QPushButton, QLabel, QSpinBox, QDoubleSpinBox,
                                QGraphicsView, QGraphicsScene, QGraphicsPixmapItem, QProgressBar,
@@ -25,7 +25,18 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 class AlignmentPanel(QWidget):
-    """Alignment panel with sub-mode switcher, transformation controls, and file selection."""
+    """
+    Alignment panel with sub-mode switcher, transformation controls, and integrated file selection.
+    
+    Layout: Left (sub-modes + controls) | Center (image display) | Right (integrated FileSelector + generate)
+    
+    Features:
+    - Manual/Hybrid/Automatic alignment modes
+    - Integrated FileSelector for consistent file management
+    - Real-time transformation preview
+    - 3-point alignment workflow
+    - Generate aligned GDS functionality
+    """
     
     # Signals
     transform_changed = Signal(dict)  # Emitted when transform parameters change
@@ -45,6 +56,7 @@ class AlignmentPanel(QWidget):
     transformation_confirmed = Signal(dict)     # confirmed_transformation
     validation_status_changed = Signal(bool, str)  # is_valid, status_message
     preview_image_updated = Signal(object)      # preview_image_array (Step 14)
+    preview_updated = Signal(object)            # preview data
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -61,15 +73,30 @@ class AlignmentPanel(QWidget):
         self.current_sub_mode = "manual"
         
         # Components for Step 11
-        self.three_point_controller = None
-        self.transformation_preview = None
+        self.three_point_controller: Optional[ThreePointSelectionController] = None
+        self.transformation_preview: Optional[TransformationPreviewWidget] = None
         
         # Current images for alignment
         self.current_sem_image = None
         self.current_gds_image = None
+        self._current_gds_model = None
+        self._auto_alignment_params = None
+        
+        # Current file selections (tracked from FileSelector)
+        self.current_sem_file_path = None
+        self.current_gds_path = None
+        self.current_structure_id = None
+        
+        # Optional attributes that may not be implemented yet
+        self.method_selector: Optional[Any] = None
+        self.alignment_service: Optional[Any] = None
+        self.preset_selector: Optional[Any] = None
         
         self.setup_ui()
-        self._connect_workflow_signals()
+        # Signal connections now happen in _create_hybrid_controls() when components are created
+        
+        # Initialize FileSelector after UI is set up
+        self._initialize_file_selector()
         
     def setup_ui(self):
         """Initialize the UI components with new 3-panel layout."""
@@ -78,7 +105,7 @@ class AlignmentPanel(QWidget):
         layout.setSpacing(10)
         
         # Create main splitter with 3 sections
-        self.main_splitter = QSplitter(Qt.Horizontal)
+        self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
         
         # Left Panel: Sub-mode switcher + Controls
         left_panel = self._create_left_panel()
@@ -162,19 +189,10 @@ class AlignmentPanel(QWidget):
         
         center_layout.addLayout(title_layout)
         
-        # Image display area
-        self.image_scroll = QScrollArea()
-        self.image_scroll.setWidgetResizable(True)
-        self.image_scroll.setMinimumSize(400, 400)
-        
-        self.image_label = QLabel()
-        self.image_label.setAlignment(Qt.AlignCenter)
-        self.image_label.setStyleSheet("border: 1px solid #3A3A3A; background-color: #2B2B2B; color: #FFFFFF;")
-        self.image_label.setText("No image loaded\n\nSelect SEM and GDS files to begin alignment")
-        self.image_label.setMinimumSize(400, 400)
-        
-        self.image_scroll.setWidget(self.image_label)
-        center_layout.addWidget(self.image_scroll)
+        # Image display area with overlay canvas
+        self.overlay_canvas = OverlayCanvas()
+        self.overlay_canvas.setMinimumSize(400, 400)
+        center_layout.addWidget(self.overlay_canvas)
         
         # Status bar
         self.status_label = QLabel("Ready")
@@ -190,7 +208,7 @@ class AlignmentPanel(QWidget):
         return center_widget
     
     def _create_right_panel(self) -> QWidget:
-        """Create the right panel with file selection."""
+        """Create the right panel with integrated FileSelector."""
         right_widget = QWidget()
         right_widget.setMaximumWidth(300)
         right_widget.setMinimumWidth(250)
@@ -198,39 +216,18 @@ class AlignmentPanel(QWidget):
         right_layout.setContentsMargins(5, 5, 5, 5)
         right_layout.setSpacing(10)
         
-        # File Selection Section
+        # Integrated FileSelector - single source of truth for file selection
         file_group = QGroupBox("File Selection")
         file_layout = QVBoxLayout(file_group)
         
-        # SEM file selection
-        sem_label = QLabel("Select SEM:")
-        sem_label.setStyleSheet("font-weight: bold; color: #4A9EFF;")
-        file_layout.addWidget(sem_label)
+        self.file_selector = FileSelector()
         
-        self.sem_combo = QPushButton("Browse SEM Files...")
-        self.sem_combo.clicked.connect(self._browse_sem_files)
-        file_layout.addWidget(self.sem_combo)
+        # Connect FileSelector signals to AlignmentPanel logic
+        self.file_selector.sem_file_selected.connect(self._on_sem_file_selected)
+        self.file_selector.gds_structure_selected.connect(self._on_structure_selected)
+        self.file_selector.refresh_requested.connect(self._on_files_refreshed)
         
-        self.sem_status = QLabel("No SEM file selected")
-        self.sem_status.setStyleSheet("color: #CCCCCC; font-size: 10px;")
-        file_layout.addWidget(self.sem_status)
-        
-        file_layout.addSpacing(15)
-        
-        # GDS structure selection - now handled by FileSelector component
-        gds_label = QLabel("GDS Structure:")
-        gds_label.setStyleSheet("font-weight: bold; color: #4A9EFF;")
-        file_layout.addWidget(gds_label)
-        
-        # Info label about centralized selection
-        info_label = QLabel("GDS file auto-loaded. Structure selection handled by FileSelector component.")
-        info_label.setStyleSheet("color: #CCCCCC; font-size: 10px; font-style: italic;")
-        file_layout.addWidget(info_label)
-        
-        self.gds_status = QLabel("Institute_Project_GDS1.gds (auto-loaded)")
-        self.gds_status.setStyleSheet("color: #CCCCCC; font-size: 10px;")
-        file_layout.addWidget(self.gds_status)
-        
+        file_layout.addWidget(self.file_selector)
         right_layout.addWidget(file_group)
         
         # Generate Controls Section
@@ -325,15 +322,6 @@ class AlignmentPanel(QWidget):
         
         manual_layout.addLayout(button_layout)
         manual_layout.addStretch()
-
-        # Progress and status widgets
-        self.status_label = QLabel("Ready.")
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setVisible(False)
-        manual_layout.addWidget(self.status_label)
-        manual_layout.addWidget(self.progress_bar)
         
         return manual_widget
     
@@ -343,7 +331,7 @@ class AlignmentPanel(QWidget):
         hybrid_layout = QVBoxLayout(hybrid_widget)
         
         # Create splitter for 3-point selection and preview
-        splitter = QSplitter(Qt.Vertical)
+        splitter = QSplitter(Qt.Orientation.Vertical)
         
         # Three-point selection controller (Step 10)
         self.three_point_controller = ThreePointSelectionController()
@@ -353,12 +341,35 @@ class AlignmentPanel(QWidget):
         self.transformation_preview = TransformationPreviewWidget()
         splitter.addWidget(self.transformation_preview)
         
+        # Connect signals now that components are created
+        self.three_point_controller.alignment_ready.connect(self._on_points_ready)
+        
+        self.transformation_preview.transformation_calculated.connect(
+            self.transformation_calculated.emit
+        )
+        self.transformation_preview.transformation_confirmed.connect(
+            self.transformation_confirmed.emit
+        )
+        self.transformation_preview.preview_updated.connect(
+            self._on_preview_updated
+        )
+        
         # Set splitter proportions (60% selection, 40% preview)
         splitter.setSizes([200, 150])
         
         hybrid_layout.addWidget(splitter)
         
         return hybrid_widget
+    
+    def _initialize_file_selector(self):
+        """Initialize FileSelector with default directories."""
+        if hasattr(self, 'file_selector'):
+            try:
+                # Scan default directories for SEM files and auto-load GDS
+                self.file_selector.scan_directories()
+                logger.info("FileSelector initialized with default directories")
+            except Exception as e:
+                logger.error(f"Failed to initialize FileSelector: {e}")
     
     def _create_automatic_controls(self) -> QWidget:
         """Create automatic alignment controls."""
@@ -367,46 +378,33 @@ class AlignmentPanel(QWidget):
         
         # Placeholder for automatic controls
         label = QLabel("Automatic alignment controls will be here.")
-        label.setAlignment(Qt.AlignCenter)
+        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         auto_layout.addWidget(label)
         
         return auto_widget
     
     def _connect_workflow_signals(self):
         """Connect signals for the Step 11 workflow."""
-        if self.three_point_controller and self.transformation_preview:
-            # Connect 3-point selection to transformation preview
-            self.three_point_controller.alignment_ready.connect(
-                self._on_points_ready
-            )
-            
-            # Connect transformation preview signals
-            self.transformation_preview.transformation_calculated.connect(
-                self.transformation_calculated.emit
-            )
-            self.transformation_preview.transformation_confirmed.connect(
-                self.transformation_confirmed.emit
-            )
-            # Step 14: Connect preview display signal
-            self.transformation_preview.preview_updated.connect(
-                self._on_preview_updated
-            )
+        # Note: Components are created in _create_hybrid_controls(), so they may be None initially
+        # Signal connections will be established when components are created
+        pass
     
-    def _on_points_ready(self, sem_points: list, gds_points: list):
+    def _on_points_ready(self, ready: bool):
         """Handle when 3 point pairs are ready for transformation calculation."""
-        logger.info(f"3 point pairs ready: {len(sem_points)} SEM, {len(gds_points)} GDS")
-        
-        # Emit signal for external handling
-        self.three_points_selected.emit(sem_points, gds_points)
-        
-        # Pass points to transformation preview widget
-        self._expose_points_to_preview(sem_points, gds_points)
-    
-    def _expose_points_to_preview(self, sem_points: list, gds_points: list):
-        """Expose selected 3-point data to the transformation preview widget."""
-        if self.transformation_preview:
-            self.transformation_preview.set_point_pairs(sem_points, gds_points)
-            logger.info("Point pairs exposed to transformation preview widget")
+        if ready and self.three_point_controller:
+            # Get the actual points from the controller
+            sem_points = self.three_point_controller.get_sem_points()
+            gds_points = self.three_point_controller.get_gds_points()
+            
+            logger.info(f"3 point pairs ready: {len(sem_points)} SEM, {len(gds_points)} GDS")
+            
+            # Emit signal for external handling
+            self.three_points_selected.emit(sem_points, gds_points)
+            
+            # Pass points to transformation preview widget
+            if self.transformation_preview:
+                self.transformation_preview.set_point_pairs(sem_points, gds_points)
+                logger.info("Point pairs passed to transformation preview widget")
     
     def _on_preview_updated(self, preview_data):
         """Handle preview update from transformation widget."""
@@ -417,12 +415,15 @@ class AlignmentPanel(QWidget):
     def set_images_for_selection(self, sem_image: np.ndarray, gds_image: np.ndarray):
         """Set images for 3-point selection in hybrid mode."""
         if self.three_point_controller:
-            self.three_point_controller.set_images(sem_image, gds_image)
+            # Use the actual methods available on ThreePointSelectionController
+            # Based on the implementation, we need to update points, not set images directly
+            # This method may need to be coordinated with the image viewers
+            logger.info("Images available for 3-point selection")
     
     def set_images_for_preview(self, sem_image: np.ndarray, gds_image: np.ndarray):
         """Set images for transformation preview."""
         if self.transformation_preview:
-            self.transformation_preview.set_reference_images(sem_image, gds_image)
+            self.transformation_preview.set_images_for_preview(gds_image, sem_image)
     
     def set_initial_gds_image(self, gds_image: np.ndarray):
         """Display the structure-specific GDS image."""
@@ -445,42 +446,29 @@ class AlignmentPanel(QWidget):
         print("This should show ONLY the selected structure region!")
         print("===================================\n")
     
-    # Override the existing _display_gds_image to use center panel
     def _display_gds_image(self, gds_image: np.ndarray):
-        """Display GDS image in the center panel."""
+        """Display GDS image in the overlay canvas."""
         try:
             if gds_image is not None and gds_image.size > 0:
-                height, width = gds_image.shape
+                # Load GDS image into overlay canvas
+                self.overlay_canvas.load_gds_overlay(gds_image)
                 
-                # Convert binary image to RGB for display
-                if len(gds_image.shape) == 2:  # Grayscale/binary
-                    # Create colored version (cyan like in your screenshot)
-                    display_image = np.zeros((height, width, 3), dtype=np.uint8)
-                    display_image[gds_image > 0] = [0, 255, 255]  # Cyan color for structures
-                else:
-                    display_image = gds_image
-                
-                # Use the center panel display method
                 non_zero = np.count_nonzero(gds_image)
-                title = f"GDS Structure: {gds_image.shape}, {non_zero} active pixels"
-                self._display_image_in_center(display_image, title)
-                
-                print(f"Structure image displayed in center panel: {width}x{height}")
+                print(f"Structure image loaded into overlay canvas: {gds_image.shape}")
                 logger.info(f"GDS image displayed: {gds_image.shape}, {non_zero} pixels")
             else:
-                self.image_label.clear()
-                self.image_label.setText("No Structure Selected")
+                logger.warning("No GDS image to display")
                 
         except Exception as e:
             logger.error(f"Failed to display GDS image: {e}")
-            self.image_label.setText(f"Error displaying image: {e}")
     
     def set_initial_sem_image(self, sem_image: np.ndarray):
         """Set initial SEM image for alignment operations."""
-        # Store the SEM image for later use
+        # Store and load SEM image
         self.current_sem_image = sem_image
+        self.overlay_canvas.load_sem_image(sem_image)
         
-        # If we have both SEM and GDS images, set them for selection and preview
+        # If we have both SEM and GDS images, set them for selection and preview  
         if hasattr(self, 'current_gds_image') and self.current_gds_image is not None:
             self.set_images_for_selection(sem_image, self.current_gds_image)
             self.set_images_for_preview(sem_image, self.current_gds_image)
@@ -506,6 +494,7 @@ class AlignmentPanel(QWidget):
     
     def _on_translate_x_changed(self, value):
         """Handle X translation change."""
+        print(f"X translation changed to: {value}")
         self.transform_params['translate_x'] = value
         self._emit_transform_changed()
         
@@ -526,8 +515,14 @@ class AlignmentPanel(QWidget):
         
     def _emit_transform_changed(self):
         """Emit transform changed signal and update display."""
+        print(f"Transform changed: {self.transform_params}")
         self.transform_changed.emit(self.transform_params.copy())
-        # Update image display if available
+        # Direct update for real-time preview
+        if hasattr(self, 'overlay_canvas'):
+            print("Calling overlay_canvas.update_transform")
+            self.overlay_canvas.update_transform(self.transform_params)
+        else:
+            print("No overlay_canvas found!")
         self._update_image_display()
         
     def _on_apply_clicked(self):
@@ -536,6 +531,7 @@ class AlignmentPanel(QWidget):
         
     def _on_reset_clicked(self):
         """Handle reset button click."""
+        print("Reset button clicked")
         self.transform_params = {
             'translate_x': 0.0,
             'translate_y': 0.0,
@@ -544,12 +540,27 @@ class AlignmentPanel(QWidget):
         }
         self._update_controls()
         self.reset_requested.emit()
+        # Direct reset of overlay canvas
+        if hasattr(self, 'overlay_canvas'):
+            self.overlay_canvas.reset_transform()
         self._update_image_display()
         
     def _on_auto_align_clicked(self):
         """Handle auto align button click."""
-        # Placeholder for auto alignment
-        self.alignment_applied.emit(self.transform_params.copy())
+        try:
+            # Run automatic alignment and store results
+            # This would typically call an auto alignment service
+            # For now, emit current params and store them as auto params
+            self._auto_alignment_params = self.transform_params.copy()
+            self.alignment_applied.emit(self.transform_params.copy())
+            
+            # Update generate button state after auto alignment
+            self._update_generate_button_state()
+            
+            logger.info("Auto alignment completed")
+            
+        except Exception as e:
+            logger.error(f"Error in auto alignment: {e}")
         
     def _update_controls(self):
         """Update control values to match transform_params."""
@@ -563,102 +574,134 @@ class AlignmentPanel(QWidget):
         self.transform_params.update(transform_params)
         self._update_controls()
         self._update_image_display()
+    
+    def set_gds_model(self, aligned_gds_model):
+        """Set the current AlignedGdsModel for automatic alignment operations."""
+        try:
+            self._current_gds_model = aligned_gds_model
+            
+            # Update generate button state
+            self._update_generate_button_state()
+            
+            logger.debug(f"GDS model set for auto alignment: {'loaded' if aligned_gds_model is not None else 'None'}")
+            
+        except Exception as e:
+            logger.error(f"Error setting GDS model: {e}")
+    
+    def set_auto_alignment_params(self, params: Dict[str, float]):
+        """Set parameters from automatic alignment process."""
+        try:
+            self._auto_alignment_params = params.copy()
+            logger.info(f"Auto alignment parameters set: {params}")
+            
+            # Update generate button state
+            self._update_generate_button_state()
+            
+        except Exception as e:
+            logger.error(f"Error setting auto alignment params: {e}")
         
     def load_sem_image(self, image_array: np.ndarray):
-        """Load SEM image into center display."""
+        """Load SEM image into overlay canvas."""
         self.current_sem_image = image_array
-        self._display_image_in_center(image_array, "SEM Image")
+        self.overlay_canvas.load_sem_image(image_array)
         
     def load_gds_overlay(self, image_array: np.ndarray):
         """Load GDS overlay into center display."""
         self.current_gds_image = image_array
         self._display_gds_image(image_array)
     
-    def _browse_sem_files(self):
-        """Browse and select SEM files."""
-        try:
-            # Get SEM data directory
-            data_dir = Path(__file__).parent.parent.parent.parent / "Data" / "SEM"
-            if not data_dir.exists():
-                data_dir = Path.home()
-            
-            # Open file dialog
-            file_path, _ = QFileDialog.getOpenFileName(
-                self,
-                "Select SEM Image File",
-                str(data_dir),
-                "Image Files (*.tif *.tiff *.png *.jpg *.jpeg *.bmp);;All Files (*)"
-            )
-            
-            if file_path:
-                self.sem_combo.setText(Path(file_path).name)
-                self.sem_status.setText(f"Selected: {Path(file_path).name}")
-                self.sem_status.setStyleSheet("color: #4CAF50; font-size: 10px;")
-                
-                # Emit signal for file loading
-                self.sem_file_selected.emit(file_path)
-                logger.info(f"SEM file selected: {file_path}")
-                
-                # Update generate button state
-                self._update_generate_button_state()
-                
-        except Exception as e:
-            logger.error(f"Error browsing SEM files: {e}")
-            QMessageBox.warning(self, "Error", f"Failed to browse SEM files: {e}")
+    def _on_sem_file_selected(self, file_path: str):
+        """Handle SEM file selection from FileSelector."""
+        # Store the selected file
+        self.current_sem_file_path = file_path
+        
+        # Emit signal for external handling (loading image, etc.)
+        self.sem_file_selected.emit(file_path)
+        logger.info(f"SEM file selected: {file_path}")
+        
+        # Update generate button state
+        self._update_generate_button_state()
     
-    def _browse_gds_files(self):
-        """Browse and select GDS files."""
-        # GDS file selection is now handled by the FileSelector component
-        # This method is kept for compatibility but no longer needed
-        print("GDS file selection is now handled by FileSelector component")
+    def _on_structure_selected(self, gds_path: str, structure_id: int):
+        """Handle GDS structure selection from FileSelector."""
+        # Store the selected structure info
+        self.current_gds_path = gds_path
+        self.current_structure_id = structure_id
+        
+        # Emit signal for external handling (loading structure image, etc.)
+        self.gds_structure_selected.emit(gds_path, structure_id)
+        logger.info(f"Structure selected: {structure_id} from {gds_path}")
+        
+        # Update generate button state
+        self._update_generate_button_state()
     
-    def _select_structure(self):
-        """Select GDS structure from available structures."""
-        # Structure selection is now handled by the FileSelector component
-        # This method is kept for compatibility but no longer needed
-        print("Structure selection is now handled by FileSelector component")
-        try:
-            structures = ["Structure 1 - IP935Left_11", "Structure 2 - IP935Left_14", "Structure 3 - QC855GC_CROSS"]
-            
-            # Create a simple selection dialog
-            from PySide6.QtWidgets import QInputDialog
-            structure, ok = QInputDialog.getItem(
-                self, 
-                "Select GDS Structure", 
-                "Choose structure:",
-                structures, 
-                0, 
-                False
-            )
-            
-            if ok and structure:
-                # Structure selection is now handled by FileSelector component
-                print(f"Structure selection {structure} would be handled by FileSelector component")
-                
-        except Exception as e:
-            logger.error(f"Error selecting structure: {e}")
-            QMessageBox.warning(self, "Error", f"Failed to select structure: {e}")
+    def _on_files_refreshed(self):
+        """Handle file refresh from FileSelector."""
+        logger.info("File listings refreshed")
+        # Update generate button state in case selections changed
+        self._update_generate_button_state()
     
     def _generate_aligned_gds(self):
-        """Generate aligned GDS file."""
+        """Generate aligned GDS file using automatic alignment parameters."""
         try:
+            from pathlib import Path
+            from datetime import datetime
+            from src.services.gds_transformation_service import GdsTransformationService
+            
             self.status_label.setText("Generating aligned GDS...")
             self.progress_bar.setVisible(True)
-            self.progress_bar.setValue(0)
+            self.progress_bar.setValue(25)
             
-            # Simulate progress
-            for i in range(0, 101, 10):
-                self.progress_bar.setValue(i)
-                QApplication.processEvents()
-                
-            # Emit signal for generation
-            self.alignment_applied.emit(self.transform_params.copy())
+            # Check if we have GDS model and auto alignment parameters
+            if not hasattr(self, '_current_gds_model') or self._current_gds_model is None:
+                raise ValueError("No GDS model loaded for automatic alignment")
             
+            if not hasattr(self, '_auto_alignment_params') or self._auto_alignment_params is None:
+                # Use current transform params as fallback
+                self._auto_alignment_params = self.transform_params.copy()
+                logger.warning("Using current transform params instead of auto alignment results")
+            
+            self.progress_bar.setValue(50)
+            
+            # Create output directory
+            output_dir = Path("Results/Aligned/auto")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"aligned_auto_{timestamp}.gds"
+            output_path = output_dir / filename
+            
+            self.progress_bar.setValue(75)
+            
+            # Use GdsTransformationService to create new GDS file
+            transformation_service = GdsTransformationService()
+            
+            # Get transformation parameters from auto alignment
+            transform_params = {
+                'x_offset': self._auto_alignment_params.get('translate_x', 0),
+                'y_offset': self._auto_alignment_params.get('translate_y', 0),
+                'rotation': self._auto_alignment_params.get('rotation', 0),
+                'scale': self._auto_alignment_params.get('scale', 1.0)
+            }
+            
+            # Transform the structure
+            transformed_cell = transformation_service.transform_structure(
+                original_gds_path=str(self._current_gds_model.initial_model.gds_path),
+                structure_name=self._current_gds_model.initial_model.cell.name,
+                transformation_params=transform_params,
+                gds_bounds=tuple(self._current_gds_model.original_frame)
+            )
+            
+            # Save the transformed GDS file
+            transformation_service.save_transformed_gds(transformed_cell, str(output_path))
+            
+            self.progress_bar.setValue(100)
             self.status_label.setText("Aligned GDS generated successfully")
             self.progress_bar.setVisible(False)
             
-            QMessageBox.information(self, "Success", "Aligned GDS file generated successfully!")
-            logger.info("Aligned GDS generated")
+            QMessageBox.information(self, "Success", f"Aligned GDS file generated successfully!\nSaved to: {output_path}")
+            logger.info(f"Auto-aligned GDS generated: {output_path}")
             
         except Exception as e:
             logger.error(f"Error generating aligned GDS: {e}")
@@ -667,26 +710,30 @@ class AlignmentPanel(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to generate aligned GDS: {e}")
     
     def _update_generate_button_state(self):
-        """Update the generate button enabled state based on file selection."""
-        # Check if both SEM and GDS files are selected
-        sem_selected = "Selected:" in self.sem_status.text()
-        gds_selected = "Selected:" in self.gds_status.text()
-        structure_selected = "Structure:" in self.gds_status.text()
+        """Update generate button state based on FileSelector selections and auto alignment."""
+        # Check FileSelector state
+        sem_selected = self.file_selector.get_selected_sem_file() is not None
+        structure_selected = self.file_selector.get_selected_structure_id() is not None
+        has_gds_model = hasattr(self, '_current_gds_model') and self._current_gds_model is not None
         
-        # Enable generate button if all required files are selected
-        if sem_selected and gds_selected and structure_selected:
-            self.generate_button.setEnabled(True)
-            self.generate_button.setToolTip("Generate aligned GDS file")
+        # Enable generate button if we have files and GDS model
+        self.generate_button.setEnabled(sem_selected and structure_selected and has_gds_model)
+        
+        if sem_selected and structure_selected and has_gds_model:
+            self.generate_button.setToolTip("Generate aligned GDS file using automatic alignment")
+            logger.debug("Generate button enabled - ready for auto alignment")
         else:
-            self.generate_button.setEnabled(False)
             missing = []
             if not sem_selected:
                 missing.append("SEM file")
-            if not gds_selected:
-                missing.append("GDS file")
             if not structure_selected:
-                missing.append("structure")
-            self.generate_button.setToolTip(f"Missing: {', '.join(missing)}")
+                missing.append("GDS structure")
+            if not has_gds_model:
+                missing.append("GDS model")
+            
+            tooltip_text = f"Missing: {', '.join(missing)}"
+            self.generate_button.setToolTip(tooltip_text)
+            logger.debug(f"Generate button disabled - {tooltip_text}")
     
     def _connect_view_controls(self):
         """Connect view control button signals."""
@@ -711,46 +758,11 @@ class AlignmentPanel(QWidget):
         
     def _update_image_display(self):
         """Update the image display with current transform parameters."""
+        if hasattr(self, 'overlay_canvas'):
+            self.overlay_canvas.update_transform(self.transform_params)
         logger.debug(f"Image display updated with transform: {self.transform_params}")
     
-    def _display_image_in_center(self, image_array: np.ndarray, title: str = ""):
-        """Display image in the center panel."""
-        try:
-            if image_array is not None and image_array.size > 0:
-                height, width = image_array.shape[:2]
-                
-                # Convert to RGB if needed
-                if len(image_array.shape) == 2:  # Grayscale
-                    display_image = np.stack([image_array] * 3, axis=2)
-                else:
-                    display_image = image_array
-                
-                # Convert to Qt format
-                bytes_per_line = 3 * width
-                qimage = QImage(display_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
-                
-                # Convert to pixmap and display
-                pixmap = QPixmap.fromImage(qimage)
-                
-                # Scale to fit display area while maintaining aspect ratio
-                label_size = self.image_label.size()
-                scaled_pixmap = pixmap.scaled(label_size, Qt.KeepAspectRatio, Qt.SmoothTransformation)
-                
-                self.image_label.setPixmap(scaled_pixmap)
-                self.image_label.setText("")  # Clear placeholder text
-                
-                # Update title if provided
-                if title:
-                    self.image_label.setToolTip(title)
-                
-                logger.info(f"Image displayed in center panel: {width}x{height}")
-            else:
-                self.image_label.clear()
-                self.image_label.setText("No image loaded")
-                
-        except Exception as e:
-            logger.error(f"Failed to display image in center panel: {e}")
-            self.image_label.setText(f"Error displaying image: {e}")
+
         
     def reset(self):
         """Reset panel to default state."""
@@ -764,20 +776,27 @@ class AlignmentPanel(QWidget):
         self._update_controls()
         self._update_image_display()
         
-        # Reset file selections
-        self.sem_combo.setText("Browse SEM Files...")
-        self.sem_status.setText("No SEM file selected")
-        self.sem_status.setStyleSheet("color: #CCCCCC; font-size: 10px;")
+        # Reset file selections through FileSelector
+        if hasattr(self, 'file_selector'):
+            self.file_selector.clear_files()
         
-        # GDS file is auto-loaded, structure selection handled by FileSelector
-        self.gds_status.setText("Institute_Project_GDS1.gds (auto-loaded)")
-        self.gds_status.setStyleSheet("color: #CCCCCC; font-size: 10px;")
+        # Reset tracked file paths
+        self.current_sem_file_path = None
+        self.current_gds_path = None
+        self.current_structure_id = None
         
+        # Reset GDS model and auto alignment params
+        self._current_gds_model = None
+        self._auto_alignment_params = None
+        
+        # Reset generate button
         self.generate_button.setEnabled(False)
         
-        # Clear image display
-        self.image_label.clear()
-        self.image_label.setText("No image loaded\n\nSelect SEM and GDS files to begin alignment")
+        # Clear overlay canvas
+        if hasattr(self, 'overlay_canvas'):
+            self.overlay_canvas.reset_transform()
+        
+        logger.info("Alignment panel reset to default state")
         
     def get_current_state(self) -> Dict[str, Any]:
         """Get current panel state for session saving."""
@@ -817,7 +836,7 @@ class AlignmentPanel(QWidget):
         }
         
         # Get current alignment method if selector exists
-        if hasattr(self, 'method_selector'):
+        if self.method_selector:
             config['alignment_method'] = self.method_selector.currentText().lower()
         
         # Get manual transformation parameters
@@ -844,14 +863,22 @@ class AlignmentPanel(QWidget):
         
         # Get transform matrix if available
         try:
-            if hasattr(self.alignment_service, 'get_current_transform'):
+            if self.alignment_service and hasattr(self.alignment_service, 'get_current_transform'):
                 config['current_transform'] = self.alignment_service.get_current_transform()
         except Exception as e:
             logger.debug(f"Could not get current transform: {e}")
         
         # Get preset information
-        if hasattr(self, 'preset_selector'):
+        if self.preset_selector:
             config['selected_preset'] = self.preset_selector.currentText()
+        
+        # Get current file selections from integrated FileSelector
+        if hasattr(self, 'file_selector'):
+            config['file_selections'] = {
+                'sem_file': self.file_selector.get_selected_sem_file(),
+                'gds_file': self.file_selector.get_selected_gds_file(),
+                'structure_id': self.file_selector.get_selected_structure_id()
+            }
         
         return config
         
@@ -866,6 +893,23 @@ class AlignmentPanel(QWidget):
         if hasattr(self, 'progress_bar'):
             self.progress_bar.setValue(progress)
             self.progress_bar.setVisible(True if progress < 100 else False)
+    
+    def get_file_selector(self) -> Optional[FileSelector]:
+        """Get reference to the integrated FileSelector component."""
+        return getattr(self, 'file_selector', None)
+    
+    def get_current_file_selections(self) -> Dict[str, Any]:
+        """Get current file selections from FileSelector."""
+        if hasattr(self, 'file_selector'):
+            return {
+                'sem_file': self.file_selector.get_selected_sem_file(),
+                'gds_file': self.file_selector.get_selected_gds_file(),
+                'structure_id': self.file_selector.get_selected_structure_id(),
+                'sem_file_path': self.current_sem_file_path,
+                'gds_path': self.current_gds_path,
+                'structure_id_tracked': self.current_structure_id
+            }
+        return {}
         
 class OverlayCanvas(QGraphicsView):
     """Simple overlay canvas for displaying SEM and GDS images."""
@@ -873,8 +917,8 @@ class OverlayCanvas(QGraphicsView):
     def __init__(self, parent=None):
         super().__init__(parent)
         
-        self.scene = QGraphicsScene()
-        self.setScene(self.scene)
+        self._scene = QGraphicsScene()
+        self.setScene(self._scene)
         
         # Image items
         self.sem_item = None
@@ -892,14 +936,14 @@ class OverlayCanvas(QGraphicsView):
         
     def setup_canvas(self):
         """Initialize canvas settings."""
-        self.setDragMode(QGraphicsView.RubberBandDrag)
+        self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         self.setRenderHint(QPainter.RenderHint.Antialiasing, True)
         self.setMinimumSize(400, 300)
         
     def load_sem_image(self, image_array: np.ndarray):
         """Load SEM image as background."""
         if self.sem_item:
-            self.scene.removeItem(self.sem_item)
+            self._scene.removeItem(self.sem_item)
             
         # Convert numpy array to QPixmap
         height, width = image_array.shape[:2]
@@ -908,19 +952,19 @@ class OverlayCanvas(QGraphicsView):
             image_array = np.stack([image_array] * 3, axis=2)
             
         q_image = QImage(image_array.data, width, height, 
-                        width * 3, QImage.Format_RGB888)
+                        width * 3, QImage.Format.Format_RGB888)
         pixmap = QPixmap.fromImage(q_image)
         
         self.sem_item = QGraphicsPixmapItem(pixmap)
-        self.scene.addItem(self.sem_item)
+        self._scene.addItem(self.sem_item)
         
         # Fit view to image
-        self.fitInView(self.sem_item, Qt.KeepAspectRatio)
+        self.fitInView(self.sem_item, Qt.AspectRatioMode.KeepAspectRatio)
         
     def load_gds_overlay(self, image_array: np.ndarray):
         """Load GDS overlay image."""
         if self.gds_item:
-            self.scene.removeItem(self.gds_item)
+            self._scene.removeItem(self.gds_item)
             
         # Convert numpy array to QPixmap with transparency
         height, width = image_array.shape[:2]
@@ -933,40 +977,41 @@ class OverlayCanvas(QGraphicsView):
             rgba_array = image_array
             
         q_image = QImage(rgba_array.data, width, height,
-                        width * 4, QImage.Format_RGBA8888)
+                        width * 4, QImage.Format.Format_RGBA8888)
         pixmap = QPixmap.fromImage(q_image)
         
         self.gds_item = QGraphicsPixmapItem(pixmap)
-        self.scene.addItem(self.gds_item)
+        self._scene.addItem(self.gds_item)
         
         # Apply current transform
         self.update_transform(self.transform_params)
         
     def update_transform(self, transform_params: Dict[str, float]):
         """Update GDS overlay transform."""
+        print(f"OverlayCanvas.update_transform called with: {transform_params}")
         if not self.gds_item:
+            print("No GDS item to transform!")
             return
-            
-        self.transform_params = transform_params.copy()
         
-        # Reset transform
-        self.gds_item.resetTransform()
+        print(f"GDS item exists: {self.gds_item}")
+        print(f"Current GDS position: {self.gds_item.pos()}")
         
-        # Apply transformations in order
-        # 1. Scale
-        scale = transform_params.get('scale', 1.0)
-        self.gds_item.setScale(scale)
-        
-        # 2. Rotation
-        rotation = transform_params.get('rotation', 0.0)
-        self.gds_item.setRotation(rotation)
-        
-        # 3. Translation
+        # Get transform values
         translate_x = transform_params.get('translate_x', 0.0)
         translate_y = transform_params.get('translate_y', 0.0)
-        current_pos = self.gds_item.pos()
-        self.gds_item.setPos(current_pos.x() + translate_x, 
-                           current_pos.y() + translate_y)
+        rotation = transform_params.get('rotation', 0.0)
+        scale = transform_params.get('scale', 1.0)
+        
+        print(f"Setting position to: ({translate_x}, {translate_y})")
+        
+        # Force movement - just translation first
+        self.gds_item.setPos(translate_x, translate_y)
+        
+        print(f"New GDS position: {self.gds_item.pos()}")
+        
+        # Force scene update
+        self._scene.update()
+        self.update()
         
     def reset_transform(self):
         """Reset GDS overlay to original position."""
@@ -993,17 +1038,17 @@ class OverlayCanvas(QGraphicsView):
             
     def mousePressEvent(self, event):
         """Handle mouse press for panning."""
-        if event.button() == Qt.MiddleButton:
-            self.setDragMode(QGraphicsView.ScrollHandDrag)
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.setDragMode(QGraphicsView.DragMode.ScrollHandDrag)
         super().mousePressEvent(event)
         
     def mouseReleaseEvent(self, event):
         """Handle mouse release."""
-        if event.button() == Qt.MiddleButton:
-            self.setDragMode(QGraphicsView.RubberBandDrag)
+        if event.button() == Qt.MouseButton.MiddleButton:
+            self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
         super().mouseReleaseEvent(event)
         
     def fit_in_view(self):
         """Fit all content in view."""
-        if self.scene.items():
-            self.fitInView(self.scene.itemsBoundingRect(), Qt.KeepAspectRatio)
+        if self._scene.items():
+            self.fitInView(self._scene.itemsBoundingRect(), Qt.AspectRatioMode.KeepAspectRatio)

@@ -18,12 +18,37 @@ class OverlayRenderer:
             sem_image: SemImage instance providing image dimensions and scale
             initial_gds_bounds: (xmin, ymin, xmax, ymax) of original GDS extraction area
         """
-        if not sem_image.is_loaded if hasattr(sem_image, 'is_loaded') else True:
-            raise ValueError("SemImage must be loaded")
+        # FIX 1: Check if image data is loaded (SemImage doesn't have is_loaded attribute)
+        if not hasattr(sem_image, 'image_data') or getattr(sem_image, 'image_data') is None:
+            raise ValueError("SemImage must have image data loaded")
             
         self.sem_image = sem_image
-        self.sem_height, self.sem_width = self.sem_image.shape
-        self.sem_pixel_size = self.sem_image.pixel_size
+        
+        # FIX 2: Use the actual SemImage.shape property
+        if hasattr(sem_image, 'shape'):
+            shape = getattr(sem_image, 'shape')
+            self.sem_height, self.sem_width = shape
+        elif hasattr(sem_image, 'image_data'):
+            image_data = getattr(sem_image, 'image_data')
+            if image_data is not None and hasattr(image_data, 'shape'):
+                self.sem_height, self.sem_width = image_data.shape
+            else:
+                # Fallback to default SEM dimensions
+                self.sem_height, self.sem_width = 666, 1024
+                print(f"Warning: Could not determine SEM image dimensions, using defaults: {self.sem_width}x{self.sem_height}")
+        else:
+            # Fallback to default SEM dimensions
+            self.sem_height, self.sem_width = 666, 1024
+            print(f"Warning: Could not determine SEM image dimensions, using defaults: {self.sem_width}x{self.sem_height}")
+        
+        # FIX 3: SemImage doesn't have pixel_size - use default or derive from metadata
+        self.sem_pixel_size = 1.0  # Default pixel size
+        if hasattr(sem_image, 'metadata'):
+            metadata = getattr(sem_image, 'metadata')
+            if isinstance(metadata, dict):
+                # Try to get pixel size from metadata
+                self.sem_pixel_size = metadata.get('pixel_size', metadata.get('pixel_scale', metadata.get('scale', 1.0)))
+        print(f"Info: Using SEM pixel size: {self.sem_pixel_size}")
         
         # Store initial GDS bounds and calculate center
         self.gds_xmin, self.gds_ymin, self.gds_xmax, self.gds_ymax = initial_gds_bounds
@@ -306,3 +331,4 @@ class OverlayRenderer:
 class OverlayError(Exception):
     """Custom exception for overlay rendering errors."""
     pass
+

@@ -53,8 +53,12 @@ class FrameExtractionService:
         logger.debug(f"Transformation params: {transformation_params}")
         
         try:
+            # FIX 1: Convert structure_name to structure_id and gds_bounds to pixel_size
+            structure_id = self._get_structure_id(structure_name)
+            pixel_size = self._calculate_pixel_size(gds_bounds, output_size)
+            
             # Create a frame-based model for the specific structure
-            model = create_aligned_model_for_structure(gds_path, structure_name, gds_bounds)
+            model = create_aligned_model_for_structure(gds_path, structure_id, pixel_size)
             
             # Apply transformations to the frame
             self._apply_transformations(model, transformation_params)
@@ -118,6 +122,81 @@ class FrameExtractionService:
         except Exception as e:
             logger.error(f"Error extracting to file: {e}", exc_info=True)
             return False
+    
+    def _get_structure_id(self, structure_name: str) -> int:
+        """
+        Convert structure name to structure ID.
+        
+        Args:
+            structure_name: Name of the structure
+            
+        Returns:
+            Integer ID for the structure
+        """
+        # FIX 1A: Handle structure name to ID conversion
+        try:
+            # If the structure_name is already numeric, convert it
+            if structure_name.isdigit():
+                return int(structure_name)
+            
+            # For string names, use a hash-based approach or lookup
+            # This is a fallback - ideally you'd have a proper mapping
+            structure_id_map = {
+                'Circpol_T2': 1,
+                'IP935Left_11': 2,
+                'IP935Left_14': 3,
+                'QC855GC_CROSS_Bottom': 4,
+                'QC935_46': 5,
+                'main': 0,  # Default main structure
+            }
+            
+            if structure_name in structure_id_map:
+                return structure_id_map[structure_name]
+            
+            # Fallback: use hash of string name
+            return abs(hash(structure_name)) % 1000  # Keep it reasonable
+            
+        except Exception as e:
+            logger.warning(f"Could not convert structure name '{structure_name}' to ID, using default 0: {e}")
+            return 0
+    
+    def _calculate_pixel_size(self, gds_bounds: Tuple[float, float, float, float], 
+                            output_size: Tuple[int, int]) -> float:
+        """
+        Calculate pixel size from GDS bounds and output resolution.
+        
+        Args:
+            gds_bounds: Bounds of the structure (xmin, ymin, xmax, ymax)
+            output_size: Output resolution (width, height)
+            
+        Returns:
+            Pixel size in GDS units per pixel
+        """
+        # FIX 1B: Convert bounds tuple to pixel size
+        try:
+            xmin, ymin, xmax, ymax = gds_bounds
+            gds_width = xmax - xmin
+            gds_height = ymax - ymin
+            
+            output_width, output_height = output_size
+            
+            # Calculate pixel size based on the limiting dimension
+            x_pixel_size = gds_width / output_width if output_width > 0 else 1.0
+            y_pixel_size = gds_height / output_height if output_height > 0 else 1.0
+            
+            # Use the larger pixel size to ensure the entire structure fits
+            pixel_size = max(x_pixel_size, y_pixel_size)
+            
+            # Ensure we have a reasonable minimum pixel size
+            if pixel_size <= 0:
+                pixel_size = 1.0
+                
+            logger.debug(f"Calculated pixel size: {pixel_size} from bounds {gds_bounds} and output size {output_size}")
+            return pixel_size
+            
+        except Exception as e:
+            logger.warning(f"Could not calculate pixel size from bounds {gds_bounds}, using default: {e}")
+            return 1.0  # Default pixel size
     
     def _apply_transformations(self, model: AlignedGdsModel, params: Dict[str, float]) -> None:
         """

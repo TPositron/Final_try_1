@@ -15,7 +15,7 @@ from typing import Optional, Dict, Any, Tuple
 class AlignmentCanvas(QGraphicsView):
     """
     Canvas for displaying and aligning SEM and GDS images.
-    Optimized for standard 1024x666 dimensions with enhanced scaling and display.
+    Optimized for standard 1024x666 dimensions with enhanced display and scaling.
     """
     
     # Standard SEM dimensions after cropping
@@ -26,14 +26,6 @@ class AlignmentCanvas(QGraphicsView):
     mouse_clicked = Signal(float, float)  # Emitted when canvas is clicked
     zoom_requested = Signal(float)  # Emitted when zoom is requested
     transform_changed = Signal(dict)  # Emitted when transform changes
-
-
-class AlignmentCanvas(QGraphicsView):
-    """Canvas for displaying and aligning SEM and GDS images."""
-    
-    # Signals
-    mouse_clicked = Signal(float, float)  # Emitted when canvas is clicked
-    zoom_requested = Signal(float)  # Emitted when zoom is requested
     
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -59,18 +51,19 @@ class AlignmentCanvas(QGraphicsView):
         
     def setup_canvas(self):
         """Initialize the graphics scene and view with standard dimensions."""
-        self.scene = QGraphicsScene()
-        self.setScene(self.scene)
+        # FIXED: Use a different attribute name to avoid conflict with QGraphicsView.scene() method
+        self._graphics_scene = QGraphicsScene()
+        self.setScene(self._graphics_scene)
         
         # Configure view for optimal image display
-        self.setDragMode(QGraphicsView.RubberBandDrag)
-        self.setRenderHint(QPainter.Antialiasing)
-        self.setRenderHint(QPainter.SmoothPixmapTransform)
-        self.setResizeAnchor(QGraphicsView.AnchorViewCenter)
-        self.setTransformationAnchor(QGraphicsView.AnchorUnderMouse)
+        self.setDragMode(QGraphicsView.DragMode.RubberBandDrag)
+        self.setRenderHint(QPainter.RenderHint.Antialiasing)
+        self.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform)
+        self.setResizeAnchor(QGraphicsView.ViewportAnchor.AnchorViewCenter)
+        self.setTransformationAnchor(QGraphicsView.ViewportAnchor.AnchorUnderMouse)
         
         # Set scene rectangle to standard SEM dimensions
-        self.scene.setSceneRect(0, 0, self.STANDARD_WIDTH, self.STANDARD_HEIGHT)
+        self._graphics_scene.setSceneRect(0, 0, self.STANDARD_WIDTH, self.STANDARD_HEIGHT)
         
         # Set background
         self.setBackgroundBrush(QBrush(QColor(50, 50, 50)))  # Dark gray background
@@ -88,7 +81,7 @@ class AlignmentCanvas(QGraphicsView):
         try:
             # Remove existing SEM item
             if self.sem_item:
-                self.scene.removeItem(self.sem_item)
+                self._graphics_scene.removeItem(self.sem_item)
                 self.sem_item = None
             
             # Scale image to standard dimensions if needed
@@ -100,7 +93,7 @@ class AlignmentCanvas(QGraphicsView):
                 return False
             
             # Add to scene
-            self.sem_item = self.scene.addPixmap(pixmap)
+            self.sem_item = self._graphics_scene.addPixmap(pixmap)
             self.sem_item.setZValue(0)  # SEM image in background
             
             self.image_loaded = True
@@ -130,7 +123,7 @@ class AlignmentCanvas(QGraphicsView):
         try:
             # Remove existing GDS item
             if self.gds_item:
-                self.scene.removeItem(self.gds_item)
+                self._graphics_scene.removeItem(self.gds_item)
                 self.gds_item = None
             
             # Scale image to standard dimensions if needed
@@ -142,7 +135,7 @@ class AlignmentCanvas(QGraphicsView):
                 return False
             
             # Add to scene
-            self.gds_item = self.scene.addPixmap(overlay_pixmap)
+            self.gds_item = self._graphics_scene.addPixmap(overlay_pixmap)
             self.gds_item.setZValue(1)  # GDS overlay on top
             
             # Apply current transform
@@ -229,11 +222,11 @@ class AlignmentCanvas(QGraphicsView):
         
         if is_grayscale:
             bytes_per_line = width
-            qimage = QImage(image_array.data, width, height, bytes_per_line, QImage.Format_Grayscale8)
+            qimage = QImage(image_array.data, width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
         else:
             # Assume RGB format
             bytes_per_line = width * 3
-            qimage = QImage(image_array.data, width, height, bytes_per_line, QImage.Format_RGB888)
+            qimage = QImage(image_array.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
         
         return QPixmap.fromImage(qimage)
     
@@ -252,7 +245,7 @@ class AlignmentCanvas(QGraphicsView):
         rgba_array[~structure_mask] = [0, 0, 0, 0]  # Transparent for white areas
         
         bytes_per_line = width * 4
-        qimage = QImage(rgba_array.data, width, height, bytes_per_line, QImage.Format_RGBA8888)
+        qimage = QImage(rgba_array.data, width, height, bytes_per_line, QImage.Format.Format_RGBA8888)
         return QPixmap.fromImage(qimage)
             
     def update_gds_transform(self, transform: Dict[str, float]):
@@ -330,8 +323,9 @@ class AlignmentCanvas(QGraphicsView):
     
     def fit_in_view(self):
         """Fit the scene content in the view with proper aspect ratio."""
-        if self.scene.items():
-            self.fitInView(self.scene.sceneRect(), Qt.KeepAspectRatio)
+        # FIXED: Use the inherited scene() method to get the scene
+        if self.scene().items():
+            self.fitInView(self.scene().sceneRect(), Qt.AspectRatioMode.KeepAspectRatio)
             self.current_zoom = 1.0
         
     def zoom_to_actual_size(self):
@@ -363,11 +357,11 @@ class AlignmentCanvas(QGraphicsView):
     def clear_images(self):
         """Clear all images from canvas."""
         if self.sem_item:
-            self.scene.removeItem(self.sem_item)
+            self._graphics_scene.removeItem(self.sem_item)
             self.sem_item = None
         
         if self.gds_item:
-            self.scene.removeItem(self.gds_item)
+            self._graphics_scene.removeItem(self.gds_item)
             self.gds_item = None
         
         self.image_loaded = False
@@ -396,14 +390,14 @@ class AlignmentCanvas(QGraphicsView):
         
     def mousePressEvent(self, event):
         """Handle mouse press events."""
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             scene_pos = self.mapToScene(event.pos())
             self.mouse_clicked.emit(scene_pos.x(), scene_pos.y())
         super().mousePressEvent(event)
         
     def wheelEvent(self, event):
         """Handle mouse wheel events for zooming."""
-        if event.modifiers() & Qt.ControlModifier:
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
             # Zoom with Ctrl+Wheel
             factor = 1.2
             if event.angleDelta().y() < 0:
@@ -415,22 +409,6 @@ class AlignmentCanvas(QGraphicsView):
         else:
             # Normal wheel event (scroll)
             super().wheelEvent(event)
-        
-    def mousePressEvent(self, event):
-        """Handle mouse press events."""
-        if event.button() == Qt.LeftButton:
-            scene_pos = self.mapToScene(event.pos())
-            self.mouse_clicked.emit(scene_pos.x(), scene_pos.y())
-        super().mousePressEvent(event)
-        
-    def wheelEvent(self, event):
-        """Handle mouse wheel events for zooming."""
-        factor = 1.2
-        if event.angleDelta().y() < 0:
-            factor = 1.0 / factor
-            
-        self.scale(factor, factor)
-        self.zoom_requested.emit(factor)
 
 
 class AlignmentCanvasPanel(QWidget):
@@ -441,7 +419,7 @@ class AlignmentCanvasPanel(QWidget):
     
     def __init__(self, parent=None):
         super().__init__(parent)
-        self.canvas = None
+        self.canvas: Optional[AlignmentCanvas] = None  # FIXED: Add type annotation for clarity
         self.setup_ui()
         
     def setup_ui(self):
@@ -461,43 +439,58 @@ class AlignmentCanvasPanel(QWidget):
         
     def get_canvas(self) -> AlignmentCanvas:
         """Get the alignment canvas widget."""
+        # FIXED: Add assertion to ensure canvas is not None
+        assert self.canvas is not None, "Canvas not initialized"
         return self.canvas
     
     def display_sem_image(self, image_array: np.ndarray) -> bool:
         """Display SEM image in canvas."""
-        return self.canvas.display_sem_image(image_array)
+        if self.canvas:
+            return self.canvas.display_sem_image(image_array)
+        return False
     
     def display_gds_overlay(self, image_array: np.ndarray, color: Tuple[int, int, int] = (255, 0, 0)) -> bool:
         """Display GDS overlay in canvas."""
-        return self.canvas.display_gds_overlay(image_array, color)
+        if self.canvas:
+            return self.canvas.display_gds_overlay(image_array, color)
+        return False
     
     def update_alignment(self, transform: Dict[str, float]):
         """Update alignment transform."""
-        self.canvas.update_gds_transform(transform)
+        if self.canvas:
+            self.canvas.update_gds_transform(transform)
     
     def reset_alignment(self):
         """Reset alignment to default."""
-        self.canvas.reset_transform()
+        if self.canvas:
+            self.canvas.reset_transform()
     
     def fit_view(self):
         """Fit content in view."""
-        self.canvas.fit_in_view()
+        if self.canvas:
+            self.canvas.fit_in_view()
     
     def zoom_to_actual_size(self):
         """Zoom to actual size."""
-        self.canvas.zoom_to_actual_size()
+        if self.canvas:
+            self.canvas.zoom_to_actual_size()
     
     def clear_display(self):
         """Clear all images from display."""
-        self.canvas.clear_images()
+        if self.canvas:
+            self.canvas.clear_images()
     
     def get_transform(self) -> Dict[str, float]:
         """Get current alignment transform."""
-        return self.canvas.get_current_transform()
+        if self.canvas:
+            return self.canvas.get_current_transform()
+        return {}
     
     def is_ready_for_alignment(self) -> bool:
         """Check if ready for alignment (both images loaded)."""
-        return self.canvas.has_sem_image() and self.canvas.has_gds_overlay()
+        if self.canvas:
+            return self.canvas.has_sem_image() and self.canvas.has_gds_overlay()
+        return False
     
     def _on_canvas_clicked(self, x: float, y: float):
         """Handle canvas click events."""
@@ -505,8 +498,9 @@ class AlignmentCanvasPanel(QWidget):
     
     def _on_zoom_changed(self, factor: float):
         """Handle zoom change events."""
-        zoom_level = self.canvas.get_current_zoom()
-        print(f"Zoom level: {zoom_level:.2f}x")
+        if self.canvas:
+            zoom_level = self.canvas.get_current_zoom()
+            print(f"Zoom level: {zoom_level:.2f}x")
     
     def _on_transform_changed(self, transform: Dict[str, float]):
         """Handle transform change events."""

@@ -1,12 +1,82 @@
 """
-Simple Alignment Service for transform management (Steps 81-85).
+Simple Alignment Service - Core Alignment and Transform Management (Implementation Steps 81-85)
 
-This service provides:
-- QObject for transform management with manual alignment methods (Step 81)
-- Manual transforms: translate, rotate, scale methods with basic parameter updates (Step 82)
-- Semi-automatic alignment with point-pair transform calculation and basic homography (Step 83)
-- Automatic alignment with feature-based matching and basic keypoint detection (Step 84)
-- Alignment signals when alignment updated with progress reporting (Step 85)
+This service provides comprehensive alignment capabilities for SEM/GDS image registration,
+including manual transformations, semi-automatic point-based alignment, and fully automatic
+feature-based alignment. It serves as the central coordination point for all alignment operations.
+
+Transform Management (Step 81):
+- 3x3 homogeneous transformation matrices for complete geometric transforms
+- Real-time transform parameter tracking (translation, rotation, scale)
+- Transform history with undo capabilities
+- State management for alignment operations
+- Transform validation and bounds checking
+
+Manual Transform Operations (Step 82):
+- translate(): Apply translation with relative/absolute positioning
+- rotate(): Apply rotation in 90-degree increments (snapped for precision)
+- scale(): Apply uniform or non-uniform scaling with bounds checking
+- set_transform_parameters(): Direct parameter setting with validation
+- Transform order: Movement -> Rotation -> Zoom (critical for UI consistency)
+
+Semi-Automatic Alignment (Step 83):
+- 3-point correspondence alignment for affine transformations
+- Point pair management with validation
+- Homography calculation using cv2.findHomography
+- Affine transform calculation for 2-3 point pairs
+- Transform parameter extraction from matrices
+- Quality assessment based on point transformation accuracy
+
+Automatic Alignment (Step 84):
+- Feature-based matching using ORB, SIFT, or SURF detectors
+- Keypoint detection and descriptor matching
+- RANSAC-based robust homography estimation
+- Feature quality assessment and filtering
+- Multiple algorithm support with fallback mechanisms
+- Automatic parameter tuning based on image characteristics
+
+Hybrid Alignment Workflow (Steps 9-12 from README):
+- User selects exactly 3 points on both GDS and SEM images
+- Calculates affine transformation matrix from point correspondences
+- Applies transformation with movement, rotation, and zoom
+- Generates aligned GDS file with transformed coordinates
+- Provides transformation preview before final application
+
+Dependencies:
+- Uses: cv2 (OpenCV for computer vision operations)
+- Uses: numpy (matrix operations and numerical computing)
+- Uses: PySide6.QtCore (signals and QObject)
+- Called by: ui/alignment_controller.py, ui/alignment_operations.py
+- Called by: services/manual_alignment_service.py, services/auto_alignment_service.py
+
+Signals (Step 85):
+- transform_updated: Emitted when transform parameters change
+- alignment_completed: Emitted when alignment operations finish
+- alignment_updated: Emitted for incremental alignment updates
+- alignment_progress: Emitted for progress reporting (0-100%)
+- point_pair_added: Emitted when manual points are selected
+- automatic_features_detected: Emitted when features are found
+- alignment_started/finished: Emitted for operation lifecycle
+
+Key Algorithms:
+- Affine transformation from 3-point correspondences
+- Feature detection and matching (ORB/SIFT/SURF)
+- RANSAC outlier rejection for robust estimation
+- Transform parameter decomposition from matrices
+- Quality scoring based on transformation consistency
+
+Critical Features:
+- Rotation snapping to 90-degree increments for precision
+- Transform validation to prevent extreme distortions
+- Multi-algorithm support with automatic fallback
+- Real-time preview capabilities
+- Comprehensive error handling and recovery
+
+Alignment Quality Metrics:
+- Point transformation accuracy (RMS error)
+- Feature matching confidence scores
+- Transform matrix condition numbers
+- Geometric consistency validation
 """
 
 import logging

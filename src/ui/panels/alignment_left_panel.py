@@ -1,3 +1,4 @@
+
 """
 Alignment Left Panel with Manual/3-point switching tabs.
 
@@ -17,6 +18,7 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
                                QGroupBox, QGridLayout, QCheckBox, QComboBox, QMessageBox,
                                QScrollArea)
 from PySide6.QtCore import Qt, Signal, QTimer
+from PySide6.QtWidgets import QCheckBox
 from src.ui.base_panels import BaseViewPanel
 from src.ui.view_manager import ViewMode
 
@@ -36,26 +38,26 @@ class ManualAlignmentTab(QWidget):
     gds_displayed = Signal(np.ndarray)  # Signal to indicate GDS overlay display
     
     def __init__(self, parent=None):
-        super().__init__(parent)
+        super().__init__(parent)  # QWidget only needs parent
         self._is_initializing = True
         self._validation_timer = QTimer()
         self._validation_timer.setSingleShot(True)
         self._validation_timer.timeout.connect(self._delayed_validation)
         self._last_validation_issues = []
-        self.current_gds_overlay = None  # Initialize current GDS overlay
+        self.current_gds_overlay = None
         
         try:
             self.setup_ui()
             self.setup_tooltips()
             self.setup_styling()
-            self.connect_signals()
+            self.connect_signals()  # Changed from setup_connections
             self._is_initializing = False
             logger.info("ManualAlignmentTab initialized successfully")
         except Exception as e:
             logger.error(f"Failed to initialize ManualAlignmentTab: {e}")
             logger.error(traceback.format_exc())
-            raise
-        
+            raise        
+
     def setup_ui(self):
         """Set up the UI with error handling for widget creation."""
         try:
@@ -81,9 +83,6 @@ class ManualAlignmentTab(QWidget):
             
             # Action buttons
             self._create_action_buttons(layout)
-            
-            # Display options group
-            self._create_display_options(layout)
             
             # Final Control buttons
             self._create_final_controls(layout)
@@ -162,7 +161,7 @@ class ManualAlignmentTab(QWidget):
             parent_layout.addWidget(rotation_label)
             
             rotation_range_layout = QHBoxLayout()
-            rotation_range_layout.addWidget(QLabel("Rotation (-90° to +90°):"))
+            rotation_range_layout.addWidget(QLabel("Rotation (-180° to +180°):"))
             parent_layout.addLayout(rotation_range_layout)
             
             rotation_layout = QHBoxLayout()
@@ -171,7 +170,7 @@ class ManualAlignmentTab(QWidget):
             self.rot_minus_btn = self._create_increment_button("--", "Rotate -1.0°")
             self.rot_minus_small_btn = self._create_increment_button("-", "Rotate -0.1°")
             
-            self.rotation_spin = self._create_double_spinbox(-90.0, 90.0, 0.0, 0.1, "Rotation angle in degrees")
+            self.rotation_spin = self._create_double_spinbox(-180.0, 180.0, 0.0, 0.1, "Rotation angle in degrees")
             
             self.rot_plus_small_btn = self._create_increment_button("+", "Rotate +0.1°")
             self.rot_plus_btn = self._create_increment_button("++", "Rotate +1.0°")
@@ -250,6 +249,13 @@ class ManualAlignmentTab(QWidget):
             transparency_layout.addStretch()
             
             parent_layout.addLayout(transparency_layout)
+            
+            # Add show overlay checkbox
+            self.show_overlay_cb = QCheckBox("Show Overlay")
+            self.show_overlay_cb.setChecked(True)
+            self.show_overlay_cb.setToolTip("Show/hide GDS overlay on SEM image")
+            parent_layout.addWidget(self.show_overlay_cb)
+            
             logger.debug("Transparency section created successfully")
             
         except Exception as e:
@@ -259,63 +265,15 @@ class ManualAlignmentTab(QWidget):
     def _create_action_buttons(self, parent_layout):
         """Create action buttons section with error handling."""
         try:
-            # This section is no longer needed since we moved all action buttons 
-            # to the final controls section to avoid duplication
-            logger.debug("Action buttons section skipped - buttons moved to final controls")
+            # Action buttons handled in final controls section
+            pass
             
         except Exception as e:
             logger.error(f"Error creating action buttons: {e}")
             raise
     
-    def _create_display_options(self, parent_layout):
-        """Create display options section with error handling."""
-        try:
-            display_group = QGroupBox("Display Options")
-            display_layout = QVBoxLayout(display_group)
-            
-            # Show overlay checkbox
-            self.show_overlay_cb = QCheckBox("Show GDS Overlay")
-            self.show_overlay_cb.setChecked(True)
-            self.show_overlay_cb.setToolTip("Show/hide GDS overlay on SEM image")
-            display_layout.addWidget(self.show_overlay_cb)
-              # Display Transparency (canvas zoom controls removed - Step 3)
-            self._create_display_transparency_controls(display_layout)
-            
-            parent_layout.addWidget(display_group)
-            logger.debug("Display options created successfully")
-            
-        except Exception as e:
-            logger.error(f"Error creating display options: {e}")
-            raise
-    
-    def _create_display_transparency_controls(self, parent_layout):
-        """Create display transparency controls with error handling."""
-        try:
-            display_transparency_layout = QHBoxLayout()
-            display_transparency_layout.addWidget(QLabel("Display Transparency:"))
-            
-            self.trans_display_spin = self._create_spinbox(0, 100, 70, "Display transparency")
-            self.trans_display_spin.setSuffix("%")
-            self.trans_display_spin.setMaximumWidth(70)  # Make transparency spinbox longer
-            display_transparency_layout.addWidget(self.trans_display_spin)
-            
-            # Display transparency increment buttons
-            self.trans_display_minus_10_btn = self._create_increment_button("-10", "Decrease transparency by 10%")
-            self.trans_display_minus_1_btn = self._create_increment_button("-1", "Decrease transparency by 1%")
-            self.trans_display_plus_1_btn = self._create_increment_button("+1", "Increase transparency by 1%")
-            self.trans_display_plus_10_btn = self._create_increment_button("+10", "Increase transparency by 10%")
-            
-            for btn in [self.trans_display_minus_10_btn, self.trans_display_minus_1_btn,
-                       self.trans_display_plus_1_btn, self.trans_display_plus_10_btn]:
-                display_transparency_layout.addWidget(btn)
-            display_transparency_layout.addStretch()
-            
-            parent_layout.addLayout(display_transparency_layout)
-            
-        except Exception as e:
-            logger.error(f"Error creating display transparency controls: {e}")
-            raise
-    
+
+       
     def _create_final_controls(self, parent_layout):
         """Create final control buttons with error handling."""
         try:
@@ -431,7 +389,7 @@ class ManualAlignmentTab(QWidget):
         except Exception as e:
             logger.error(f"Error creating save button: {e}")
             raise
-        
+
     def connect_signals(self):
         """Connect slider/spinbox signals and increment buttons with error handling."""
         try:
@@ -465,17 +423,12 @@ class ManualAlignmentTab(QWidget):
             self.trans_plus_small_btn.clicked.connect(lambda: self.adjust_value_safe(self.transparency_spin, 1))
             self.trans_plus_btn.clicked.connect(lambda: self.adjust_value_safe(self.transparency_spin, 10))
             
-            # Display transparency increment buttons
-            self.trans_display_minus_10_btn.clicked.connect(lambda: self.adjust_value_safe(self.trans_display_spin, -10))
-            self.trans_display_minus_1_btn.clicked.connect(lambda: self.adjust_value_safe(self.trans_display_spin, -1))
-            self.trans_display_plus_1_btn.clicked.connect(lambda: self.adjust_value_safe(self.trans_display_spin, 1))
-            self.trans_display_plus_10_btn.clicked.connect(lambda: self.adjust_value_safe(self.trans_display_spin, 10))
-            
+           
             # Connect value changes to emit alignment_changed with validation
             self._connect_value_change_signals()
             
             # Buttons - connect reset button to signal
-            self.reset_btn.clicked.connect(self.reset_requested)
+            self.reset_btn.clicked.connect(self._on_reset_clicked)
             
             logger.debug("Signal connections established successfully")
             
@@ -490,8 +443,7 @@ class ManualAlignmentTab(QWidget):
             # Connect value changes to emit alignment_changed with validation
             controls = [
                 self.x_offset_spin, self.y_offset_spin, self.rotation_spin,
-                self.zoom_spin, self.transparency_spin,
-                self.trans_display_spin
+                self.zoom_spin, self.transparency_spin
             ]
             
             for control in controls:
@@ -500,7 +452,8 @@ class ManualAlignmentTab(QWidget):
                 else:
                     logger.warning(f"Control {control} does not have valueChanged signal")
             
-            self.show_overlay_cb.toggled.connect(self._handle_value_change)
+            if hasattr(self, 'show_overlay_cb'):
+                self.show_overlay_cb.toggled.connect(self._handle_value_change)
             
         except Exception as e:
             logger.error(f"Error connecting value change signals: {e}")
@@ -547,19 +500,25 @@ class ManualAlignmentTab(QWidget):
         except Exception as e:
             logger.error(f"Error in delayed validation: {e}")
             logger.error(traceback.format_exc())
+
     
     def _get_current_parameters(self):
-        """Get current parameters with error handling."""
+        """Get current parameters with error handling and proper service format."""
         try:
+            # Convert zoom percentage to scale factor
+            zoom_percentage = self.zoom_spin.value()
+            scale_factor = zoom_percentage / 100.0
+            
             return {
-                'translation_x_pixels': self.x_offset_spin.value(),
-                'translation_y_pixels': self.y_offset_spin.value(),
-                'rotation_degrees': self.rotation_spin.value(),
-                'zoom': self.zoom_spin.value(),
-                'scale': 1.0,  # Default scale - removed from UI in Step 3
+                # Service-compatible parameter names
+                'x_offset': self.x_offset_spin.value(),
+                'y_offset': self.y_offset_spin.value(),
+                'rotation': self.rotation_spin.value(),
+                'scale': scale_factor,  # Converted from zoom
                 'transparency': self.transparency_spin.value(),
-                'display_transparency': self.trans_display_spin.value(),
-                'show_overlay': self.show_overlay_cb.isChecked()
+                
+                # UI-specific parameters for validation and display
+                'zoom': zoom_percentage
             }
         except Exception as e:
             logger.error(f"Error getting current parameters: {e}")
@@ -571,32 +530,32 @@ class ManualAlignmentTab(QWidget):
         
         try:
             # Translation validation
-            if abs(params.get('translation_x_pixels', 0)) > 400:
+            if abs(params.get('x_offset', 0)) > 400:
                 issues.append({
-                    'parameter': 'translation_x_pixels',
+                    'parameter': 'x_offset',
                     'severity': 'warning',
-                    'message': f"Large X translation ({params['translation_x_pixels']} pixels) may indicate misalignment"
+                    'message': f"Large X translation ({params['x_offset']} pixels) may indicate misalignment"
                 })
             
-            if abs(params.get('translation_y_pixels', 0)) > 400:
+            if abs(params.get('y_offset', 0)) > 400:
                 issues.append({
-                    'parameter': 'translation_y_pixels',
+                    'parameter': 'y_offset',
                     'severity': 'warning',
-                    'message': f"Large Y translation ({params['translation_y_pixels']} pixels) may indicate misalignment"
+                    'message': f"Large Y translation ({params['y_offset']} pixels) may indicate misalignment"
                 })
             
             # Rotation validation
-            rotation = params.get('rotation_degrees', 0)
+            rotation = params.get('rotation', 0)
             if abs(rotation) > 45:
                 issues.append({
-                    'parameter': 'rotation_degrees',
+                    'parameter': 'rotation',
                     'severity': 'warning',
                     'message': f"Large rotation ({rotation:.1f}°) may indicate misalignment"
                 })
             
-            # Scale validation
+            # Scale validation (converted from zoom)
             scale = params.get('scale', 1.0)
-            if scale < 0.3 or scale > 3.0:
+            if scale < 0.1 or scale > 5.0:
                 issues.append({
                     'parameter': 'scale',
                     'severity': 'error',
@@ -607,6 +566,15 @@ class ManualAlignmentTab(QWidget):
                     'parameter': 'scale',
                     'severity': 'warning',
                     'message': f"Large scale change ({scale:.2f}) may indicate misalignment"
+                })
+            
+            # Zoom validation (UI parameter)
+            zoom = params.get('zoom', 100)
+            if zoom < 10 or zoom > 500:
+                issues.append({
+                    'parameter': 'zoom',
+                    'severity': 'error',
+                    'message': f"Zoom percentage ({zoom}%) is outside valid range [10%, 500%]"
                 })
             
             # Transparency validation
@@ -641,14 +609,14 @@ class ManualAlignmentTab(QWidget):
         self.y_offset_spin.setToolTip("Y-axis translation in pixels\nRange: -500 to +500")
         
         # Rotation controls
-        self.rotation_spin.setToolTip("Rotation angle in degrees\nRange: -90° to +90°\nStep: 0.1°")
+        self.rotation_spin.setToolTip("Rotation angle in degrees\nRange: -180° to +180°\nStep: 0.1°")
         self.rot_minus_btn.setToolTip("Rotate -1.0°")
         self.rot_minus_small_btn.setToolTip("Rotate -0.1°")
         self.rot_plus_small_btn.setToolTip("Rotate +0.1°")
         self.rot_plus_btn.setToolTip("Rotate +1.0°")
         
         # Zoom controls
-        self.zoom_spin.setToolTip("Zoom level as percentage\nRange: 10% to 500%")
+        self.zoom_spin.setToolTip("Zoom level as percentage\nRange: 10% to 500%\nConverted to scale factor: 0.1 to 5.0")
         self.zoom_minus_btn.setToolTip("Decrease zoom by 10%")
         self.zoom_minus_small_btn.setToolTip("Decrease zoom by 1%")
         self.zoom_plus_small_btn.setToolTip("Increase zoom by 1%")
@@ -656,15 +624,14 @@ class ManualAlignmentTab(QWidget):
         
         # Transparency controls
         self.transparency_spin.setToolTip("Overlay transparency\nRange: 0% (opaque) to 100% (transparent)")
-        self.trans_display_spin.setToolTip("Display transparency\nRange: 0% (opaque) to 100% (transparent)")
+        
         
         # Action buttons
         self.reset_btn.setToolTip("Reset all transformation parameters to default values")
         self.save_aligned_gds_btn.setToolTip("Save the aligned GDS as PNG image")
         self.auto_align_btn.setToolTip("Automatically align using image processing")
         
-        # Display options
-        self.show_overlay_cb.setToolTip("Show/hide GDS overlay on SEM image")
+        # Display options removed
         
     def setup_styling(self):
         """Set up dark theme styling for all controls."""
@@ -745,10 +712,7 @@ class ManualAlignmentTab(QWidget):
             self.y_minus_btn, self.y_minus_small_btn, self.y_plus_small_btn, self.y_plus_btn,
             self.rot_minus_btn, self.rot_minus_small_btn, self.rot_plus_small_btn, self.rot_plus_btn,
             self.zoom_minus_btn, self.zoom_minus_small_btn, self.zoom_plus_small_btn, self.zoom_plus_btn,
-            self.trans_minus_btn, self.trans_minus_small_btn, self.trans_plus_small_btn, self.trans_plus_btn,
-            # canvas zoom buttons removed - Step 3
-            self.trans_display_minus_10_btn, self.trans_display_minus_1_btn,
-            self.trans_display_plus_1_btn, self.trans_display_plus_10_btn
+            self.trans_minus_btn, self.trans_minus_small_btn, self.trans_plus_small_btn, self.trans_plus_btn
         ]
         
         for btn in increment_buttons:
@@ -856,7 +820,9 @@ class ManualAlignmentTab(QWidget):
             }}
         """
         
-        self.show_overlay_cb.setStyleSheet(checkbox_style)
+        # Apply checkbox styling
+        for checkbox in self.findChildren(QCheckBox):
+            checkbox.setStyleSheet(checkbox_style)
         
         # Style labels with dark theme
         label_style = f"""
@@ -980,6 +946,7 @@ class ManualAlignmentTab(QWidget):
                 'timestamp': self._get_timestamp()
             }
             
+            print(f"ManualAlignmentTab emitting alignment_changed: {params}")
             logger.debug(f"ManualAlignmentTab emitting alignment_changed: {params}")
             self.alignment_changed.emit(params)
             
@@ -997,7 +964,7 @@ class ManualAlignmentTab(QWidget):
             return "unknown"
         
     def set_parameters(self, params):
-        """Set alignment parameters from dictionary with comprehensive validation."""
+        """Set alignment parameters from dictionary with comprehensive validation and format conversion."""
         if not params:
             logger.warning("Empty parameters dictionary provided to set_parameters")
             return
@@ -1011,45 +978,56 @@ class ManualAlignmentTab(QWidget):
             set_params = {}
             
             try:
-                # Translation X
-                if 'translation_x_pixels' in params:
-                    value = self._validate_and_convert_value(params['translation_x_pixels'], int, 'translation_x_pixels')
-                    self.x_offset_spin.setValue(value)
-                    set_params['translation_x_pixels'] = value
-                elif 'x_offset' in params:
+                # Translation X - handle both old and new parameter names
+                if 'x_offset' in params:
                     value = self._validate_and_convert_value(params['x_offset'], int, 'x_offset')
                     self.x_offset_spin.setValue(value)
                     set_params['x_offset'] = value
+                elif 'translation_x_pixels' in params:
+                    value = self._validate_and_convert_value(params['translation_x_pixels'], int, 'translation_x_pixels')
+                    self.x_offset_spin.setValue(value)
+                    set_params['x_offset'] = value
                 
-                # Translation Y
-                if 'translation_y_pixels' in params:
-                    value = self._validate_and_convert_value(params['translation_y_pixels'], int, 'translation_y_pixels')
-                    self.y_offset_spin.setValue(value)
-                    set_params['translation_y_pixels'] = value
-                elif 'y_offset' in params:
+                # Translation Y - handle both old and new parameter names
+                if 'y_offset' in params:
                     value = self._validate_and_convert_value(params['y_offset'], int, 'y_offset')
                     self.y_offset_spin.setValue(value)
                     set_params['y_offset'] = value
+                elif 'translation_y_pixels' in params:
+                    value = self._validate_and_convert_value(params['translation_y_pixels'], int, 'translation_y_pixels')
+                    self.y_offset_spin.setValue(value)
+                    set_params['y_offset'] = value
                 
-                # Rotation
-                if 'rotation_degrees' in params:
-                    value = self._validate_and_convert_value(params['rotation_degrees'], float, 'rotation_degrees')
-                    self.rotation_spin.setValue(value)
-                    set_params['rotation_degrees'] = value
-                elif 'rotation' in params:
+                # Rotation - handle both old and new parameter names
+                if 'rotation' in params:
                     value = self._validate_and_convert_value(params['rotation'], float, 'rotation')
                     self.rotation_spin.setValue(value)
                     set_params['rotation'] = value
+                elif 'rotation_degrees' in params:
+                    value = self._validate_and_convert_value(params['rotation_degrees'], float, 'rotation_degrees')
+                    self.rotation_spin.setValue(value)
+                    set_params['rotation'] = value
                 
-                # Scale removed from UI in Step 3
-                # if 'scale' in params:
-                #     value = self._validate_and_convert_value(params['scale'], float, 'scale')
-                #     percentage = value * 100.0
-                #     if 10 <= percentage <= 500:
-                #         self.scale_spin.setValue(int(percentage))
-                #         set_params['scale'] = value
-                #     else:
-                #         logger.warning(f"Scale percentage {percentage} out of range [10, 500], skipping")
+                # Scale/Zoom handling - convert between formats
+                if 'scale' in params:
+                    scale_value = self._validate_and_convert_value(params['scale'], float, 'scale')
+                    # Convert scale factor to zoom percentage for UI
+                    zoom_percentage = scale_value * 100.0
+                    if 10 <= zoom_percentage <= 500:
+                        self.zoom_spin.setValue(int(zoom_percentage))
+                        set_params['scale'] = scale_value
+                        set_params['zoom'] = zoom_percentage
+                    else:
+                        logger.warning(f"Scale converted to zoom percentage {zoom_percentage:.1f}% out of range [10, 500], skipping")
+                elif 'zoom' in params:
+                    zoom_value = self._validate_and_convert_value(params['zoom'], int, 'zoom')
+                    if 10 <= zoom_value <= 500:
+                        self.zoom_spin.setValue(zoom_value)
+                        scale_value = zoom_value / 100.0
+                        set_params['zoom'] = zoom_value
+                        set_params['scale'] = scale_value
+                    else:
+                        logger.warning(f"Zoom {zoom_value}% out of range [10, 500], skipping")
                 
                 # Transparency
                 if 'transparency' in params:
@@ -1061,7 +1039,7 @@ class ManualAlignmentTab(QWidget):
                         logger.warning(f"Transparency {value} out of range [0, 100], skipping")
                 
                 # Show overlay
-                if 'show_overlay' in params:
+                if 'show_overlay' in params and hasattr(self, 'show_overlay_cb'):
                     value = bool(params['show_overlay'])
                     self.show_overlay_cb.setChecked(value)
                     set_params['show_overlay'] = value
@@ -1092,20 +1070,29 @@ class ManualAlignmentTab(QWidget):
             converted_value = target_type(value)
             
             # Additional validation based on parameter name
-            if param_name in ['translation_x_pixels', 'x_offset']:
+            if param_name in ['x_offset', 'translation_x_pixels']:
                 if abs(converted_value) > 1000:
                     logger.warning(f"Large X translation value: {converted_value}")
-            elif param_name in ['translation_y_pixels', 'y_offset']:
+            elif param_name in ['y_offset', 'translation_y_pixels']:
                 if abs(converted_value) > 1000:
                     logger.warning(f"Large Y translation value: {converted_value}")
-            elif param_name in ['rotation_degrees', 'rotation']:
+            elif param_name in ['rotation', 'rotation_degrees']:
                 if abs(converted_value) > 180:
                     logger.warning(f"Large rotation value: {converted_value}")
+                    # Clamp to valid range
+                    converted_value = max(-180, min(180, converted_value))
             elif param_name == 'scale':
                 if converted_value <= 0:
                     raise ValueError(f"Scale must be positive, got {converted_value}")
-                if converted_value < 0.1 or converted_value > 10:
+                if converted_value < 0.1 or converted_value > 5.0:
                     logger.warning(f"Extreme scale value: {converted_value}")
+                    # Clamp to reasonable range
+                    converted_value = max(0.1, min(5.0, converted_value))
+            elif param_name == 'zoom':
+                if converted_value < 10 or converted_value > 500:
+                    logger.warning(f"Zoom percentage out of range: {converted_value}")
+                    # Clamp to valid range
+                    converted_value = max(10, min(500, converted_value))
             
             return converted_value
             
@@ -1118,8 +1105,7 @@ class ManualAlignmentTab(QWidget):
         try:
             controls = [
                 self.x_offset_spin, self.y_offset_spin, self.rotation_spin,
-                self.transparency_spin,
-                self.trans_display_spin, self.show_overlay_cb
+                self.zoom_spin, self.transparency_spin
             ]
             
             for control in controls:
@@ -1154,9 +1140,7 @@ class ManualAlignmentTab(QWidget):
                 'rotation': 0.0,
                 'scale_percentage': 100,
                 'transparency': 70,
-                'zoom': 100,
-                'display_transparency': 70,
-                'show_overlay': True
+                'zoom': 100
             }
             
             # Block signals temporarily to avoid multiple emission during reset
@@ -1197,13 +1181,10 @@ class ManualAlignmentTab(QWidget):
                 except Exception as e:
                     reset_errors.append(f"zoom: {e}")
                     
+                # Show overlay checkbox
                 try:
-                    self.trans_display_spin.setValue(defaults['display_transparency'])
-                except Exception as e:
-                    reset_errors.append(f"display_transparency: {e}")
-                    
-                try:
-                    self.show_overlay_cb.setChecked(defaults['show_overlay'])
+                    if hasattr(self, 'show_overlay_cb'):
+                        self.show_overlay_cb.setChecked(True)
                 except Exception as e:
                     reset_errors.append(f"show_overlay: {e}")
                 
@@ -1231,16 +1212,22 @@ class ManualAlignmentTab(QWidget):
             raise
         
     def get_parameters(self):
-        """Get current parameter values in frame-based format."""
+        """Get current parameter values in service-compatible format."""
+        # Convert zoom percentage to scale factor (zoom: 10-500% -> scale: 0.1-5.0)
+        zoom_percentage = self.zoom_spin.value()
+        scale_factor = zoom_percentage / 100.0
+        
         return {
-            'translation_x_pixels': self.x_offset_spin.value(),
-            'translation_y_pixels': self.y_offset_spin.value(),
-            'rotation_degrees': self.rotation_spin.value(),
-            'scale': 1.0,  # Default scale - removed from UI in Step 3
+            # Use parameter names that match AlignmentService expectations
+            'x_offset': self.x_offset_spin.value(),
+            'y_offset': self.y_offset_spin.value(),
+            'rotation': self.rotation_spin.value(),
+            'scale': scale_factor,  # Converted from zoom percentage
             'transparency': self.transparency_spin.value(),
-            'zoom': self.zoom_spin.value(),
-            'display_transparency': self.trans_display_spin.value(),
-            'show_overlay': self.show_overlay_cb.isChecked()
+            
+            # Additional UI-specific parameters
+            'zoom': zoom_percentage,  # Keep for UI state management
+            'show_overlay': self.show_overlay_cb.isChecked() if hasattr(self, 'show_overlay_cb') and self.show_overlay_cb else True
         }
         
     def set_parameters_from_model(self, aligned_gds_model):
@@ -1314,6 +1301,16 @@ class ManualAlignmentTab(QWidget):
         except Exception as e:
             logger.error(f"Error setting {param_name}: {e}")
             control.setValue(default_value)
+    
+    def _on_reset_clicked(self):
+        """Handle reset button click."""
+        try:
+            self.reset_parameters()
+            self.reset_requested.emit()
+            logger.info("Reset button clicked - parameters reset")
+        except Exception as e:
+            logger.error(f"Error handling reset click: {e}")
+            self.validation_error.emit(f"Failed to reset parameters: {e}")
 
 
 class ThreePointAlignmentTab(QWidget):
@@ -2011,628 +2008,389 @@ class ThreePointAlignmentTab(QWidget):
                 traceback.print_exc()
         else:
             print(f"Cannot confirm transformation: insufficient points (SEM: {len(self.sem_points)}/3, GDS: {len(self.gds_points)}/3)")
-            print("Please select 3 points on both SEM and GDS images before confirming.")
     
-    def setup_tooltips(self):
-        """Set up helpful tooltips for 3-point alignment controls."""
-        self.sem_mode_btn.setToolTip("Switch to SEM point selection mode\nClick 3 points on the SEM image")
-        self.gds_mode_btn.setToolTip("Switch to GDS point selection mode\nClick 3 corresponding points on the GDS overlay")
-        self.clear_points_btn.setToolTip("Clear all selected points and start over")
-        self.calculate_btn.setToolTip("Calculate transformation matrix from selected points\nRequires 3 SEM and 3 GDS points")
-        self.confirm_btn.setToolTip("Confirm and apply the calculated transformation")
-        
     def setup_styling(self):
-        """Set up dark theme styling for all 3-point alignment controls."""
-        # Define dark theme color scheme to match manual alignment tab
-        primary_dark = "#2B2B2B"
-        secondary_dark = "#3A3A3A"
-        accent_color = "#333333"  # Changed from blue to gray to match manual tab
-        success_color = "#4CAF50"
-        text_color = "#FFFFFF"
-        
-        # Set the overall widget background to match the manual tab
-        self.setStyleSheet(f"""
-            QWidget {{
-                background-color: {primary_dark};
-                color: {text_color};
-            }}
-        """)
-        
-        # Style group boxes with dark theme to match manual tab
-        group_style = f"""
-            QGroupBox {{
+        """Set up dark theme styling for the 3-point alignment tab."""
+        self.setStyleSheet("""
+            QWidget {
+                background-color: #2B2B2B;
+                color: #FFFFFF;
+            }
+            QGroupBox {
                 font-weight: bold;
-                font-size: 11px;
-                border: 1px solid {secondary_dark};
+                border: 1px solid #3A3A3A;
                 border-radius: 4px;
                 margin-top: 8px;
                 padding-top: 8px;
-                background-color: {primary_dark};
-                color: {text_color};
-            }}
-            QGroupBox::title {{
+            }
+            QGroupBox::title {
                 subcontrol-origin: margin;
                 left: 8px;
                 padding: 0 4px 0 4px;
-                color: {text_color};
-                background-color: {primary_dark};
-                font-size: 11px;
-                font-weight: bold;
-            }}
-        """
-        
-        # Apply to all group boxes
-        for group in self.findChildren(QGroupBox):
-            group.setStyleSheet(group_style)
-        
-        # Style mode selection buttons to match manual tab
-        mode_button_style = f"""
-            QPushButton {{
-                background-color: {secondary_dark};
-                color: {text_color};
-                border: 1px solid {accent_color};
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-weight: bold;
-                font-size: 10px;
-            }}
-            QPushButton:checked {{
-                background-color: {accent_color};
-                border-color: {accent_color};
-            }}
-            QPushButton:hover {{
-                background-color: {accent_color};
-                border-color: {accent_color};
-            }}
-            QPushButton:pressed {{
-                background-color: #444444;
-                border-color: #444444;
-            }}
-        """
-        
-        self.sem_mode_btn.setStyleSheet(mode_button_style)
-        self.gds_mode_btn.setStyleSheet(mode_button_style)
-        
-        # Style action buttons to match manual tab
-        action_button_style = f"""
-            QPushButton {{
-                background-color: {secondary_dark};
-                color: {text_color};
-                border: 1px solid {accent_color};
-                border-radius: 6px;
-                padding: 6px 12px;
-                font-weight: bold;
-                font-size: 10px;
-            }}
-            QPushButton:hover {{
-                background-color: {accent_color};
-                border-color: {accent_color};
-            }}
-            QPushButton:pressed {{
-                background-color: #444444;
-                border-color: #444444;
-            }}
-            QPushButton:disabled {{
-                background-color: #333333;
-                color: #666666;
-                border-color: #444444;
-            }}
-        """
-        
-        self.clear_points_btn.setStyleSheet(action_button_style)
-        self.calculate_btn.setStyleSheet(action_button_style)
-        self.confirm_btn.setStyleSheet(action_button_style)
-        
-        # Style labels with dark theme
-        label_style = f"""
-            QLabel {{
-                color: {text_color};
-                font-weight: bold;
-            }}
-        """
-        
-        # Apply to all labels
-        for label in self.findChildren(QLabel):
-            # Skip the instructions label as it already has custom styling
-            if "3-Point Alignment:" not in label.text():
-                label.setStyleSheet(label_style)
-
-    def setup_tooltips(self):
-        """Set up helpful tooltips for 3-point alignment controls."""
-        self.sem_mode_btn.setToolTip("Switch to SEM point selection mode\nClick 3 points on the SEM image")
-        self.gds_mode_btn.setToolTip("Switch to GDS point selection mode\nClick 3 corresponding points on the GDS overlay")
-        self.clear_points_btn.setToolTip("Clear all selected points and start over")
-        self.calculate_btn.setToolTip("Calculate transformation matrix from selected points\nRequires 3 SEM and 3 GDS points")
-        self.confirm_btn.setToolTip("Confirm and apply the calculated transformation")
-        
-    def get_selection_status(self):
-        """Get current selection status as a formatted string."""
-        return f"SEM: {len(self.sem_points)}/3, GDS: {len(self.gds_points)}/3, Mode: {self.current_mode.upper()}"
-    
-    def get_detailed_status(self):
-        """Get detailed status information for debugging."""
-        status = {
-            'sem_points': {
-                'count': len(self.sem_points),
-                'points': self.sem_points,
-                'complete': len(self.sem_points) == 3
-            },
-            'gds_points': {
-                'count': len(self.gds_points),
-                'points': self.gds_points,
-                'complete': len(self.gds_points) == 3
-            },
-            'mode': self.current_mode,
-            'buttons': {
-                'calculate_enabled': self.calculate_btn.isEnabled(),
-                'confirm_enabled': self.confirm_btn.isEnabled(),
-                'clear_enabled': self.clear_points_btn.isEnabled(),
-                'calculate_text': self.calculate_btn.text()
             }
-        }
-        
-        # Add validation info
-        is_valid, validation_msg = self.validate_points()
-        status['validation'] = {
-            'valid': is_valid,
-            'message': validation_msg
-        }
-        
-        return status
-        
-
-class AlignmentLeftPanel(BaseViewPanel):
-    """Left panel for alignment view with Manual/3-point tabs."""
+        """)
     
-    # Signals
+    def setup_tooltips(self):
+        """Set up tooltips for 3-point alignment controls."""
+        pass  # Tooltips already set in UI creation
+
+
+class AlignmentLeftPanel(QWidget):  # Change from BaseViewPanel to QWidget
+    """Left panel for alignment operations with manual and 3-point alignment tabs."""
+    
+    # Keep all the same signals
     alignment_changed = Signal(dict)
-    three_points_selected = Signal(list, list)
-    transformation_calculated = Signal(dict)
-    transformation_confirmed = Signal(dict)
-    reset_requested = Signal()
+    reset_alignment = Signal()
+    auto_alignment_requested = Signal()
     save_aligned_gds_requested = Signal()
-    auto_align_requested = Signal()
-    action_requested = Signal(str, dict)  # action_type, parameters
-    point_selection_mode_changed = Signal(str)  # "sem" or "gds"
+    three_point_alignment_requested = Signal(list, list)
+    transformation_confirmed = Signal(dict)
+    gds_displayed = Signal(np.ndarray)
     
     def __init__(self, parent=None):
-        super().__init__(ViewMode.ALIGNMENT, parent)
-        # Set the panel width to be 15% wider than default
-        self.setMinimumWidth(350)  # Increased from ~300 to 350 (15% wider)
-        self.setMaximumWidth(400)  # Set max width to prevent it from getting too wide
-    
-    def init_panel(self):
-        """Initialize the alignment panel UI with scroll area support."""
+        super().__init__(parent)  # Now calls QWidget.__init__
+        
+        self.current_sem_image = None
+        self.current_gds_overlay = None
+        self.structure_combo = None
+        self._current_gds_model = None
+        
         try:
-            # Clear default layout
-            for i in reversed(range(self.main_layout.count())):
-                item = self.main_layout.itemAt(i)
-                if item and item.widget():
-                    item.widget().setParent(None)
+            self.setup_ui()
+            self.setup_connections()
+            logger.info("AlignmentLeftPanel initialized successfully")
+        except Exception as e:
+            logger.error(f"Failed to initialize AlignmentLeftPanel: {e}")
+            logger.error(traceback.format_exc())
+            raise
+
+    
+    def setup_ui(self):
+        """Set up the UI with tab widget for manual and 3-point alignment."""
+        try:
+            layout = QVBoxLayout(self)
             
-            # Create a scroll area for the panel content
-            scroll_area = QScrollArea()
-            scroll_area.setWidgetResizable(True)
-            scroll_area.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-            scroll_area.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            
-            # Create a container widget for all panel content
-            content_widget = QWidget()
-            content_layout = QVBoxLayout(content_widget)
-            content_layout.setContentsMargins(5, 5, 5, 5)
-            content_layout.setSpacing(10)
-            
-            # Add File Selection section at the top
-            self._create_file_selection_section(content_layout)
-            
-            # Create tab widget for transformation controls
+            # Main tab widget
             self.tab_widget = QTabWidget()
             
-            # Create tabs
+            # Manual alignment tab
             self.manual_tab = ManualAlignmentTab()
+            self.tab_widget.addTab(self.manual_tab, "Manual")
+            
+            # 3-point alignment tab  
             self.three_point_tab = ThreePointAlignmentTab()
+            self.tab_widget.addTab(self.three_point_tab, "3-Point")
             
-            # Add tabs
-            self.tab_widget.addTab(self.manual_tab, "Manual Alignment")
-            self.tab_widget.addTab(self.three_point_tab, "3-Point Alignment")
+            layout.addWidget(self.tab_widget)
             
-            # Add tab widget to content layout
-            content_layout.addWidget(self.tab_widget)
+            # Set dark theme styling
+            self.setup_dark_theme()
             
-            # Set the content widget to the scroll area
-            scroll_area.setWidget(content_widget)
-            
-            # Add scroll area to main layout
-            self.main_layout.addWidget(scroll_area)
-            
-            # Apply dark theme to the panel
-            self._apply_dark_theme()
-            
-            # Connect tab signals to panel signals
-            self._connect_tab_signals()
-            
-            logger.info("Alignment panel initialized successfully with scroll support and dark theme")
+            logger.debug("AlignmentLeftPanel UI setup completed")
             
         except Exception as e:
-            logger.error(f"Error initializing alignment panel: {e}")
+            logger.error(f"Error setting up AlignmentLeftPanel UI: {e}")
             logger.error(traceback.format_exc())
             raise
     
-    def _apply_dark_theme(self):
-        """Apply dark theme to the alignment panel."""
+    def setup_connections(self):
+        """Connect signals between tabs and parent panel."""
         try:
-            # Define dark theme colors
-            primary_dark = "#2B2B2B"
-            secondary_dark = "#3A3A3A"
-            accent_color = "#4A9EFF"
-            text_color = "#FFFFFF"
-            dark_bg = "#1E1E1E"
+            # Manual tab signals
+            self.manual_tab.alignment_changed.connect(self.alignment_changed)
+            self.manual_tab.reset_requested.connect(self.reset_alignment)
+            self.manual_tab.validation_error.connect(self._handle_validation_error)
+            self.manual_tab.parameter_warning.connect(self._handle_parameter_warning)
+            self.manual_tab.gds_displayed.connect(self.gds_displayed)
             
-            # Apply dark theme to the main panel
-            self.setStyleSheet(f"""
-                AlignmentLeftPanel {{
-                    background-color: {dark_bg};
-                    color: {text_color};
-                }}
-                QScrollArea {{
-                    border: none;
-                    background-color: {dark_bg};
-                }}
-                QScrollArea QWidget {{
-                    background-color: {dark_bg};
-                }}
-            """)
+            # 3-point tab signals
+            self.three_point_tab.three_points_selected.connect(self.three_point_alignment_requested)
+            self.three_point_tab.transformation_confirmed.connect(self.transformation_confirmed)
+            self.three_point_tab.validation_error.connect(self._handle_validation_error)
+            self.three_point_tab.point_validation_warning.connect(self._handle_parameter_warning)
             
-            # Apply dark theme to tab widget
-            tab_style = f"""
-                QTabWidget::pane {{
-                    border: 2px solid {secondary_dark};
-                    border-radius: 6px;
-                    background-color: {primary_dark};
-                }}
-                QTabWidget::tab-bar {{
-                    alignment: center;
-                }}
-                QTabBar::tab {{
-                    background-color: {secondary_dark};
-                    color: {text_color};
-                    padding: 8px 16px;
-                    margin-right: 2px;
-                    border-top-left-radius: 6px;
-                    border-top-right-radius: 6px;
-                    font-weight: bold;
-                }}
-                QTabBar::tab:selected {{
-                    background-color: {accent_color};
-                    color: {text_color};
-                }}
-                QTabBar::tab:hover {{
-                    background-color: #5BA7FF;
-                }}
-            """
+            # Connect button signals from manual tab
+            if hasattr(self.manual_tab, 'auto_align_btn'):
+                self.manual_tab.auto_align_btn.clicked.connect(self.auto_alignment_requested)
+            if hasattr(self.manual_tab, 'save_aligned_gds_btn'):
+                self.manual_tab.save_aligned_gds_btn.clicked.connect(self.save_aligned_gds_image)
             
-            self.tab_widget.setStyleSheet(tab_style)
-            
-            logger.debug("Dark theme applied to alignment panel")
+            logger.debug("AlignmentLeftPanel signal connections established")
             
         except Exception as e:
-            logger.error(f"Error applying dark theme to alignment panel: {e}")
+            logger.error(f"Error connecting AlignmentLeftPanel signals: {e}")
+            logger.error(traceback.format_exc())
             raise
     
-    def _create_file_selection_section(self, parent_layout):
-        """Create the file selection section at the top of the panel."""
+    def setup_dark_theme(self):
+        """Set up dark theme styling for the entire panel."""
+        self.setStyleSheet("""
+            QTabWidget {
+                background-color: #2B2B2B;
+                border: none;
+            }
+            QTabWidget::pane {
+                border: 1px solid #3A3A3A;
+                background-color: #2B2B2B;
+            }
+            QTabWidget::tab-bar {
+                left: 5px;
+            }
+            QTabBar::tab {
+                background-color: #3A3A3A;
+                color: #FFFFFF;
+                border: 1px solid #444444;
+                padding: 8px 16px;
+                margin-right: 2px;
+            }
+            QTabBar::tab:selected {
+                background-color: #4CAF50;
+                border-bottom: 2px solid #4CAF50;
+            }
+            QTabBar::tab:hover {
+                background-color: #444444;
+            }
+        """)
+    
+    def _handle_validation_error(self, error_message):
+        """Handle validation errors from tabs."""
+        logger.error(f"Validation error: {error_message}")
+        # Could show a message box or emit a signal for the main window to handle
+        
+    def _handle_parameter_warning(self, warning_message):
+        """Handle parameter warnings from tabs."""
+        logger.warning(f"Parameter warning: {warning_message}")
+        # Could show a status message or emit a signal for the main window to handle
+    
+    def set_images(self, sem_image, gds_overlay):
+        """Set the current images for alignment operations."""
         try:
-            # File Selection Group with dark theme
-            file_selection_group = QGroupBox("File Selection")
-            file_selection_group.setStyleSheet("""
-                QGroupBox {
-                    font-weight: bold;
-                    border: 2px solid #3A3A3A;
-                    border-radius: 8px;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    background-color: #2B2B2B;
-                    color: #FFFFFF;
-                }
-                QGroupBox::title {
-                    subcontrol-origin: margin;
-                    left: 10px;
-                    padding: 0 8px 0 8px;
-                    color: #FFFFFF;
-                    background-color: #2B2B2B;
-                }
-            """)
+            self.current_sem_image = sem_image
+            self.current_gds_overlay = gds_overlay
             
-            file_layout = QVBoxLayout(file_selection_group)
+            # Update button states based on image availability
+            has_images = sem_image is not None and gds_overlay is not None
+            self.manual_tab.update_button_states(has_images=has_images, alignment_ready=has_images)
             
-            # Select SEM button with dark theme
-            self.select_sem_btn = QPushButton("Select SEM")
-            self.select_sem_btn.setMinimumHeight(30)
-            self.select_sem_btn.setStyleSheet("""
+            logger.debug(f"Images set: SEM={'loaded' if sem_image is not None else 'None'}, "
+                        f"GDS={'loaded' if gds_overlay is not None else 'None'}")
+            
+        except Exception as e:
+            logger.error(f"Error setting images: {e}")
+    
+    def set_gds_model(self, aligned_gds_model):
+        """Set the current AlignedGdsModel for saving operations."""
+        try:
+            self._current_gds_model = aligned_gds_model
+            
+            # Enable save button if we have a GDS model
+            if aligned_gds_model is not None:
+                self.manual_tab.update_button_states(has_images=True, alignment_ready=True)
+            
+            logger.debug(f"GDS model set: {'loaded' if aligned_gds_model is not None else 'None'}")
+            
+        except Exception as e:
+            logger.error(f"Error setting GDS model: {e}")
+    
+    def get_current_alignment_parameters(self):
+        """Get current alignment parameters from the active tab."""
+        try:
+            if self.tab_widget.currentIndex() == 0:  # Manual tab
+                return self.manual_tab.get_parameters()
+            else:  # 3-point tab
+                # Return the last calculated transformation or default values
+                if hasattr(self.three_point_tab, '_last_calculated_transformation') and \
+                   self.three_point_tab._last_calculated_transformation:
+                    transform = self.three_point_tab._last_calculated_transformation
+                    return {
+                        'translation_x_pixels': transform.get('translation_x', 0),
+                        'translation_y_pixels': transform.get('translation_y', 0),
+                        'rotation_degrees': transform.get('rotation', 0),
+                        'scale': transform.get('scale_x', 1.0),
+                        'method': '3-point'
+                    }
+                else:
+                    return {
+                        'translation_x_pixels': 0,
+                        'translation_y_pixels': 0,
+                        'rotation_degrees': 0,
+                        'scale': 1.0,
+                        'method': '3-point'
+                    }
+        except Exception as e:
+            logger.error(f"Error getting alignment parameters: {e}")
+            return {}
+    
+    def set_alignment_parameters(self, params):
+        """Set alignment parameters on the active tab."""
+        try:
+            if self.tab_widget.currentIndex() == 0:  # Manual tab
+                self.manual_tab.set_parameters(params)
+            # 3-point tab doesn't support setting parameters directly
+            # as they are calculated from point selections
+            
+        except Exception as e:
+            logger.error(f"Error setting alignment parameters: {e}")
+    
+    def add_point_for_three_point_alignment(self, point):
+        """Add a point for 3-point alignment."""
+        try:
+            if self.tab_widget.currentIndex() == 1:  # 3-point tab is active
+                self.three_point_tab.add_point(point)
+            else:
+                logger.warning("3-point tab is not active, cannot add point")
+                
+        except Exception as e:
+            logger.error(f"Error adding point for 3-point alignment: {e}")
+    
+    def get_three_point_selection_mode(self):
+        """Get the current 3-point selection mode (sem or gds)."""
+        try:
+            return self.three_point_tab.current_mode
+        except Exception as e:
+            logger.error(f"Error getting 3-point selection mode: {e}")
+            return "sem"
+    
+    def reset_all_alignments(self):
+        """Reset all alignment parameters and data."""
+        try:
+            # Reset manual tab
+            self.manual_tab.reset_parameters()
+            
+            # Reset 3-point tab
+            self.three_point_tab.clear_all_points()
+            
+            logger.info("All alignments reset")
+            
+        except Exception as e:
+            logger.error(f"Error resetting alignments: {e}")
+    
+    def update_view_mode(self, mode: ViewMode):
+        """Update the panel based on the current view mode."""
+        try:
+            # Enable/disable tabs based on view mode
+            if mode == ViewMode.ALIGNMENT:
+                self.setEnabled(True)
+                # Update button states when in alignment mode
+                has_images = self.current_sem_image is not None and self.current_gds_overlay is not None
+                self.manual_tab.update_button_states(has_images=has_images)
+            else:
+                self.setEnabled(False)
+                
+        except Exception as e:
+            logger.error(f"Error updating view mode: {e}")
+    
+    def set_alignment_ready(self, ready=True):
+        """Set whether alignment is ready for saving."""
+        try:
+            self.manual_tab.update_button_states(
+                has_images=self.current_sem_image is not None and self.current_gds_overlay is not None,
+                alignment_ready=ready
+            )
+        except Exception as e:
+            logger.error(f"Error setting alignment ready state: {e}")
+    
+    def save_aligned_gds_image(self):
+        """Save aligned GDS file with transformed coordinates using existing services."""
+        try:
+            from pathlib import Path
+            from datetime import datetime
+            from src.core.models.simple_aligned_gds_model import AlignedGdsModel
+            from src.services.gds_transformation_service import GdsTransformationService
+            
+            # Get current parameters
+            params = self.manual_tab.get_parameters()
+            logger.info(f"Saving GDS with parameters: {params}")
+            
+            # Check if we have GDS data loaded
+            if not hasattr(self, '_current_gds_model') or self._current_gds_model is None:
+                self.manual_tab.validation_error.emit("No GDS file loaded. Please load a GDS file first.")
+                return
+            
+            # Create AlignedGdsModel with current transformations
+            aligned_model = self._current_gds_model
+            
+            # Set UI parameters on the aligned model
+            aligned_model.set_ui_parameters(
+                translation_x_pixels=params.get('x_offset', 0),
+                translation_y_pixels=params.get('y_offset', 0),
+                scale=params.get('scale', 1.0),
+                rotation_degrees=params.get('rotation', 0)
+            )
+            
+            # Create output directory
+            output_dir = Path("Results/Aligned/manual")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"aligned_manual_{timestamp}.gds"
+            output_path = output_dir / filename
+            
+            # Use GdsTransformationService to create new GDS file
+            transformation_service = GdsTransformationService()
+            
+            # Get transformation parameters in the format expected by the service
+            transform_params = {
+                'x_offset': params.get('x_offset', 0),
+                'y_offset': params.get('y_offset', 0),
+                'rotation': params.get('rotation', 0),
+                'scale': params.get('scale', 1.0)
+            }
+            
+            # Transform the structure
+            transformed_cell = transformation_service.transform_structure(
+                original_gds_path=str(aligned_model.initial_model.gds_path),
+                structure_name=aligned_model.initial_model.cell.name,
+                transformation_params=transform_params,
+                gds_bounds=tuple(aligned_model.original_frame)
+            )
+            
+            # Save the transformed GDS file
+            transformation_service.save_transformed_gds(transformed_cell, str(output_path))
+            
+            logger.info(f"Aligned GDS file saved: {output_path}")
+            
+            # Update button state to show success
+            self.manual_tab.save_aligned_gds_btn.setText("Saved!")
+            self.manual_tab.save_aligned_gds_btn.setStyleSheet("""
                 QPushButton {
-                    background-color: #4A9EFF;
-                    color: #FFFFFF;
+                    background-color: #27AE60;
+                    color: white;
+                    font-weight: bold;
+                    padding: 8px;
                     border: none;
                     border-radius: 4px;
-                    padding: 8px;
-                    font-weight: bold;
-                    font-size: 12px;
-                }
-                QPushButton:hover {
-                    background-color: #5BA7FF;
-                }
-                QPushButton:pressed {
-                    background-color: #3D8BFF;
                 }
             """)
-            file_layout.addWidget(self.select_sem_btn)
             
-            # GDS Structure selection - now handled by FileSelector component
-            gds_layout = QVBoxLayout()
-            gds_label = QLabel("GDS Structure:")
-            gds_label.setStyleSheet("font-weight: bold; color: #2C3E50;")
-            gds_layout.addWidget(gds_label)
-            
-            # Info label about centralized structure selection
-            info_label = QLabel("Structure selection is handled by the FileSelector component in the right panel")
-            info_label.setStyleSheet("color: #666666; font-size: 11px; font-style: italic;")
-            gds_layout.addWidget(info_label)
-            
-            file_layout.addLayout(gds_layout)
-            
-            # Add the file selection group to the parent layout
-            parent_layout.addWidget(file_selection_group)
-            
-            # Connect SEM button signal
-            self.select_sem_btn.clicked.connect(self._on_select_sem_clicked)
-            
-            # Set up tooltips for file selection
-            self.select_sem_btn.setToolTip("Select SEM image file for alignment")
-            
-            logger.debug("File selection section created successfully")
-            
+            # Reset button after 2 seconds
+            def reset_button():
+                self.manual_tab.save_aligned_gds_btn.setText("Save Aligned GDS")
+                self.manual_tab.save_aligned_gds_btn.setStyleSheet("""
+                    QPushButton {
+                        background-color: #4CAF50;
+                        color: white;
+                        font-weight: bold;
+                        padding: 8px;
+                        border: none;
+                        border-radius: 4px;
+                    }
+                    QPushButton:hover {
+                        background-color: #45a049;
+                    }
+                    QPushButton:pressed {
+                        background-color: #3d8b40;
+                    }
+                    QPushButton:disabled {
+                        background-color: #cccccc;
+                        color: #666666;
+                    }
+                """)
+            QTimer.singleShot(2000, reset_button)
+                
         except Exception as e:
-            logger.error(f"Error creating file selection section: {e}")
-            raise
-    
-    def _connect_tab_signals(self):
-        """Connect tab signals to panel signals with error handling."""
-        try:
-            # Connect manual tab signals
-            self.manual_tab.alignment_changed.connect(self.alignment_changed)
-            self.manual_tab.alignment_changed.connect(lambda params: logger.debug(f"AlignmentLeftPanel received alignment_changed: {params}"))
-            self.manual_tab.reset_requested.connect(self.reset_requested)
-            
-            # Connect the save and auto align buttons from manual tab
-            self.manual_tab.save_aligned_gds_btn.clicked.connect(self.save_aligned_gds_requested)
-            self.manual_tab.auto_align_btn.clicked.connect(self.auto_align_requested)
-            
-            # Connect three-point tab signals
-            self.three_point_tab.three_points_selected.connect(self.three_points_selected)
-            self.three_point_tab.transformation_calculated.connect(self.transformation_calculated)
-            self.three_point_tab.transformation_confirmed.connect(self.transformation_confirmed)
-            self.three_point_tab.point_selection_mode_changed.connect(self.point_selection_mode_changed)
-            
-            logger.debug("Tab signals connected successfully")
-            
-        except Exception as e:
-            logger.error(f"Error connecting tab signals: {e}")
-            raise
-        
-        # Set up tooltips for file selection
-        self.select_sem_btn.setToolTip("Select SEM image file for alignment")
-        self.structure_combo.setToolTip("Select GDS structure to align with SEM image")
-    
-    def _on_select_sem_clicked(self):
-        """Handle Select SEM button click."""
-        self.action_requested.emit("select_sem", {})
-    
-    def _on_structure_selected(self, structure_name):
-        """Handle structure selection."""
-        # Structure selection is now handled by the FileSelector component in the main window
-        # This method is kept for compatibility but no longer needed
-        print("Structure selection is now handled by FileSelector component")
-        
-    def get_current_tab_name(self):
-        """Get the name of the currently active tab."""
-        current_index = self.tab_widget.currentIndex()
-        return ["manual", "3point"][current_index]
-        
-    def switch_to_tab(self, tab_name):
-        """Switch to a specific tab."""
-        tab_index = {"manual": 0, "3point": 1}.get(tab_name, 0)
-        self.tab_widget.setCurrentIndex(tab_index)
-        
-    def set_alignment_parameters(self, params):
-        """Set alignment parameters (for manual tab)."""
-        self.manual_tab.set_parameters(params)
-        
-    def get_alignment_parameters(self):
-        """Get current alignment parameters from manual tab."""
-        return {
-            'translation_x_pixels': self.manual_tab.x_offset_spin.value(),
-            'translation_y_pixels': self.manual_tab.y_offset_spin.value(),
-            'rotation_degrees': self.manual_tab.rotation_spin.value(),
-            'scale': 1.0,  # Default scale - removed from UI in Step 3
-            'transparency': self.manual_tab.transparency_spin.value(),
-            'canvas_zoom': self.manual_tab.canvas_zoom_spin.value(),
-            'display_transparency': self.manual_tab.trans_display_spin.value(),
-            'show_overlay': self.manual_tab.show_overlay_cb.isChecked()
-        }
-    
-    def enable_save_button(self, enabled):
-        """Enable or disable the save aligned GDS button."""
-        if hasattr(self.manual_tab, 'save_aligned_gds_btn'):
-            self.manual_tab.save_aligned_gds_btn.setEnabled(enabled)
-    
-    def reset_alignment_parameters(self):
-        """Reset alignment parameters to default values."""
-        # Reset individual controls to default values
-        self.manual_tab.x_offset_spin.setValue(0)
-        self.manual_tab.y_offset_spin.setValue(0)
-        self.manual_tab.rotation_spin.setValue(0.0)
-        # Scale removed from UI in Step 3
-        # self.manual_tab.scale_spin.setValue(100)  # 100%
-        self.manual_tab.transparency_spin.setValue(70)
-        self.manual_tab.canvas_zoom_spin.setValue(100)
-        self.manual_tab.trans_display_spin.setValue(70)
-        self.manual_tab.show_overlay_cb.setChecked(True)
-    def set_parameters_from_model(self, aligned_gds_model):
-        """Set parameters from AlignedGdsModel."""
-        if hasattr(self.manual_tab, 'set_parameters_from_model'):
-            self.manual_tab.set_parameters_from_model(aligned_gds_model)
-    
-    def apply_parameters_to_model(self, aligned_gds_model):
-        """Apply current UI parameters to AlignedGdsModel."""
-        try:
-            params = self.get_alignment_parameters()
-            aligned_gds_model.set_ui_parameters(
-                translation_x_pixels=params.get('translation_x_pixels', 0),
-                translation_y_pixels=params.get('translation_y_pixels', 0),
-                scale=params.get('scale', 1.0),
-                rotation_degrees=params.get('rotation_degrees', 0.0)
-            )
-            print(f"Applied UI parameters to model: {params}")
-        except Exception as e:
-            print(f"Error applying parameters to model: {e}")
+            logger.error(f"Error saving aligned GDS: {e}")
             import traceback
             traceback.print_exc()
-    
-    def update_ui_states(self, has_images=False, alignment_ready=False):
-        """Update UI states based on current application state."""
-        if hasattr(self.manual_tab, 'update_button_states'):
-            self.manual_tab.update_button_states(has_images, alignment_ready)
-            
-    def populate_structure_combo(self, structures):
-        """Populate the structure combo box with available GDS structures."""
-        # Structure selection is now handled by the FileSelector component in the main window
-        # This method is kept for compatibility but no longer needed
-        print("Structure combo population is now handled by FileSelector component")
-            
-    def get_selected_structure(self):
-        """Get the currently selected GDS structure from the FileSelector component."""
-        # Structure selection is now handled by the FileSelector component in the main window
-        # We'll return None here since this panel no longer manages structure selection
-        return None
-    
-    def get_panel_status(self):
-        """Get comprehensive status information for debugging and monitoring."""
-        manual_params = self.get_alignment_parameters()
-        current_tab = self.get_current_tab_name()
-        
-        status = {
-            'current_tab': current_tab,
-            'manual_alignment': {
-                'parameters': manual_params,
-                'save_button_enabled': self.manual_tab.save_aligned_gds_btn.isEnabled() if hasattr(self.manual_tab, 'save_aligned_gds_btn') else False
-            },
-            'three_point_alignment': {
-                'sem_points_count': len(self.three_point_tab.sem_points),
-                'gds_points_count': len(self.three_point_tab.gds_points),
-                'current_mode': self.three_point_tab.current_mode,
-                'calculate_enabled': self.three_point_tab.calculate_btn.isEnabled(),
-                'confirm_enabled': self.three_point_tab.confirm_btn.isEnabled(),
-                'detailed_status': self.three_point_tab.get_detailed_status() if hasattr(self.three_point_tab, 'get_detailed_status') else {}
-            },
-            'file_selection': {
-                'selected_structure': self.get_selected_structure()
-            }
-        }
-        return status
-    
-    def add_three_point_alignment_point(self, point, point_type=None):
-        """Add a point to the three-point alignment system."""
-        if point_type is None:
-            point_type = self.three_point_tab.current_mode
-        self.three_point_tab.add_point(point, point_type)
-        
-    def get_three_point_status(self):
-        """Get three-point alignment status."""
-        return self.three_point_tab.get_selection_status()
-        
-    def clear_three_point_points(self):
-        """Clear all three-point alignment points."""
-        self.three_point_tab.clear_all_points()
-        
-    def enable_buttons_based_on_state(self, **kwargs):
-        """Enable/disable buttons based on current state."""
-        # Update manual tab buttons
-        if hasattr(self.manual_tab, 'update_button_states'):
-            self.manual_tab.update_button_states(
-                has_images=kwargs.get('has_images', False),
-                alignment_ready=kwargs.get('alignment_ready', False)
-            )
-        
-        # Update three-point tab buttons
-        if hasattr(self.three_point_tab, 'update_button_states'):
-            self.three_point_tab.update_button_states()
-        
-        # Update file selection buttons
-        self.select_sem_btn.setEnabled(kwargs.get('can_select_files', True))
-        self.structure_combo.setEnabled(kwargs.get('can_select_structure', True))
-    
-    def validate_current_state(self):
-        """Validate the current state of the panel and return issues if any."""
-        issues = []
-        current_tab = self.get_current_tab_name()
-        
-        if current_tab == "manual":
-            # Check if manual alignment parameters are reasonable
-            params = self.get_alignment_parameters()
-            if abs(params['translation_x_pixels']) > 400:
-                issues.append("X translation is very large (>400 pixels)")
-            if abs(params['translation_y_pixels']) > 400:
-                issues.append("Y translation is very large (>400 pixels)")
-            if abs(params['rotation_degrees']) > 45:
-                issues.append("Rotation is very large (>45 degrees)")
-            if params['scale'] < 0.5 or params['scale'] > 2.0:
-                issues.append("Scale factor is extreme (<50% or >200%)")
-                
-        elif current_tab == "3point":
-            # Check three-point alignment state
-            if hasattr(self.three_point_tab, 'validate_points'):
-                is_valid, message = self.three_point_tab.validate_points()
-                if not is_valid:
-                    issues.append(f"Three-point validation failed: {message}")
-        
-        # Check file selection
-        if not self.get_selected_structure():
-            issues.append("No GDS structure selected")
-            
-        return issues
-    
-    def _display_gds_image(self, gds_overlay):
-        """Display GDS overlay for alignment purposes."""
-        try:
-            if gds_overlay is not None and gds_overlay.size > 0:
-                # Store the overlay for alignment operations
-                self.current_gds_overlay = gds_overlay
-                
-                # Emit signal for visual feedback
-                if hasattr(self, 'gds_displayed'):
-                    self.gds_displayed.emit(gds_overlay)
-                
-                # Log for debugging
-                logger.info(f"GDS overlay received in ManualAlignmentTab: shape={gds_overlay.shape}")
-                print(f"GDS overlay displayed in manual alignment tab: {gds_overlay.shape}")
-                
-                # Enable controls since we now have GDS data
-                self.setEnabled(True)
-                
-                # Provide visual feedback
-                non_zero_pixels = np.count_nonzero(gds_overlay)
-                logger.info(f"GDS overlay contains {non_zero_pixels} active pixels")
-                
-            else:
-                logger.warning("Empty or invalid GDS overlay received")
-                self.current_gds_overlay = None
-                
-        except Exception as e:
-            logger.error(f"Error displaying GDS image in ManualAlignmentTab: {e}")
-            print(f"Error displaying GDS in manual alignment tab: {e}")
-            
-    def get_current_gds_overlay(self):
-        """Get the current GDS overlay."""
-        return getattr(self, 'current_gds_overlay', None)
-        
-    # ...existing methods...
+            self.manual_tab.validation_error.emit(f"Error saving aligned GDS: {str(e)}")

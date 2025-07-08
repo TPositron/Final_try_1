@@ -1,6 +1,73 @@
 """
-Alignment Controller Module
-Handles all alignment operations, transformations, and alignment-related functionality.
+Alignment Controller - Central Alignment Operation Coordinator
+
+This module serves as the primary controller for all alignment operations in the SEM/GDS
+alignment application. It coordinates between the UI, alignment services, and transformation
+services to provide comprehensive alignment functionality.
+
+Key Responsibilities:
+- Orchestrates automatic alignment workflows using feature detection
+- Manages manual 3-point alignment operations
+- Applies custom transformation matrices
+- Handles alignment state management and history
+- Provides alignment result validation and scoring
+
+Alignment Methods Supported:
+1. Automatic Alignment:
+   - Feature-based matching using ORB/SIFT algorithms
+   - Batch alignment search with parameter optimization
+   - Quality scoring and best result selection
+   - Progress reporting and error handling
+
+2. Manual 3-Point Alignment:
+   - User-selected point correspondences
+   - Affine transformation calculation
+   - Real-time transformation preview
+   - Point validation and adjustment
+
+3. Custom Transformation:
+   - Direct transformation matrix application
+   - Matrix validation and bounds checking
+   - Transformation history tracking
+
+Dependencies:
+- Uses: services/simple_alignment_service.py (core alignment algorithms)
+- Uses: services/transformation_service.py (transformation operations)
+- Uses: cv2, numpy (image processing and matrix operations)
+- Called by: ui/main_window.py (main application controller)
+- Coordinates with: ui/image_viewer.py (display updates)
+- Coordinates with: ui/panels/* (alignment panels)
+
+Signals Emitted:
+- alignment_completed: When alignment operations finish successfully
+- alignment_reset: When alignment is reset to original state
+- transformation_applied: When transformations are applied
+- alignment_progress: For progress reporting during operations
+
+State Management:
+- current_alignment_result: Stores active alignment data
+- current_transformation: Active transformation matrix
+- alignment_points: Manual alignment point pairs
+- alignment_history: Complete operation history
+
+Key Methods:
+- auto_align(): Performs automatic feature-based alignment
+- manual_align_3_point(): Handles 3-point manual alignment
+- apply_transformation(): Applies custom transformation matrices
+- reset_alignment(): Resets to original unaligned state
+- update_alignment_display(): Updates UI with alignment results
+
+Error Handling:
+- Validates prerequisites before operations
+- Provides user-friendly error messages
+- Handles service failures gracefully
+- Maintains application stability during errors
+
+Integration Points:
+- Image Viewer: Updates overlay displays
+- Alignment Panels: Receives user input and displays results
+- Scoring Calculator: Triggers score calculations after alignment
+- File Handler: Exports alignment results and overlays
 """
 
 import cv2

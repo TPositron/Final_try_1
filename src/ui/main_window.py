@@ -1,108 +1,650 @@
 """
-Main Window
-Assembles menus, panels, and layouts for the Image Analysis application.
+Unified Main Window - Image Analysis Tool
+Combines functionality from both main_window.py and modular_main_window_clean.py
+
+This is the primary main window that provides:
+1. Core SEM/GDS alignment functionality
+2. Advanced filtering capabilities  
+3. Sequential filtering workflow
+4. Comprehensive scoring system
+5. Hybrid alignment with 3-point selection
+
+Use this file as the main entry point for the application.
 """
 
-from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
-                               QMenuBar, QStatusBar, QStackedWidget, QFileDialog,
-                               QMessageBox, QApplication, QProgressBar)
-from PySide6.QtCore import Qt, Signal, QThread, QTimer
-from PySide6.QtGui import QAction, QKeySequence
-from .panels.mode_switcher import ModeSwitcher
-from .panels.alignment_panel import AlignmentPanel
-from .panels.filter_panel import FilterPanel
-from .panels.score_panel import ScorePanel
-from .components.file_selector import FileSelector
-from ..services.simple_file_service import FileService
 import sys
-from typing import Optional, Dict, Any
-import logging
+import cv2
+import numpy as np
+from pathlib import Path
+from typing import Optional, Union, Dict, Any
+from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
+                               QMenuBar, QMenu, QFileDialog, QMessageBox, QDockWidget,
+                               QApplication, QStatusBar, QSplitter, QPushButton, QComboBox, QLabel,
+                               QToolBar, QButtonGroup, QGroupBox, QTextEdit, QTabWidget, QStackedWidget)
+from PySide6.QtCore import Qt, QTimer, Signal, QPoint
+from pathlib import Path
+from PySide6.QtGui import QAction, QIcon, QKeySequence
 
+# Import UI components and services
+from src.ui.components.image_viewer import ImageViewer
+from src.ui.components.file_selector import FileSelector
+from src.ui.components.histogram_view import HistogramView
+from src.ui.view_manager import ViewManager, ViewMode
+from src.ui.base_panels import ViewPanelManager
+from src.services.simple_file_service import FileService
+from src.services.simple_image_processing_service import ImageProcessingService
+from src.services.transformations.transform_service import TransformService
+
+# Import modular managers
+from src.ui.managers.file_operations_manager import FileOperationsManager
+from src.ui.managers.gds_operations_manager import GDSOperationsManager
+from src.ui.managers.image_processing_manager import ImageProcessingManager
+from src.ui.managers.alignment_operations_manager import AlignmentOperationsManager
+from src.ui.managers.scoring_operations_manager import ScoringOperationsManager
+
+# Import panels
+from src.ui.panels.mode_switcher import ModeSwitcher
+from src.ui.panels.alignment_panel import AlignmentPanel
+from src.ui.panels.filter_panel import FilterPanel
+from src.ui.panels.score_panel import ScorePanel
+from src.ui.panels.alignment_left_panel import ManualAlignmentTab, ThreePointAlignmentTab
+
+# Import filtering panels
+from src.ui.panels.advanced_filtering_panels import (
+    AdvancedFilteringLeftPanel, 
+    AdvancedFilteringRightPanel
+)
+from src.ui.panels.sequential_filtering_panels import (
+    SequentialFilteringLeftPanel,
+    SequentialFilteringRightPanel,
+    ProcessingStage
+)
+
+# Import core models
+from src.core.models.structure_definitions import get_default_structures
+
+import logging
 logger = logging.getLogger(__name__)
 
 
 class MainWindow(QMainWindow):
-    """Main application window."""
+    """
+    Unified Main Window combining all functionality.
+    
+    Features:
+    - Core SEM/GDS alignment with manual and hybrid modes
+    - Advanced filtering with real-time preview
+    - Sequential filtering workflow
+    - Comprehensive scoring system
+    - Robust error handling
+    """
     
     def __init__(self):
         super().__init__()
-        self.current_mode = "Manual"
+        self.setWindowTitle("Image Analysis Tool - Unified")
+        self.setMinimumSize(1400, 900)
         
-        # Setup error handling first
-        self.setup_error_handling()
-        
-        # Initialize file service
+        # Initialize core services
         self.file_service = FileService(self)
+        self.image_processing_service = ImageProcessingService()
+        self.transform_service = TransformService(self)
         
-        # Current loaded data
+        # Store original image for filter reset
+        self.original_sem_image = None
+        
+        # Initialize application state
+        self.current_mode = "Manual"
         self.current_sem_data = None
         self.current_gds_data = None
         self.current_sem_path = None
         self.current_gds_path = None
-        self.current_structure_id = 1  # Default structure
+        self.current_structure_id = 1
+        self.current_aligned_gds_model = None
+        self.current_sem_image = None
+        self.current_sem_image_obj = None
+        self.current_gds_overlay = None
+        self.current_alignment_result = None
+        self.current_scoring_results = {}
+        self.current_scoring_method = "SSIM"
         
-        self.setup_ui()
-        self.setup_menus()
-        self.setup_statusbar()
-        self.connect_signals()
-        self.connect_file_service_signals()
-        self.setup_alignment_parameter_flow()
+        # Sequential processing state
+        self.sequential_images = {}
+        self.current_processing_stage = None
+        
+        # Hybrid alignment state
+        self.sem_points = []
+        self.gds_points = []
+        
+        # Initialize managers
+        self._initialize_managers()
+        
+        # Setup UI
+        self._setup_ui()
+        
+        # Connect signals
+        self._connect_signals()
+        
+        # Setup error handling
         self.setup_error_handling()
         
-    def setup_ui(self):
-        """Initialize the main UI components."""
-        self.setWindowTitle("Image Analysis Tool")
-        self.setMinimumSize(1200, 800)
+        logger.info("Unified main window initialized successfully")
+    
+    def _on_manual_alignment_changed(self, params):
+        """Handle manual alignment parameter changes."""
+        try:
+            # Get original GDS overlay
+            if not hasattr(self, 'gds_operations_manager') or self.gds_operations_manager.current_gds_overlay is None:
+                return
+            
+            original_overlay = self.gds_operations_manager.current_gds_overlay
+            
+            # Apply transformations for preview (move and zoom only)
+            transformed_overlay = self._apply_coordinate_transformations(original_overlay, params)
+            
+            # Update image viewer with transformed overlay
+            if hasattr(self, 'image_viewer'):
+                self.image_viewer.set_gds_overlay(transformed_overlay)
+                self.image_viewer.set_overlay_visible(True)
+                
+                # Update transparency if specified
+                if 'transparency' in params:
+                    alpha = (100 - params['transparency']) / 100.0  # Convert to alpha (0-1)
+                    self.image_viewer.set_overlay_alpha(alpha)
+            
+            # Store current transformed overlay
+            self.current_gds_overlay = transformed_overlay
+            
+            # Enable save button when parameters change
+            if hasattr(self, 'generate_aligned_gds_btn'):
+                self.generate_aligned_gds_btn.setEnabled(True)
+            
+            logger.debug(f"Manual alignment parameters updated: {params}")
+            
+        except Exception as e:
+            logger.error(f"Error handling manual alignment change: {e}")
+    
+    def _get_current_alignment_parameters(self):
+        """Get current alignment parameters from manual alignment controls."""
+        try:
+            if hasattr(self, 'manual_alignment_controls'):
+                return self.manual_alignment_controls.get_parameters()
+            return {}
+        except Exception as e:
+            logger.error(f"Error getting alignment parameters: {e}")
+            return {}
+    
+    def _apply_coordinate_transformations(self, overlay, params):
+        """Apply coordinate transformations with proper center-based zoom."""
+        try:
+            import cv2
+            import numpy as np
+            
+            transformed = overlay.copy()
+            height, width = transformed.shape[:2]
+            
+            # Get transformation parameters
+            x_offset = params.get('x_offset', 0)
+            y_offset = params.get('y_offset', 0)
+            scale = params.get('scale', 1.0)
+            rotation = params.get('rotation', 0)
+            
+            # Calculate center point for scaling and rotation
+            center_x = width / 2.0
+            center_y = height / 2.0
+            
+            # Create transformation matrix for combined operations
+            # Use getRotationMatrix2D for proper center-based scaling and rotation
+            transform_matrix = cv2.getRotationMatrix2D((center_x, center_y), rotation, scale)
+            
+            # Add translation to the transformation matrix
+            transform_matrix[0, 2] += x_offset
+            transform_matrix[1, 2] += y_offset
+            
+            # Apply the combined transformation
+            transformed = cv2.warpAffine(transformed, transform_matrix, (width, height),
+                                       flags=cv2.INTER_LINEAR,
+                                       borderMode=cv2.BORDER_CONSTANT,
+                                       borderValue=0)
+            
+            return transformed
+            
+        except Exception as e:
+            logger.error(f"Error applying coordinate transformations: {e}")
+            return overlay
+    
+    def _calculate_transformed_bounds(self, params, structure_id):
+        """Calculate new GDS bounds based on alignment parameters."""
+        try:
+            # Get original bounds for the structure
+            gds_service = self.gds_operations_manager.new_gds_service
+            structures_info = gds_service.get_all_structures_info()
+            
+            if structure_id not in structures_info:
+                raise ValueError(f"Structure {structure_id} not found")
+            
+            original_bounds = structures_info[structure_id]['bounds']
+            
+            # Calculate pixel to coordinate ratio
+            bounds_width = original_bounds[2] - original_bounds[0]
+            bounds_height = original_bounds[3] - original_bounds[1]
+            
+            pixel_to_coord_x = bounds_width / 1024
+            pixel_to_coord_y = bounds_height / 666
+            
+            # Get transformation parameters
+            x_offset_pixels = params.get('x_offset', 0)
+            y_offset_pixels = params.get('y_offset', 0)
+            scale = params.get('scale', 1.0)
+            rotation = params.get('rotation', 0)
+            
+            # Convert pixel offsets to coordinate offsets
+            x_offset_coord = x_offset_pixels * pixel_to_coord_x
+            y_offset_coord = -y_offset_pixels * pixel_to_coord_y  # Flip Y for GDS coordinates
+            
+            # Calculate center of original bounds
+            center_x = (original_bounds[0] + original_bounds[2]) / 2
+            center_y = (original_bounds[1] + original_bounds[3]) / 2
+            
+            # Apply transformations in order: move, scale, rotation
+            # 1. Move center
+            new_center_x = center_x + x_offset_coord
+            new_center_y = center_y + y_offset_coord
+            
+            # 2. Scale from new center
+            scaled_width = bounds_width / scale  # Inverse scale for bounds
+            scaled_height = bounds_height / scale
+            
+            # 3. Calculate new bounds
+            new_bounds = [
+                new_center_x - scaled_width/2,   # min_x
+                new_center_y - scaled_height/2,  # min_y
+                new_center_x + scaled_width/2,   # max_x
+                new_center_y + scaled_height/2   # max_y
+            ]
+            
+            print(f"DEBUG: Original bounds: {original_bounds}")
+            print(f"DEBUG: Params: x={x_offset_pixels}, y={y_offset_pixels}, scale={scale}, rot={rotation}")
+            print(f"DEBUG: New bounds: {new_bounds}")
+            
+            return new_bounds, rotation
+            
+        except Exception as e:
+            logger.error(f"Error calculating transformed bounds: {e}")
+            import traceback
+            traceback.print_exc()
+            return structures_info[structure_id]['bounds'], 0 if structure_id in structures_info else ([0, 0, 1000, 1000], 0)
+    
+    def _reset_save_button(self):
+        """Reset the save button to original state."""
+        if hasattr(self, 'generate_aligned_gds_btn'):
+            self.generate_aligned_gds_btn.setText("Save Aligned GDS")
+            self.generate_aligned_gds_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #4CAF50;
+                    color: white;
+                    font-weight: bold;
+                    padding: 8px;
+                    border: none;
+                    border-radius: 4px;
+                }
+                QPushButton:hover {
+                    background-color: #45a049;
+                }
+                QPushButton:pressed {
+                    background-color: #3d8b40;
+                }
+                QPushButton:disabled {
+                    background-color: #cccccc;
+                    color: #666666;
+                }
+            """)
+    
+    def _auto_load_default_gds(self):
+        """Auto-load the default GDS file and select Structure 1."""
+        try:
+            print("Auto-loading default GDS file...")
+            default_gds_path = Path("Data/GDS/Institute_Project_GDS1.gds")
+            
+            if default_gds_path.exists():
+                # Load GDS file
+                self.gds_operations_manager.load_gds_file_from_path(str(default_gds_path))
+                
+                # Auto-select Structure 1 after a short delay
+                QTimer.singleShot(500, lambda: self.gds_operations_manager.select_structure_by_id(1))
+                
+                print(f"Auto-loaded GDS file: {default_gds_path}")
+            else:
+                print(f"Default GDS file not found: {default_gds_path}")
+                
+        except Exception as e:
+            print(f"Error auto-loading default GDS: {e}")
+    
+    def _initialize_managers(self):
+        """Initialize all manager modules."""
+        try:
+            self.file_operations_manager = FileOperationsManager(self)
+            self.gds_operations_manager = GDSOperationsManager(self)
+            self.image_processing_manager = ImageProcessingManager(self)
+            self.alignment_operations_manager = AlignmentOperationsManager(self)
+            self.scoring_operations_manager = ScoringOperationsManager(self)
+            
+            logger.info("All manager modules initialized")
+            
+        except Exception as e:
+            logger.error(f"Error initializing managers: {e}")
+            raise
+    
+    def _setup_ui(self):
+        """Setup the unified UI layout."""
+        try:
+            # Central widget and layout
+            central_widget = QWidget()
+            self.setCentralWidget(central_widget)
+            main_layout = QHBoxLayout(central_widget)
+            
+            # Main splitter
+            self.main_splitter = QSplitter(Qt.Orientation.Horizontal)
+            main_layout.addWidget(self.main_splitter)
+            
+            # Left panel with tabs
+            self._setup_left_panel()
+            
+            # Central image viewer
+            self.image_viewer = ImageViewer()
+            self.image_viewer.point_selected.connect(self._on_point_selected)
+            self.main_splitter.addWidget(self.image_viewer)
+            
+            # Right panel
+            self._setup_right_panel()
+            
+            # Set splitter sizes
+            self.main_splitter.setSizes([400, 1000, 350])
+            
+            # Setup menus and status bar
+            self._setup_menus()
+            self._setup_status_bar()
+            
+            logger.info("UI setup completed")
+            
+        except Exception as e:
+            logger.error(f"Error setting up UI: {e}")
+            raise
+    
+    def _setup_left_panel(self):
+        """Setup left panel with all tabs."""
+        self.left_panel_container = QWidget()
+        self.left_panel_layout = QVBoxLayout(self.left_panel_container)
+        self.left_panel_layout.setContentsMargins(0, 0, 0, 0)
         
-        # Central widget
-        central_widget = QWidget()
-        self.setCentralWidget(central_widget)
+        # Main tab widget
+        self.main_tab_widget = QTabWidget()
+        self.main_tab_widget.setStyleSheet("""
+            QTabWidget::pane {
+                border: 1px solid #444444;
+                background-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QTabBar::tab {
+                background-color: #3c3c3c;
+                border: 1px solid #444444;
+                padding: 8px 12px;
+                margin-right: 2px;
+                color: #ffffff;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }
+            QTabBar::tab:selected {
+                background-color: #2b2b2b;
+                border-bottom-color: #2b2b2b;
+                color: #ffffff;
+            }
+            QTabBar::tab:hover {
+                background-color: #4a4a4a;
+                color: #ffffff;
+            }
+        """)
         
-        # Main layout
-        layout = QVBoxLayout(central_widget)
+        # Create tabs
+        self.alignment_tab = QWidget()
+        self.advanced_filtering_tab = QWidget()
+        self.sequential_filtering_tab = QWidget()
+        self.scoring_tab = QWidget()
         
-        # Top section: File selector and mode switcher
-        top_layout = QHBoxLayout()
+        # Setup tab contents
+        self._setup_alignment_tab()
+        self._setup_advanced_filtering_tab()
+        self._setup_sequential_filtering_tab()
+        self._setup_scoring_tab()
+        
+        # Add tabs
+        self.main_tab_widget.addTab(self.alignment_tab, "Alignment")
+        self.main_tab_widget.addTab(self.advanced_filtering_tab, "Advanced Filtering")
+        self.main_tab_widget.addTab(self.sequential_filtering_tab, "Sequential Filtering")
+        self.main_tab_widget.addTab(self.scoring_tab, "Scoring")
+        
+        # Connect tab changes
+        self.main_tab_widget.currentChanged.connect(self._on_tab_changed)
+        
+        self.left_panel_layout.addWidget(self.main_tab_widget)
+        self.main_splitter.addWidget(self.left_panel_container)
+    
+    def _setup_right_panel(self):
+        """Setup right panel with file selector and histogram."""
+        self.right_panel_container = QWidget()
+        self.right_panel_layout = QVBoxLayout(self.right_panel_container)
         
         # File selector
         self.file_selector = FileSelector()
-        top_layout.addWidget(self.file_selector)
+        self.file_selector.sem_file_selected.connect(self.load_sem_file)
+        self.file_selector.gds_file_loaded.connect(self.gds_operations_manager.load_gds_file_from_path)
+        self.file_selector.gds_structure_selected.connect(self._handle_structure_selection)
+        self.right_panel_layout.addWidget(self.file_selector)
         
-        # Mode switcher
-        self.mode_switcher = ModeSwitcher()
-        top_layout.addWidget(self.mode_switcher)
+        # Histogram view
+        self.histogram_view = HistogramView()
+        self.histogram_view.setMaximumHeight(200)
+        self.histogram_view.setMinimumHeight(150)
+        self.right_panel_layout.addWidget(self.histogram_view)
         
-        layout.addLayout(top_layout)
+        # View-specific content area
+        self.view_specific_widget = QWidget()
+        self.view_specific_layout = QVBoxLayout(self.view_specific_widget)
+        self.right_panel_layout.addWidget(self.view_specific_widget)
         
-        # Main content area with stacked widget for different modes
-        self.stacked_widget = QStackedWidget()
+        self.main_splitter.addWidget(self.right_panel_container)
         
-        # Create panels for each mode
-        self.alignment_panel = AlignmentPanel()
-        self.filter_panel = FilterPanel()
-        self.score_panel = ScorePanel()
+        # Initialize file scanning
+        self.file_selector.scan_directories()
         
-        # Add panels to stacked widget
-        self.stacked_widget.addWidget(self.alignment_panel)  # Index 0: Manual/Auto mode
-        self.stacked_widget.addWidget(self.filter_panel)     # Index 1: Filter mode  
-        self.stacked_widget.addWidget(self.score_panel)      # Index 2: Score mode
+        # Auto-load default GDS file after a short delay
+        QTimer.singleShot(1000, self._auto_load_default_gds)
+    
+    def _setup_alignment_tab(self):
+        """Setup alignment tab with manual and hybrid modes."""
+        layout = QVBoxLayout(self.alignment_tab)
+        layout.setContentsMargins(10, 10, 10, 10)
         
-        layout.addWidget(self.stacked_widget)
+        # Sub-tabs for alignment modes
+        self.alignment_sub_tabs = QTabWidget()
         
-    def setup_menus(self):
+        # Manual alignment
+        self.manual_alignment_tab = QWidget()
+        manual_layout = QVBoxLayout(self.manual_alignment_tab)
+        self.manual_alignment_controls = ManualAlignmentTab()
+        self.manual_alignment_controls.alignment_changed.connect(self._on_manual_alignment_changed)
+        manual_layout.addWidget(self.manual_alignment_controls)
+        self.alignment_sub_tabs.addTab(self.manual_alignment_tab, "Manual")
+        
+        # Hybrid alignment
+        self.hybrid_alignment_tab = QWidget()
+        self._setup_hybrid_alignment_content()
+        self.alignment_sub_tabs.addTab(self.hybrid_alignment_tab, "Hybrid")
+        
+        layout.addWidget(self.alignment_sub_tabs)
+        
+        # Action buttons
+        self._setup_alignment_action_buttons(layout)
+        
+        # Connect sub-tab changes
+        self.alignment_sub_tabs.currentChanged.connect(self._on_alignment_subtab_changed)
+        
+        # Connect manual alignment reset signal
+        if hasattr(self.manual_alignment_controls, 'reset_requested'):
+            self.manual_alignment_controls.reset_requested.connect(self._on_reset_transformation_clicked)
+    
+    def _setup_hybrid_alignment_content(self):
+        """Setup hybrid alignment with 3-point selection."""
+        layout = QVBoxLayout(self.hybrid_alignment_tab)
+        
+        # Instructions
+        instructions = QLabel("Select 3 corresponding points on SEM and GDS images for alignment.")
+        instructions.setWordWrap(True)
+        instructions.setStyleSheet("""
+            QLabel {
+                background-color: #3c3c3c;
+                color: #ffffff;
+                padding: 8px;
+                border-radius: 4px;
+                font-size: 12px;
+            }
+        """)
+        layout.addWidget(instructions)
+        
+        # Point status
+        self.points_status_label = QLabel("SEM Points: 0/3  |  GDS Points: 0/3")
+        self.points_status_label.setStyleSheet("color: #ffffff; font-size: 12px;")
+        layout.addWidget(self.points_status_label)
+        
+        # Ready status
+        self.ready_status_label = QLabel("Status: Not Ready")
+        self.ready_status_label.setStyleSheet("color: #f39c12; font-weight: bold;")
+        layout.addWidget(self.ready_status_label)
+        
+        # Control buttons
+        buttons_layout = QHBoxLayout()
+        
+        self.clear_points_btn = QPushButton("Clear All Points")
+        self.clear_points_btn.clicked.connect(self._clear_all_points)
+        buttons_layout.addWidget(self.clear_points_btn)
+        
+        self.calculate_alignment_btn = QPushButton("Calculate Alignment")
+        self.calculate_alignment_btn.setEnabled(False)
+        self.calculate_alignment_btn.clicked.connect(self._calculate_alignment)
+        buttons_layout.addWidget(self.calculate_alignment_btn)
+        
+        layout.addLayout(buttons_layout)
+        layout.addStretch()
+    
+    def _setup_advanced_filtering_tab(self):
+        """Setup advanced filtering tab."""
+        layout = QHBoxLayout(self.advanced_filtering_tab)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Left panel: Advanced filtering controls
+        self.advanced_filtering_left_panel = AdvancedFilteringLeftPanel()
+        self.advanced_filtering_left_panel.filter_applied.connect(self._on_advanced_filter_applied)
+        self.advanced_filtering_left_panel.filter_previewed.connect(self._on_advanced_filter_previewed)
+        self.advanced_filtering_left_panel.filter_reset.connect(self._on_advanced_filter_reset)
+        self.advanced_filtering_left_panel.save_image_requested.connect(self._save_filtered_image)
+        splitter.addWidget(self.advanced_filtering_left_panel)
+        
+        # Right panel: Info display
+        self.advanced_filtering_right_panel = AdvancedFilteringRightPanel()
+        splitter.addWidget(self.advanced_filtering_right_panel)
+        
+        splitter.setSizes([450, 300])
+        layout.addWidget(splitter)
+    
+    def _setup_sequential_filtering_tab(self):
+        """Setup sequential filtering tab."""
+        layout = QHBoxLayout(self.sequential_filtering_tab)
+        splitter = QSplitter(Qt.Orientation.Horizontal)
+        
+        # Left panel: Sequential controls
+        self.sequential_filtering_left_panel = SequentialFilteringLeftPanel()
+        self.sequential_filtering_left_panel.stage_preview_requested.connect(self._on_stage_preview_requested)
+        self.sequential_filtering_left_panel.stage_apply_requested.connect(self._on_stage_apply_requested)
+        self.sequential_filtering_left_panel.stage_reset_requested.connect(self._on_stage_reset_requested)
+        splitter.addWidget(self.sequential_filtering_left_panel)
+        
+        # Right panel: Progress display
+        self.sequential_filtering_right_panel = SequentialFilteringRightPanel()
+        splitter.addWidget(self.sequential_filtering_right_panel)
+        
+        splitter.setSizes([450, 300])
+        layout.addWidget(splitter)
+    
+    def _setup_scoring_tab(self):
+        """Setup scoring tab."""
+        layout = QVBoxLayout(self.scoring_tab)
+        
+        from src.ui.panels.scoring_tab_panel import ScoringTabPanel
+        self.scoring_tab_panel = ScoringTabPanel()
+        self.scoring_tab_panel.scoring_method_changed.connect(self._on_scoring_method_changed)
+        self.scoring_tab_panel.calculate_scores_requested.connect(self._on_calculate_scores_requested)
+        
+        layout.addWidget(self.scoring_tab_panel)
+    
+    def _setup_alignment_action_buttons(self, parent_layout):
+        """Setup action buttons for alignment tab."""
+        parent_layout.addSpacing(20)
+        
+        action_group = QGroupBox("Actions")
+        action_layout = QVBoxLayout(action_group)
+        
+        # First row
+        row1_layout = QHBoxLayout()
+        
+        self.auto_align_btn = QPushButton("Automatic Alignment")
+        self.auto_align_btn.clicked.connect(self._on_auto_align_clicked)
+        row1_layout.addWidget(self.auto_align_btn)
+        
+        self.reset_transformation_btn = QPushButton("Reset Transformation")
+        self.reset_transformation_btn.clicked.connect(self._on_reset_transformation_clicked)
+        row1_layout.addWidget(self.reset_transformation_btn)
+        
+        action_layout.addLayout(row1_layout)
+        
+        # Second row - Save Aligned GDS (prominent button)
+        self.generate_aligned_gds_btn = QPushButton("Save Aligned GDS")
+        self.generate_aligned_gds_btn.setEnabled(False)
+        self.generate_aligned_gds_btn.clicked.connect(self._on_generate_aligned_gds_clicked)
+        self.generate_aligned_gds_btn.setStyleSheet("""
+            QPushButton {
+                background-color: #4CAF50;
+                color: white;
+                font-weight: bold;
+                padding: 8px;
+                border: none;
+                border-radius: 4px;
+            }
+            QPushButton:hover {
+                background-color: #45a049;
+            }
+            QPushButton:pressed {
+                background-color: #3d8b40;
+            }
+            QPushButton:disabled {
+                background-color: #cccccc;
+                color: #666666;
+            }
+        """)
+        action_layout.addWidget(self.generate_aligned_gds_btn)
+        
+        parent_layout.addWidget(action_group)
+    
+    def _setup_menus(self):
         """Setup application menus."""
         menubar = self.menuBar()
         
         # File menu
         file_menu = menubar.addMenu("&File")
         
-        # Open SEM action
         open_sem_action = QAction("&Open SEM Image...", self)
         open_sem_action.setShortcut(QKeySequence.Open)
         open_sem_action.triggered.connect(self.open_sem_file)
         file_menu.addAction(open_sem_action)
         
-        # Open GDS action
         open_gds_action = QAction("Open &GDS File...", self)
         open_gds_action.setShortcut(QKeySequence("Ctrl+G"))
         open_gds_action.triggered.connect(self.open_gds_file)
@@ -110,7 +652,6 @@ class MainWindow(QMainWindow):
         
         file_menu.addSeparator()
         
-        # Save results action
         save_action = QAction("&Save Results...", self)
         save_action.setShortcut(QKeySequence.Save)
         save_action.triggered.connect(self.save_results)
@@ -118,7 +659,6 @@ class MainWindow(QMainWindow):
         
         file_menu.addSeparator()
         
-        # Exit action
         exit_action = QAction("E&xit", self)
         exit_action.setShortcut(QKeySequence.Quit)
         exit_action.triggered.connect(self.close)
@@ -127,13 +667,11 @@ class MainWindow(QMainWindow):
         # View menu
         view_menu = menubar.addMenu("&View")
         
-        # Fit to window action
         fit_action = QAction("&Fit to Window", self)
         fit_action.setShortcut(QKeySequence("Ctrl+0"))
         fit_action.triggered.connect(self.fit_to_window)
         view_menu.addAction(fit_action)
         
-        # Actual size action
         actual_size_action = QAction("&Actual Size", self)
         actual_size_action.setShortcut(QKeySequence("Ctrl+1"))
         actual_size_action.triggered.connect(self.actual_size)
@@ -142,7 +680,6 @@ class MainWindow(QMainWindow):
         # Tools menu
         tools_menu = menubar.addMenu("&Tools")
         
-        # Auto alignment action
         auto_align_action = QAction("&Auto Alignment", self)
         auto_align_action.setShortcut(QKeySequence("Ctrl+A"))
         auto_align_action.triggered.connect(self.run_auto_alignment)
@@ -151,143 +688,96 @@ class MainWindow(QMainWindow):
         # Help menu
         help_menu = menubar.addMenu("&Help")
         
-        # About action
         about_action = QAction("&About", self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
-        
-    def setup_statusbar(self):
-        """Setup status bar with progress indication."""
+    
+    def _setup_status_bar(self):
+        """Setup status bar."""
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
-        
-        # Add progress bar for file operations
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setVisible(False)
-        self.status_bar.addPermanentWidget(self.progress_bar)
-        
-        self.status_bar.showMessage("Ready")
-        
-    def connect_signals(self):
-        """Connect UI component signals."""
-        # Mode switcher
-        self.mode_switcher.mode_changed.connect(self.change_mode)
-        
-        # File selector
-        self.file_selector.sem_file_selected.connect(self.load_sem_file)
-        self.file_selector.gds_file_loaded.connect(self.load_gds_file)                    # Default load
-        self.file_selector.gds_structure_selected.connect(self.load_gds_file_with_structure)  # Specific structure
-        
-    def connect_file_service_signals(self):
-        """Connect file service signals for progress and status updates."""
-        # File loading progress
-        self.file_service.loading_progress.connect(self.update_loading_progress)
-        self.file_service.file_loaded.connect(self.on_file_loaded)
-        self.file_service.loading_error.connect(self.on_loading_error)
-        self.file_service.file_saved.connect(self.on_file_saved)
-        self.file_service.error_occurred.connect(self.on_error_occurred)
-        
-    def update_loading_progress(self, message: str):
-        """Update loading progress in status bar."""
-        self.status_bar.showMessage(message)
-        self.progress_bar.setVisible(True)
-        
-    def on_file_loaded(self, file_type: str, file_path: str):
-        """Handle successful file loading."""
-        self.progress_bar.setVisible(False)
-        self.status_bar.showMessage(f"{file_type} file loaded: {file_path}")
-        
-    def on_loading_error(self, error_message: str):
-        """Handle file loading errors."""
-        self.progress_bar.setVisible(False)
-        self.status_bar.showMessage("Loading failed")
-        QMessageBox.critical(self, "Loading Error", error_message)
-        
-    def on_file_saved(self, file_type: str, file_path: str):
-        """Handle successful file saving."""
-        self.status_bar.showMessage(f"{file_type} saved: {file_path}")
-        
-    def on_error_occurred(self, error_message: str):
-        """Handle general errors."""
-        QMessageBox.warning(self, "Error", error_message)
-        
-    def connect_file_service_signals(self):
-        """Connect file service signals for progress and status updates."""
-        # File loading progress
-        self.file_service.loading_progress.connect(self.update_loading_progress)
-        self.file_service.file_loaded.connect(self.on_file_loaded)
-        self.file_service.loading_error.connect(self.on_loading_error)
-        self.file_service.file_saved.connect(self.on_file_saved)
-        self.file_service.error_occurred.connect(self.on_error_occurred)
-        
-    def update_loading_progress(self, message: str):
-        """Update loading progress in status bar."""
-        self.status_bar.showMessage(message)
-        self.progress_bar.setVisible(True)
-        
-    def on_file_loaded(self, file_type: str, file_path: str):
-        """Handle successful file loading."""
-        self.progress_bar.setVisible(False)
-        self.status_bar.showMessage(f"{file_type} file loaded: {file_path}")
-        
-    def on_loading_error(self, error_message: str):
-        """Handle file loading errors."""
-        self.progress_bar.setVisible(False)
-        self.status_bar.showMessage("Loading failed")
-        QMessageBox.critical(self, "Loading Error", error_message)
-        
-    def on_file_saved(self, file_type: str, file_path: str):
-        """Handle successful file saving."""
-        self.status_bar.showMessage(f"{file_type} saved: {file_path}")
-        
-    def on_error_occurred(self, error_message: str):
-        """Handle general errors."""
-        QMessageBox.warning(self, "Error", error_message)
-
-    def change_mode(self, mode: str):
-        """Change the current application mode."""
-        self.current_mode = mode
-        
-        # Switch to appropriate panel
-        if mode in ["Manual", "Auto"]:
-            self.stacked_widget.setCurrentIndex(0)  # Alignment panel
-        elif mode == "Filter":
-            self.stacked_widget.setCurrentIndex(1)  # Filter panel
-        elif mode == "Score":
-            self.stacked_widget.setCurrentIndex(2)  # Score panel
+        self.status_bar.showMessage("Ready - Unified Interface")
+    
+    def _connect_signals(self):
+        """Connect all signals between components."""
+        try:
+            # File operations signals
+            self.file_operations_manager.sem_image_loaded.connect(self.on_sem_image_loaded)
+            self.file_operations_manager.file_operation_error.connect(self.on_file_error)
             
-        self.status_bar.showMessage(f"Mode: {mode}")
-        
+            # GDS operations signals
+            self.gds_operations_manager.gds_file_loaded.connect(self.on_gds_file_loaded)
+            self.gds_operations_manager.structure_selected.connect(self.on_structure_selected)
+            self.gds_operations_manager.gds_operation_error.connect(self.on_gds_error)
+            
+            # Image processing signals
+            self.image_processing_manager.filter_applied.connect(self.on_filter_applied)
+            self.image_processing_manager.filters_reset.connect(self.on_filters_reset)
+            
+            # Alignment operations signals
+            self.alignment_operations_manager.alignment_completed.connect(self.on_alignment_completed)
+            self.alignment_operations_manager.alignment_reset.connect(self.on_alignment_reset)
+            
+            # Scoring operations signals
+            self.scoring_operations_manager.scores_calculated.connect(self.on_scores_calculated)
+            
+            # File service signals
+            self.file_service.loading_progress.connect(self.update_loading_progress)
+            self.file_service.file_loaded.connect(self.on_file_loaded)
+            self.file_service.loading_error.connect(self.on_loading_error)
+            
+            # Transform service signals
+            self.transform_service.transform_applied.connect(self.update_gds_display)
+            
+            logger.info("All signals connected successfully")
+            
+        except Exception as e:
+            logger.error(f"Error connecting signals: {e}")
+    
+    # File operations
     def load_sem_file(self, filepath: str):
-        """Load SEM file using file service with error handling."""
-        def _load_sem():
+        """Load SEM file."""
+        try:
             from pathlib import Path
             result = self.file_service.load_sem_file(Path(filepath))
             if result:
                 self.current_sem_data = result
                 self.current_sem_path = filepath
-                logger.info(f"SEM file loaded successfully: {filepath}")
+                self.current_sem_image_obj = result
                 
-                # Update alignment panel with SEM data
-                if hasattr(self, 'alignment_panel'):
-                    self.alignment_panel.set_initial_sem_image(result['cropped_array'])
+                if 'cropped_array' in result:
+                    self.current_sem_image = result['cropped_array']
+                    # Store original for filter reset
+                    self.original_sem_image = self.current_sem_image.copy()
+                    
+                    # Set image in image processing service
+                    if hasattr(self, 'image_processing_service'):
+                        self.image_processing_service.set_image(self.current_sem_image)
+                    
+                    self.image_viewer.set_sem_image(self.current_sem_image)
+                    self.histogram_view.update_histogram(self.current_sem_image)
+                
+                logger.info(f"SEM file loaded: {filepath}")
                 return result
             else:
                 raise ValueError(f"Failed to load SEM file: {filepath}")
-        
-        return self.safe_operation(_load_sem, "SEM Loading")
-            
+                
+        except Exception as e:
+            logger.error(f"Error loading SEM file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to load SEM file: {e}")
+    
     def load_gds_file(self, filepath: str):
-        """Load GDS file with default structure 1."""
-        print(f"Loading GDS file with default Structure 1: {filepath}")
-        self.load_gds_file_with_structure(filepath, structure_id=1)
-
+        """Load GDS file with default structure."""
+        self.gds_operations_manager.load_gds_file_from_path(filepath)
+    
+    def _handle_structure_selection(self, gds_file_path: str, structure_id: int):
+        """Handle structure selection from FileSelector."""
+        print(f"Structure selection: {structure_id} from {gds_file_path}")
+        self.gds_operations_manager.select_structure_by_id(structure_id)
+    
     def load_gds_file_with_structure(self, filepath: str, structure_id: int):
-        """Load ONLY the specified structure region from GDS file."""
-        print(f"\n=== LOADING STRUCTURE {structure_id} ===")
-        print(f"File: {filepath}")
-        
-        def _load_gds():
+        """Load GDS file with specific structure."""
+        try:
             from pathlib import Path
             result = self.file_service.load_gds_file(Path(filepath), structure_id=structure_id)
             if result:
@@ -295,60 +785,31 @@ class MainWindow(QMainWindow):
                 self.current_gds_path = filepath
                 self.current_structure_id = structure_id
                 
-                print(f"Structure Name: {result.get('structure_name', 'Unknown')}")
-                print(f"Structure Bounds: {result['extracted_structure']['frame_data']['bounds']}")
-                print(f"Polygon Count: {result['extracted_structure']['frame_data']['polygon_count']}")
-                print(f"Binary Image Shape: {result['extracted_structure']['binary_image'].shape}")
-                
-                import numpy as np
-                print(f"Non-zero pixels: {np.count_nonzero(result['extracted_structure']['binary_image'])}")
-                
-                logger.info(f"GDS file loaded successfully: {filepath}, structure: {structure_id}")
-                
-                # Update alignment panel with initial GDS data
-                if hasattr(self, 'alignment_panel') and 'extracted_structure' in result:
+                if 'extracted_structure' in result:
                     binary_image = result['extracted_structure']['binary_image']
-                    self.alignment_panel.set_initial_gds_image(binary_image)
-                    
-                print(f"Structure {structure_id} image displayed successfully")
-                print("================================\n")
-                    
+                    # Ensure binary image is properly formatted
+                    if binary_image is not None:
+                        # Convert to uint8 if needed
+                        if binary_image.dtype != np.uint8:
+                            binary_image = (binary_image * 255).astype(np.uint8)
+                        
+                        self.current_gds_overlay = binary_image
+                        self.image_viewer.set_gds_overlay(binary_image)
+                        
+                        # Force overlay to be visible
+                        self.image_viewer.set_overlay_visible(True)
+                        
+                        print(f"GDS overlay set: shape={binary_image.shape}, dtype={binary_image.dtype}, max={binary_image.max()}")
+                
+                logger.info(f"GDS file loaded: {filepath}, structure: {structure_id}")
                 return result
             else:
                 raise ValueError(f"Failed to load GDS structure {structure_id}: {filepath}")
-        
-        return self.safe_operation(_load_gds, "GDS Structure Loading")
-        """Create aligned GDS image using current loaded data with error handling."""
-        def _create_aligned():
-            if not self.current_gds_data:
-                raise ValueError("No GDS file loaded")
                 
-            # Add alignment type to parameters
-            alignment_params['alignment_type'] = self.current_mode.lower()
-            
-            # Create aligned GDS image
-            result = self.file_service.complete_aligned_gds_workflow(
-                structure_id=self.current_structure_id,
-                alignment_params=alignment_params,
-                sem_image_path=self.current_sem_path,
-                save_results=True
-            )
-            
-            if result and result.get('success', False):
-                logger.info("Aligned GDS image created and saved successfully")
-                
-                # Update alignment panel display
-                if hasattr(self, 'alignment_panel') and 'aligned_data' in result:
-                    aligned_image = result['aligned_data']['aligned_binary_image']
-                    self.alignment_panel.set_aligned_gds_image(aligned_image)
-                
-                return result
-            else:
-                error_msg = result.get('error', 'Unknown error') if result else 'No result returned'
-                raise ValueError(error_msg)
-        
-        return self.safe_operation(_create_aligned, "Aligned GDS Creation")
-            
+        except Exception as e:
+            logger.error(f"Error loading GDS file: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to load GDS file: {e}")
+    
     def open_sem_file(self):
         """Open SEM file dialog."""
         filepath, _ = QFileDialog.getOpenFileName(
@@ -357,7 +818,7 @@ class MainWindow(QMainWindow):
         )
         if filepath:
             self.load_sem_file(filepath)
-            
+    
     def open_gds_file(self):
         """Open GDS file dialog."""
         filepath, _ = QFileDialog.getOpenFileName(
@@ -366,668 +827,836 @@ class MainWindow(QMainWindow):
         )
         if filepath:
             self.load_gds_file(filepath)
-            
+    
     def save_results(self):
-        """Save current alignment results."""
+        """Save current results."""
         try:
-            if not self.current_gds_data or not self.current_sem_data:
-                QMessageBox.warning(self, "Warning", "Both SEM and GDS files must be loaded to save results")
-                return
-                
-            # Get current alignment parameters
-            current_params = self.get_current_alignment_parameters()
-            current_params['alignment_type'] = self.current_mode.lower()
-            
-            # Create and save aligned GDS image
-            result = self.create_aligned_gds_image(current_params)
-            
-            if result and result.get('success', False):
-                saved_files = result.get('saved_files', {})
-                if saved_files:
-                    file_list = '\n'.join([f"{k}: {v.name}" for k, v in saved_files.items()])
-                    QMessageBox.information(self, "Success", 
-                                          f"Results saved successfully!\n\nFiles saved:\n{file_list}")
-                else:
-                    QMessageBox.information(self, "Success", "Results saved successfully!")
+            if hasattr(self, 'file_operations_manager'):
+                self.file_operations_manager.save_results()
             else:
-                QMessageBox.critical(self, "Error", "Failed to save results")
-                
+                QMessageBox.information(self, "Info", "No results to save")
         except Exception as e:
             logger.error(f"Error saving results: {e}")
             QMessageBox.critical(self, "Error", f"Failed to save results: {e}")
-            
+    
+    # View operations
     def fit_to_window(self):
         """Fit content to window."""
-        if self.current_mode in ["Manual", "Auto"]:
-            self.alignment_panel.fit_canvas_to_view()
-            
+        if hasattr(self.image_viewer, 'fit_to_window'):
+            self.image_viewer.fit_to_window()
+    
     def actual_size(self):
         """Show content at actual size."""
-        if self.current_mode in ["Manual", "Auto"]:
-            self.alignment_panel.reset_canvas_zoom()
-            
+        if hasattr(self.image_viewer, 'reset_view'):
+            self.image_viewer.reset_view()
+    
     def run_auto_alignment(self):
-        """Run automatic alignment using auto alignment service with error handling."""
-        def _run_auto_alignment():
-            if not self.current_sem_data or not self.current_gds_data:
-                raise ValueError("Both SEM and GDS files must be loaded for auto alignment")
-                
-            # Import auto alignment service
-            from ..services.transformations.auto_alignment_service import AutoAlignmentService
-            
-            self.status_bar.showMessage("Running auto alignment...")
-            
-            # Get image arrays
-            sem_image = self.current_sem_data['cropped_array']
-            gds_image = self.current_gds_data['extracted_structure']['binary_image']
-            
-            # Create auto alignment service
-            auto_service = AutoAlignmentService()
-            
-            # Run auto alignment
-            result = auto_service.auto_align_images(sem_image, gds_image)
-            
-            if result.get('success', False):
-                # Extract transformation parameters
-                transformation_matrix = result.get('transformation_matrix')
-                if transformation_matrix is not None:
-                    # Convert matrix to alignment parameters
-                    alignment_params = self.extract_alignment_params_from_matrix(transformation_matrix)
-                    alignment_params['alignment_type'] = 'auto'
-                    
-                    # Create aligned GDS image
-                    aligned_result = self.create_aligned_gds_image(alignment_params)
-                    
-                    if aligned_result:
-                        quality_score = result.get('quality_score', 0.0)
-                        self.status_bar.showMessage(f"Auto alignment completed! Quality: {quality_score:.3f}")
-                        
-                        QMessageBox.information(self, "Success", 
-                                              f"Auto alignment completed!\nQuality score: {quality_score:.3f}")
-                        return aligned_result
-                    else:
-                        raise ValueError("Failed to create aligned GDS image")
-                else:
-                    raise ValueError("Failed to extract transformation parameters from alignment result")
-            else:
-                error_msg = result.get('error', 'Unknown error')
-                raise ValueError(error_msg)
-        
-        return self.safe_operation(_run_auto_alignment, "Auto Alignment")
-            
-    def extract_alignment_params_from_matrix(self, matrix):
-        """Extract alignment parameters from transformation matrix."""
+        """Run automatic alignment."""
         try:
-            import numpy as np
-            
-            # Extract translation
-            translation = (float(matrix[0, 2]), float(matrix[1, 2]))
-            
-            # Extract scale and rotation
-            a, b = matrix[0, 0], matrix[0, 1]
-            c, d = matrix[1, 0], matrix[1, 1]
-            
-            # Calculate scale
-            scale_x = np.sqrt(a*a + b*b)
-            scale_y = np.sqrt(c*c + d*d)
-            zoom = (scale_x + scale_y) / 2
-            
-            # Calculate rotation in degrees
-            rotation = np.arctan2(b, a) * 180 / np.pi
-            
-            return {
-                'translation': translation,
-                'zoom': zoom,
-                'rotation': rotation
-            }
-            
+            if hasattr(self, 'alignment_operations_manager'):
+                self.alignment_operations_manager.auto_align()
+            else:
+                QMessageBox.information(self, "Info", "Auto alignment not available")
         except Exception as e:
-            logger.error(f"Error extracting alignment parameters: {e}")
-            return {'translation': (0, 0), 'zoom': 1.0, 'rotation': 0.0}
-            
+            logger.error(f"Error in auto alignment: {e}")
+            QMessageBox.critical(self, "Error", f"Auto alignment failed: {e}")
+    
     def show_about(self):
         """Show about dialog."""
         QMessageBox.about(
             self, "About Image Analysis Tool",
-            "Image Analysis Tool\n\n"
-            "A tool for aligning SEM images with GDS layouts\n"
+            "Unified Image Analysis Tool\n\n"
+            "A comprehensive tool for aligning SEM images with GDS layouts\n"
             "and analyzing their correspondence.\n\n"
-            "Version 1.0"
+            "Features:\n"
+            "• Manual and hybrid alignment\n"
+            "• Advanced filtering\n"
+            "• Sequential filtering workflow\n"
+            "• Comprehensive scoring\n\n"
+            "Version 2.0"
         )
-        
-    def closeEvent(self, event):
-        """Handle application close event."""
-        reply = QMessageBox.question(
-            self, "Confirm Exit",
-            "Are you sure you want to exit?",
-            QMessageBox.Yes | QMessageBox.No,
-            QMessageBox.No
-        )
-        
-        if reply == QMessageBox.Yes:
-            event.accept()
+    
+    # Signal handlers
+    def on_sem_image_loaded(self, file_path, image_data):
+        """Handle SEM image loaded."""
+        logger.info(f"SEM image loaded: {file_path}")
+        if 'cropped_array' in image_data:
+            self.current_sem_image = image_data['cropped_array']
+            self.original_sem_image = self.current_sem_image.copy()
+            
+            # Set image in image processing service
+            if hasattr(self, 'image_processing_service'):
+                self.image_processing_service.set_image(self.current_sem_image)
+            
+            self.histogram_view.update_histogram(self.current_sem_image)
+    
+    def on_gds_file_loaded(self, file_path):
+        """Handle GDS file loaded."""
+        logger.info(f"GDS file loaded: {file_path}")
+        self.status_bar.showMessage(f"GDS file loaded: {Path(file_path).name}")
+    
+    def on_structure_selected(self, structure_name, overlay):
+        """Handle structure selected."""
+        logger.info(f"Structure selected: {structure_name}")
+        if overlay is not None:
+            # Ensure overlay is properly formatted
+            if overlay.dtype != np.uint8:
+                overlay = (overlay * 255).astype(np.uint8)
+            
+            self.current_gds_overlay = overlay
+            self.image_viewer.set_gds_overlay(overlay)
+            self.image_viewer.set_overlay_visible(True)
+            
+            self.status_bar.showMessage(f"Structure loaded: {structure_name}")
+            print(f"Structure overlay set: shape={overlay.shape}, dtype={overlay.dtype}, max={overlay.max()}")
         else:
-            event.ignore()
-
-    def setup_alignment_parameter_flow(self):
-        """Setup proper alignment parameter flow between UI components."""
-        try:
-            # Connect alignment panel signals if available
-            if hasattr(self, 'alignment_panel') and self.alignment_panel:
-                # Connect new transform signals
-                if hasattr(self.alignment_panel, 'transform_changed'):
-                    self.alignment_panel.transform_changed.connect(self.on_transform_changed)
-                if hasattr(self.alignment_panel, 'alignment_applied'):
-                    self.alignment_panel.alignment_applied.connect(self.on_alignment_applied)
-                if hasattr(self.alignment_panel, 'reset_requested'):
-                    self.alignment_panel.reset_requested.connect(self.on_alignment_reset)
-                
-                # Connect file selection signals
-                if hasattr(self.alignment_panel, 'sem_file_selected'):
-                    self.alignment_panel.sem_file_selected.connect(self.load_sem_file)
-                if hasattr(self.alignment_panel, 'gds_file_loaded'):
-                    self.alignment_panel.gds_file_loaded.connect(self.load_gds_file)
-                if hasattr(self.alignment_panel, 'gds_structure_selected'):
-                    self.alignment_panel.gds_structure_selected.connect(self.load_gds_file_with_structure)
-                
-                logger.info("Alignment parameter flow setup complete")
-            else:
-                logger.warning("Alignment panel not available for parameter flow setup")
-                
-        except Exception as e:
-            logger.error(f"Failed to setup alignment parameter flow: {e}")
-
-    def on_transform_changed(self, transform_params: dict):
-        """Handle transform parameter changes from alignment panel."""
-        try:
-            # Update real-time display with new transform parameters
-            self.update_aligned_gds_real_time(transform_params)
-            logger.debug(f"Transform parameters updated: {transform_params}")
-        except Exception as e:
-            logger.error(f"Error updating transform parameters: {e}")
-
-    def on_alignment_applied(self, transform_params: dict):
-        """Handle alignment application from alignment panel."""
-        try:
-            # Apply final alignment with current parameters
-            self.apply_final_alignment(transform_params)
-            self.status_bar.showMessage("Alignment applied successfully")
-            logger.info(f"Alignment applied with parameters: {transform_params}")
-        except Exception as e:
-            logger.error(f"Error applying alignment: {e}")
-            self.status_bar.showMessage("Error applying alignment")
-
+            print("Warning: Received None overlay for structure")
+    
+    def on_filter_applied(self, filter_name, parameters):
+        """Handle filter applied."""
+        logger.info(f"Filter applied: {filter_name}")
+        if hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
+            self.histogram_view.update_histogram(self.current_sem_image)
+    
+    def on_filters_reset(self):
+        """Handle filters reset."""
+        logger.info("Filters reset")
+        if hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
+            self.histogram_view.update_histogram(self.current_sem_image)
+    
+    def on_alignment_completed(self, alignment_result):
+        """Handle alignment completed."""
+        logger.info("Alignment completed")
+        self.current_alignment_result = alignment_result
+        if hasattr(self, 'generate_aligned_gds_btn'):
+            self.generate_aligned_gds_btn.setEnabled(True)
+    
     def on_alignment_reset(self):
-        """Handle alignment reset from alignment panel."""
-        try:
-            # Reset alignment to default state
-            self.reset_alignment_state()
-            self.status_bar.showMessage("Alignment reset")
-            logger.info("Alignment reset requested")
-        except Exception as e:
-            logger.error(f"Error resetting alignment: {e}")
-            self.status_bar.showMessage("Error resetting alignment")
-
-    def on_translation_x_changed(self, value: float):
-        """Handle translation X parameter change."""
-        try:
-            current_params = self.get_current_alignment_parameters()
-            current_params['translation'] = (value, current_params['translation'][1])
-            self.update_aligned_gds_real_time(current_params)
-            logger.debug(f"Translation X updated to: {value}")
-        except Exception as e:
-            logger.error(f"Error updating translation X: {e}")
-
-    def on_translation_y_changed(self, value: float):
-        """Handle translation Y parameter change."""
-        try:
-            current_params = self.get_current_alignment_parameters()
-            current_params['translation'] = (current_params['translation'][0], value)
-            self.update_aligned_gds_real_time(current_params)
-            logger.debug(f"Translation Y updated to: {value}")
-        except Exception as e:
-            logger.error(f"Error updating translation Y: {e}")
-
-    def on_rotation_changed(self, value: float):
-        """Handle rotation parameter change."""
-        try:
-            current_params = self.get_current_alignment_parameters()
-            current_params['rotation'] = value
-            self.update_aligned_gds_real_time(current_params)
-            logger.debug(f"Rotation updated to: {value}")
-        except Exception as e:
-            logger.error(f"Error updating rotation: {e}")
-
-    def on_scale_changed(self, value: float):
-        """Handle scale parameter change."""
-        try:
-            current_params = self.get_current_alignment_parameters()
-            current_params['zoom'] = value
-            self.update_aligned_gds_real_time(current_params)
-            logger.debug(f"Scale updated to: {value}")
-        except Exception as e:
-            logger.error(f"Error updating scale: {e}")
-
-    def on_reset_alignment_clicked(self):
         """Handle alignment reset."""
+        logger.info("Alignment reset")
+        self.current_alignment_result = None
+        if hasattr(self, 'generate_aligned_gds_btn'):
+            self.generate_aligned_gds_btn.setEnabled(False)
+    
+    def on_scores_calculated(self, scores):
+        """Handle scores calculated."""
+        logger.info(f"Scores calculated: {scores}")
+        self.current_scoring_results = scores
+        if hasattr(self, 'scoring_tab_panel'):
+            self.scoring_tab_panel.display_results(scores)
+    
+    def on_file_error(self, operation, error_message):
+        """Handle file operation error."""
+        logger.error(f"File operation error ({operation}): {error_message}")
+        QMessageBox.critical(self, "File Error", f"{operation} failed: {error_message}")
+    
+    def on_gds_error(self, operation, error_message):
+        """Handle GDS operation error."""
+        logger.error(f"GDS operation error ({operation}): {error_message}")
+        self.status_bar.showMessage(f"GDS error: {operation} failed")
+        QMessageBox.critical(self, "GDS Error", f"{operation} failed: {error_message}")
+    
+    def update_loading_progress(self, message: str):
+        """Update loading progress."""
+        self.status_bar.showMessage(message)
+    
+    def on_file_loaded(self, file_type: str, file_path: str):
+        """Handle file loaded."""
+        self.status_bar.showMessage(f"{file_type} file loaded: {file_path}")
+    
+    def on_loading_error(self, error_message: str):
+        """Handle loading error."""
+        self.status_bar.showMessage("Loading failed")
+        QMessageBox.critical(self, "Loading Error", error_message)
+    
+    def update_gds_display(self, transform_data: dict):
+        """Update GDS display with transform data."""
         try:
-            # Reset to default parameters
-            default_params = {
-                'translation': (0.0, 0.0),
-                'zoom': 1.0,
-                'rotation': 0.0,
-                'alignment_type': 'manual'
-            }
+            if hasattr(self.image_viewer, 'update_gds_transform'):
+                self.image_viewer.update_gds_transform(transform_data)
+        except Exception as e:
+            logger.error(f"Error updating GDS display: {e}")
+    
+    # Tab and mode switching
+    def _on_tab_changed(self, index):
+        """Handle tab change."""
+        try:
+            tab_names = ["alignment", "advanced_filtering", "sequential_filtering", "scoring"]
+            if 0 <= index < len(tab_names):
+                tab_name = tab_names[index]
+                logger.info(f"Switched to {tab_name} tab")
+                
+                # Update display based on tab
+                if index == 0:  # Alignment
+                    self._switch_to_alignment_display()
+                elif index == 1:  # Advanced filtering
+                    self._switch_to_advanced_filtering_display()
+                elif index == 2:  # Sequential filtering
+                    self._switch_to_sequential_filtering_display()
+                elif index == 3:  # Scoring
+                    self._switch_to_scoring_display()
+                    
+        except Exception as e:
+            logger.error(f"Error handling tab change: {e}")
+    
+    def _switch_to_alignment_display(self):
+        """Switch to alignment display mode."""
+        if self.current_sem_image is not None:
+            self.image_viewer.set_sem_image(self.current_sem_image)
+        if self.current_gds_overlay is not None:
+            self.image_viewer.set_gds_overlay(self.current_gds_overlay)
+            self.image_viewer.set_overlay_visible(True)
+            print(f"Alignment display: GDS overlay visible={self.image_viewer.get_overlay_visible()}")
+    
+    def _switch_to_advanced_filtering_display(self):
+        """Switch to advanced filtering display mode."""
+        if self.current_sem_image is not None:
+            self.image_viewer.set_sem_image(self.current_sem_image)
+        # Hide GDS overlay in filtering mode
+        if hasattr(self.image_viewer, 'set_overlay_visible'):
+            self.image_viewer.set_overlay_visible(False)
+    
+    def _switch_to_sequential_filtering_display(self):
+        """Switch to sequential filtering display mode."""
+        if self.sequential_images:
+            # Show latest sequential result
+            latest_stage = max(self.sequential_images.keys())
+            latest_image = self.sequential_images[latest_stage]
+            self.image_viewer.set_sem_image(latest_image)
+        elif self.current_sem_image is not None:
+            self.image_viewer.set_sem_image(self.current_sem_image)
+    
+    def _switch_to_scoring_display(self):
+        """Switch to scoring display mode."""
+        if self.current_sem_image is not None:
+            self.image_viewer.set_sem_image(self.current_sem_image)
+        if self.current_gds_overlay is not None:
+            self.image_viewer.set_gds_overlay(self.current_gds_overlay)
+            self.image_viewer.set_overlay_visible(True)
+            print(f"Scoring display: GDS overlay visible={self.image_viewer.get_overlay_visible()}")
+    
+    # Hybrid alignment methods
+    def _on_alignment_subtab_changed(self, index):
+        """Handle alignment sub-tab change."""
+        if index == 1:  # Hybrid tab
+            self.image_viewer.set_point_selection_mode(True, "both")
+        else:  # Manual tab
+            self.image_viewer.set_point_selection_mode(False)
+    
+    def _on_point_selected(self, x, y, point_type):
+        """Handle point selection."""
+        try:
+            if point_type == "sem":
+                if len(self.sem_points) < 3:
+                    self.sem_points.append((x, y))
+            elif point_type == "gds":
+                if len(self.gds_points) < 3:
+                    self.gds_points.append((x, y))
             
-            # Update alignment panel controls if available
-            if hasattr(self, 'alignment_panel'):
-                self.alignment_panel.reset_controls()
-            
-            # Update aligned GDS display
-            self.update_aligned_gds_real_time(default_params)
-            
-            logger.info("Alignment parameters reset to default")
-            self.status_bar.showMessage("Alignment reset to default values")
+            self._update_hybrid_status()
             
         except Exception as e:
-            logger.error(f"Error resetting alignment: {e}")
-
-    def get_current_alignment_parameters(self) -> Dict[str, Any]:
-        """Get current alignment parameters."""
+            logger.error(f"Error handling point selection: {e}")
+    
+    def _update_hybrid_status(self):
+        """Update hybrid alignment status."""
         try:
-            # Try to get from alignment panel if available
-            if hasattr(self, 'alignment_panel') and hasattr(self.alignment_panel, 'get_current_parameters'):
-                return self.alignment_panel.get_current_parameters()
+            sem_count = len(self.sem_points)
+            gds_count = len(self.gds_points)
+            
+            self.points_status_label.setText(f"SEM Points: {sem_count}/3  |  GDS Points: {gds_count}/3")
+            
+            if sem_count == 3 and gds_count == 3:
+                self.ready_status_label.setText("Status: Ready for Alignment")
+                self.ready_status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+                self.calculate_alignment_btn.setEnabled(True)
             else:
-                # Return default parameters
-                return {
-                    'translation': (0.0, 0.0),
-                    'zoom': 1.0,
-                    'rotation': 0.0,
-                    'alignment_type': 'manual'
-                }
-        except Exception as e:
-            logger.error(f"Error getting current alignment parameters: {e}")
-            return {}
-
-    def set_alignment_parameters(self, params: Dict[str, Any]):
-        """Set alignment parameters in UI controls."""
-        try:
-            if not self.validate_alignment_parameters(params):
-                logger.error("Invalid alignment parameters provided")
-                return False
-            
-            # Update alignment panel controls if available
-            if hasattr(self, 'alignment_panel') and hasattr(self.alignment_panel, 'set_parameters'):
-                self.alignment_panel.set_parameters(params)
-            
-            # Update aligned GDS display
-            self.update_aligned_gds_real_time(params)
-            
-            logger.info(f"Alignment parameters set: {params}")
-            return True
+                self.ready_status_label.setText("Status: Not Ready")
+                self.ready_status_label.setStyleSheet("color: #f39c12; font-weight: bold;")
+                self.calculate_alignment_btn.setEnabled(False)
                 
         except Exception as e:
-            logger.error(f"Error setting alignment parameters: {e}")
-            return False
-
-    def validate_alignment_parameters(self, params: Dict[str, Any]) -> bool:
-        """Validate alignment parameters before processing."""
+            logger.error(f"Error updating hybrid status: {e}")
+    
+    def _clear_all_points(self):
+        """Clear all selected points."""
+        self.sem_points = []
+        self.gds_points = []
+        self.image_viewer.clear_points("both")
+        self._update_hybrid_status()
+    
+    def _calculate_alignment(self):
+        """Calculate alignment from selected points."""
         try:
-            required_keys = ['translation', 'zoom', 'rotation']
+            if len(self.sem_points) == 3 and len(self.gds_points) == 3:
+                self.alignment_operations_manager.manual_align_3_point(self.sem_points, self.gds_points)
+                logger.info("3-point alignment calculation completed")
+            else:
+                QMessageBox.warning(self, "Warning", "Need exactly 3 points on both SEM and GDS images")
+                
+        except Exception as e:
+            logger.error(f"Error calculating alignment: {e}")
+            QMessageBox.critical(self, "Error", f"Alignment calculation failed: {e}")
+    
+    # Action button handlers
+    def _on_auto_align_clicked(self):
+        """Handle auto align button click."""
+        self.run_auto_alignment()
+    
+    def _on_reset_transformation_clicked(self):
+        """Handle reset transformation button click."""
+        try:
+            # Reset manual alignment controls
+            if hasattr(self, 'manual_alignment_controls'):
+                self.manual_alignment_controls.reset_parameters()
             
-            # Check all required keys exist
-            for key in required_keys:
-                if key not in params:
-                    logger.error(f"Missing required parameter: {key}")
-                    return False
+            # Reset image viewer overlay to original
+            if hasattr(self, 'image_viewer') and hasattr(self, 'gds_operations_manager'):
+                if self.gds_operations_manager.current_gds_overlay is not None:
+                    original_overlay = self.gds_operations_manager.current_gds_overlay
+                    self.current_gds_overlay = original_overlay
+                    self.image_viewer.set_gds_overlay(original_overlay)
+                    self.image_viewer.set_overlay_visible(True)
+                    print("Reset: Restored original GDS overlay")
+                else:
+                    self.image_viewer.set_gds_overlay(None)
+                    self.current_gds_overlay = None
+                    print("Reset: No original overlay to restore")
             
-            # Validate parameter ranges
-            translation = params['translation']
-            zoom = params['zoom']
-            rotation = params['rotation']
+            # Reset hybrid alignment points
+            self._clear_all_points()
             
-            # Check reasonable ranges
-            if abs(translation[0]) > 2000 or abs(translation[1]) > 2000:
-                logger.error(f"Translation values too large: {translation}")
-                return False
-            
-            if zoom < 0.1 or zoom > 10.0:
-                logger.error(f"Zoom value out of range: {zoom}")
-                return False
-            
-            if abs(rotation) > 360:
-                logger.error(f"Rotation value out of range: {rotation}")
-                return False
-            
-            return True
+            self.status_bar.showMessage("Transformation reset")
+            logger.info("Transformation reset completed")
             
         except Exception as e:
-            logger.error(f"Error validating alignment parameters: {e}")
-            return False
-
-    def update_aligned_gds_real_time(self, params: Dict[str, Any]):
-        """Update aligned GDS display in real-time during parameter changes."""
+            logger.error(f"Error resetting transformation: {e}")
+            QMessageBox.critical(self, "Reset Error", f"Failed to reset transformation: {e}")
+    
+    def _on_generate_aligned_gds_clicked(self):
+        """Handle save aligned GDS button click - generate GDS with coordinate transformation."""
         try:
-            if not self.current_gds_data:
+            from pathlib import Path
+            from datetime import datetime
+            import cv2
+            
+            # Get current alignment parameters
+            params = self._get_current_alignment_parameters()
+            if not params:
+                QMessageBox.warning(self, "Save Error", "No alignment parameters available")
                 return
-                
-            # Create aligned image with current parameters
-            result = self.create_aligned_gds_image(params)
             
-            if result and 'aligned_data' in result:
-                # Update display in alignment panel
-                aligned_image = result['aligned_data']['aligned_binary_image']
-                if hasattr(self, 'alignment_panel'):
-                    self.alignment_panel.set_aligned_gds_image(aligned_image)
+            # Check if we have GDS service
+            if not hasattr(self, 'gds_operations_manager') or not self.gds_operations_manager.new_gds_service:
+                QMessageBox.warning(self, "Save Error", "No GDS service available")
+                return
+            
+            # Create output directory
+            output_dir = Path("Results/Aligned/manual")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Generate filename with timestamp
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Get current structure ID from GDS operations manager
+            if hasattr(self, 'gds_operations_manager') and self.gds_operations_manager.current_structure_name:
+                # Extract structure number from name like "Structure 2"
+                structure_name = self.gds_operations_manager.current_structure_name
+                if structure_name.startswith("Structure "):
+                    structure_id = int(structure_name.replace("Structure ", ""))
+                else:
+                    structure_id = 1
+            else:
+                structure_id = getattr(self, 'current_structure_id', 1)
+            
+            print(f"DEBUG: Using structure ID: {structure_id}")
+            
+            # Calculate new GDS bounds based on alignment parameters
+            new_bounds, rotation_angle = self._calculate_transformed_bounds(params, structure_id)
+            print(f"DEBUG: Calculated bounds: {new_bounds}, rotation: {rotation_angle}")
+            
+            # Generate new GDS image with transformed coordinates
+            gds_service = self.gds_operations_manager.new_gds_service
+            transformed_gds_image = gds_service.generate_structure_display(
+                structure_id, (1024, 666), custom_bounds=new_bounds
+            )
+            print(f"DEBUG: Generated image shape: {transformed_gds_image.shape if transformed_gds_image is not None else 'None'}")
+            print(f"DEBUG: Structure ID used: {structure_id}")
+            
+            if transformed_gds_image is None:
+                QMessageBox.warning(self, "Save Error", "Failed to generate transformed GDS image")
+                return
+            
+            # Apply rotation to the final image if needed
+            final_image = transformed_gds_image
+            if abs(rotation_angle) > 0.1:  # Only rotate if significant rotation
+                height, width = final_image.shape[:2]
+                center = (width // 2, height // 2)
+                rotation_matrix = cv2.getRotationMatrix2D(center, rotation_angle, 1.0)
+                final_image = cv2.warpAffine(final_image, rotation_matrix, (width, height),
+                                           borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+            
+            # Save as PNG image
+            png_filename = f"aligned_gds_{timestamp}.png"
+            png_path = output_dir / png_filename
+            cv2.imwrite(str(png_path), final_image)
+            
+            # Save transformation parameters
+            params_filename = f"alignment_params_{timestamp}.txt"
+            params_path = output_dir / params_filename
+            with open(params_path, 'w') as f:
+                f.write(f"Alignment Parameters - {timestamp}\n")
+                f.write(f"Translation X: {params.get('x_offset', 0)} pixels\n")
+                f.write(f"Translation Y: {params.get('y_offset', 0)} pixels\n")
+                f.write(f"Rotation: {params.get('rotation', 0)} degrees\n")
+                f.write(f"Scale: {params.get('scale', 1.0)}\n")
+                f.write(f"Method: Manual alignment (coordinate-based)\n")
+                f.write(f"New bounds: {new_bounds}\n")
+                f.write(f"Applied rotation: {rotation_angle} degrees\n")
+            
+            self.status_bar.showMessage(f"Aligned GDS saved to: {png_path}")
+            QMessageBox.information(self, "Save Successful", 
+                                  f"Aligned GDS saved to:\n{png_path}\n\nParameters saved to:\n{params_path}")
+            
+            # Update button to show success
+            self.generate_aligned_gds_btn.setText("Saved!")
+            self.generate_aligned_gds_btn.setStyleSheet("""
+                QPushButton {
+                    background-color: #27AE60;
+                    color: white;
+                    font-weight: bold;
+                    padding: 8px;
+                    border: none;
+                    border-radius: 4px;
+                }
+            """)
+            
+            # Reset button after 2 seconds
+            QTimer.singleShot(2000, self._reset_save_button)
+            
+            logger.info(f"Aligned GDS saved: {png_path}")
+            
+        except Exception as e:
+            logger.error(f"Error generating aligned GDS: {e}")
+            import traceback
+            traceback.print_exc()
+            QMessageBox.critical(self, "Save Error", f"Failed to save aligned GDS: {e}")
+    
+    # Filtering signal handlers
+    def _on_advanced_filter_applied(self, filter_name: str, parameters: dict):
+        """Handle advanced filter applied."""
+        try:
+            if not hasattr(self, 'current_sem_image') or self.current_sem_image is None:
+                print("❌ ERROR: No SEM image loaded")
+                return
+            
+            # Use original image as base for applying filters
+            base_image = getattr(self, 'original_sem_image', self.current_sem_image)
+            filtered_image = self._apply_filter_directly(filter_name, parameters, base_image)
+            if filtered_image is not None:
+                self.current_sem_image = filtered_image
+                self.image_viewer.set_sem_image(filtered_image)
+                self.histogram_view.update_histogram(filtered_image)
+                
+                if hasattr(self, 'advanced_filtering_right_panel'):
+                    self.advanced_filtering_right_panel.update_histogram(filtered_image)
+                    self.advanced_filtering_right_panel.show_status(f"✓ Applied {filter_name}", "success")
+                
+                print(f"✓ Filter applied: {filter_name}")
+            else:
+                print(f"❌ Filter failed: {filter_name}")
+                    
+        except Exception as e:
+            print(f"Error in filter application: {e}")
+    
+    def _on_advanced_filter_previewed(self, filter_name: str, parameters: dict):
+        """Handle advanced filter preview."""
+        try:
+            if not hasattr(self, 'current_sem_image') or self.current_sem_image is None:
+                print("❌ ERROR: No SEM image loaded for preview")
+                return
+            
+            # Always use original image for preview
+            base_image = getattr(self, 'original_sem_image', self.current_sem_image)
+            preview_result = self._apply_filter_directly(filter_name, parameters, base_image)
+            
+            if preview_result is not None:
+                self.image_viewer.set_sem_image(preview_result)
+                self.histogram_view.update_histogram(preview_result)
+                
+                if hasattr(self, 'advanced_filtering_right_panel'):
+                    self.advanced_filtering_right_panel.update_histogram(preview_result)
+                    self.advanced_filtering_right_panel.show_status(f"👁️ Preview: {filter_name}", "info")
+                
+                print(f"✓ Filter preview: {filter_name}")
+            else:
+                print(f"❌ Preview failed: {filter_name}")
+                    
+        except Exception as e:
+            print(f"Error previewing advanced filter: {e}")
+    
+    def _on_advanced_filter_reset(self):
+        """Handle advanced filter reset."""
+        try:
+            if hasattr(self, 'original_sem_image') and self.original_sem_image is not None:
+                self.current_sem_image = self.original_sem_image.copy()
+                self.image_viewer.set_sem_image(self.current_sem_image)
+                self.histogram_view.update_histogram(self.current_sem_image)
+                
+                if hasattr(self, 'advanced_filtering_right_panel'):
+                    self.advanced_filtering_right_panel.update_histogram(self.current_sem_image)
+                    self.advanced_filtering_right_panel.show_status("✓ Filters reset", "success")
+                
+                print("✓ Reset to original image")
+            else:
+                print("❌ No original image available")
+                    
+        except Exception as e:
+            print(f"Error resetting filters: {e}")
+    
+    def _on_stage_preview_requested(self, stage_index: int, filter_name: str, parameters: dict):
+        """Handle sequential stage preview."""
+        try:
+            input_image = self._get_stage_input_image(stage_index)
+            if input_image is not None:
+                preview_result = self._apply_filter_directly(filter_name, parameters, input_image)
+                if preview_result is not None:
+                    self.image_viewer.set_sem_image(preview_result)
+        except Exception as e:
+            logger.error(f"Error in stage preview: {e}")
+    
+    def _on_stage_apply_requested(self, stage_index: int, filter_name: str, parameters: dict):
+        """Handle sequential stage apply."""
+        try:
+            input_image = self._get_stage_input_image(stage_index)
+            if input_image is not None:
+                result_image = self._apply_filter_directly(filter_name, parameters, input_image)
+                if result_image is not None:
+                    self.sequential_images[stage_index] = result_image.copy()
+                    self.image_viewer.set_sem_image(result_image)
+                    self.current_sem_image = result_image
+        except Exception as e:
+            logger.error(f"Error in stage apply: {e}")
+    
+    def _on_stage_reset_requested(self, stage_index: int):
+        """Handle sequential stage reset."""
+        try:
+            # Remove this stage and subsequent stages
+            stages_to_remove = [i for i in self.sequential_images.keys() if i >= stage_index]
+            for stage_idx in stages_to_remove:
+                if stage_idx in self.sequential_images:
+                    del self.sequential_images[stage_idx]
+            
+            # Revert to input image for the reset stage
+            input_image = self._get_stage_input_image(stage_index)
+            if input_image is not None:
+                self.image_viewer.set_sem_image(input_image)
+                self.current_sem_image = input_image
                 
         except Exception as e:
-            logger.error(f"Error in real-time aligned GDS update: {e}")
-
-    def setup_error_handling(self):
-        """Setup comprehensive error handling for the application."""
+            logger.error(f"Error in stage reset: {e}")
+    
+    def _get_stage_input_image(self, stage_index: int):
+        """Get input image for a sequential stage."""
         try:
-            # Setup global exception handler
+            if stage_index == 0:
+                # First stage uses original image
+                if hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj:
+                    return getattr(self.current_sem_image_obj, 'cropped_array', self.current_sem_image)
+                return self.current_sem_image
+            else:
+                # Subsequent stages use previous stage result
+                previous_stage = stage_index - 1
+                return self.sequential_images.get(previous_stage)
+        except Exception as e:
+            logger.error(f"Error getting stage input image: {e}")
+            return None
+    
+    def _apply_filter_directly(self, filter_name: str, parameters: dict, input_image):
+        """Apply filter directly using OpenCV."""
+        try:
+            if input_image is None:
+                return None
+            
+            image = input_image.copy()
+            
+            # Comprehensive filter implementations
+            if filter_name == "gaussian_blur":
+                kernel_size = parameters.get('kernel_size', 5)
+                if kernel_size % 2 == 0:
+                    kernel_size += 1
+                sigma = parameters.get('sigma', 0)
+                return cv2.GaussianBlur(image, (kernel_size, kernel_size), sigma)
+            
+            elif filter_name == "median_filter":
+                kernel_size = parameters.get('kernel_size', 5)
+                if kernel_size % 2 == 0:
+                    kernel_size += 1
+                return cv2.medianBlur(image, kernel_size)
+            
+            elif filter_name == "bilateral_filter":
+                d = parameters.get('d', 9)
+                sigma_color = parameters.get('sigma_color', 75)
+                sigma_space = parameters.get('sigma_space', 75)
+                return cv2.bilateralFilter(image, d, sigma_color, sigma_space)
+            
+            elif filter_name == "clahe":
+                clip_limit = parameters.get('clip_limit', 2.0)
+                tile_grid_size = parameters.get('tile_grid_size', 8)
+                tile_grid_x = parameters.get('tile_grid_x', tile_grid_size)
+                tile_grid_y = parameters.get('tile_grid_y', tile_grid_size)
+                clahe = cv2.createCLAHE(clipLimit=clip_limit, tileGridSize=(int(tile_grid_x), int(tile_grid_y)))
+                if len(image.shape) == 3:
+                    lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+                    lab[:,:,0] = clahe.apply(lab[:,:,0])
+                    return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+                else:
+                    return clahe.apply(image)
+            
+            elif filter_name == "canny" or filter_name == "edge_detection":
+                low_threshold = parameters.get('low_threshold', 50)
+                high_threshold = parameters.get('high_threshold', 150)
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                return cv2.Canny(gray.astype(np.uint8), int(low_threshold), int(high_threshold))
+            
+            elif filter_name == "threshold":
+                threshold_value = parameters.get('threshold', 127)
+                max_value = parameters.get('max_value', 255)
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                _, result = cv2.threshold(gray.astype(np.uint8), int(threshold_value), int(max_value), cv2.THRESH_BINARY)
+                return result
+            
+            elif filter_name == "unsharp_mask":
+                sigma = parameters.get('sigma', 1.0)
+                strength = parameters.get('strength', 1.5)
+                blurred = cv2.GaussianBlur(image, (0, 0), sigma)
+                return cv2.addWeighted(image, 1 + strength, blurred, -strength, 0)
+            
+            elif filter_name == "edge_enhancement":
+                kernel = np.array([[-1,-1,-1], [-1,9,-1], [-1,-1,-1]])
+                return cv2.filter2D(image, -1, kernel)
+            
+            elif filter_name == "histogram_equalization":
+                if len(image.shape) == 3:
+                    yuv = cv2.cvtColor(image, cv2.COLOR_BGR2YUV)
+                    yuv[:,:,0] = cv2.equalizeHist(yuv[:,:,0])
+                    return cv2.cvtColor(yuv, cv2.COLOR_YUV2BGR)
+                else:
+                    return cv2.equalizeHist(image)
+            
+            elif filter_name == "noise_reduction":
+                h = parameters.get('h', 10)
+                template_window_size = parameters.get('template_window_size', 7)
+                search_window_size = parameters.get('search_window_size', 21)
+                if len(image.shape) == 3:
+                    return cv2.fastNlMeansDenoisingColored(image, None, h, h, template_window_size, search_window_size)
+                else:
+                    return cv2.fastNlMeansDenoising(image, None, h, template_window_size, search_window_size)
+            
+            # Morphological operations
+            elif filter_name == "morphological_opening":
+                kernel_size = parameters.get('kernel_size', 5)
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+                return cv2.morphologyEx(image, cv2.MORPH_OPEN, kernel)
+            
+            elif filter_name == "morphological_closing":
+                kernel_size = parameters.get('kernel_size', 5)
+                kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (kernel_size, kernel_size))
+                return cv2.morphologyEx(image, cv2.MORPH_CLOSE, kernel)
+            
+            # Brightness/Contrast
+            elif filter_name == "brightness_contrast":
+                alpha = parameters.get('contrast', 1.0)  # Contrast control (1.0-3.0)
+                beta = parameters.get('brightness', 0)   # Brightness control (0-100)
+                return cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
+            
+            elif filter_name == "dog":
+                sigma1 = parameters.get('sigma1', 1.0)
+                sigma2 = parameters.get('sigma2', 2.0)
+                blur1 = cv2.GaussianBlur(image, (0, 0), sigma1)
+                blur2 = cv2.GaussianBlur(image, (0, 0), sigma2)
+                return cv2.normalize(blur1 - blur2, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            
+            elif filter_name == "gabor":
+                frequency = parameters.get('frequency', 0.5)
+                theta = parameters.get('theta', 0.0) * np.pi / 180.0
+                bandwidth = parameters.get('bandwidth', 1.0)
+                kernel = cv2.getGaborKernel((21, 21), bandwidth, theta, 2*np.pi/frequency, 0.5, 0, ktype=cv2.CV_32F)
+                return cv2.filter2D(image, cv2.CV_8UC3, kernel)
+            
+            elif filter_name == "laplacian":
+                ksize = parameters.get('ksize', 3)
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                laplacian = cv2.Laplacian(gray.astype(np.uint8), cv2.CV_16S, ksize=int(ksize))
+                return cv2.convertScaleAbs(laplacian)
+            
+            elif filter_name == "nlmd":
+                h = parameters.get('h', 10)
+                template_window_size = parameters.get('template_window_size', 7)
+                search_window_size = parameters.get('search_window_size', 21)
+                if len(image.shape) == 3:
+                    return cv2.fastNlMeansDenoisingColored(image, None, h, h, template_window_size, search_window_size)
+                else:
+                    return cv2.fastNlMeansDenoising(image, None, h, template_window_size, search_window_size)
+            
+            elif filter_name == "top_hat":
+                kernel_size = parameters.get('kernel_size', 5)
+                kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (int(kernel_size), int(kernel_size)))
+                return cv2.morphologyEx(image, cv2.MORPH_TOPHAT, kernel)
+            
+            elif filter_name == "total_variation":
+                weight = parameters.get('weight', 1.0)
+                try:
+                    from skimage.restoration import denoise_tv_chambolle
+                    if len(image.shape) == 3:
+                        denoised = denoise_tv_chambolle(image, weight=weight, channel_axis=-1)
+                    else:
+                        denoised = denoise_tv_chambolle(image, weight=weight)
+                    return (denoised * 255).astype(np.uint8)
+                except ImportError:
+                    return cv2.bilateralFilter(image, 9, 75, 75)
+            
+            elif filter_name == "wavelet":
+                wavelet_type = parameters.get('wavelet', 'haar')
+                level = parameters.get('level', 1)
+                try:
+                    import pywt
+                    if len(image.shape) == 3:
+                        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                    else:
+                        gray = image
+                    coeffs = pywt.wavedec2(gray.astype(np.float32), wavelet_type, level=int(level))
+                    coeffs_thresh = list(coeffs)
+                    coeffs_thresh[0] = pywt.threshold(coeffs[0], 0.1, mode='soft')
+                    reconstructed = pywt.waverec2(coeffs_thresh, wavelet_type)
+                    return cv2.normalize(reconstructed, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+                except ImportError:
+                    return cv2.Laplacian(image, cv2.CV_8U, ksize=3)
+            
+            elif filter_name == "fft_highpass":
+                cutoff_frequency = parameters.get('cutoff_frequency', 0.1)
+                if len(image.shape) == 3:
+                    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+                else:
+                    gray = image
+                f_transform = np.fft.fft2(gray)
+                f_shift = np.fft.fftshift(f_transform)
+                rows, cols = gray.shape
+                crow, ccol = rows//2, cols//2
+                mask = np.ones((rows, cols), np.uint8)
+                r = int(cutoff_frequency * min(rows, cols))
+                cv2.circle(mask, (ccol, crow), r, 0, -1)
+                f_shift = f_shift * mask
+                f_ishift = np.fft.ifftshift(f_shift)
+                img_back = np.fft.ifft2(f_ishift)
+                img_back = np.abs(img_back)
+                return cv2.normalize(img_back, None, 0, 255, cv2.NORM_MINMAX, dtype=cv2.CV_8U)
+            
+            else:
+                print(f"Unknown filter: {filter_name}")
+                return image
+            
+        except Exception as e:
+            logger.error(f"Error applying filter {filter_name}: {e}")
+            return None
+    
+    # Scoring signal handlers
+    def _on_scoring_method_changed(self, method_name):
+        """Handle scoring method change."""
+        self.current_scoring_method = method_name
+        if hasattr(self, 'scoring_operations_manager'):
+            self.scoring_operations_manager.current_scoring_method = method_name
+    
+    def _on_calculate_scores_requested(self, method_name):
+        """Handle calculate scores request."""
+        try:
+            if hasattr(self, 'scoring_operations_manager'):
+                self.scoring_operations_manager.current_scoring_method = method_name
+                self.scoring_operations_manager.calculate_scores()
+        except Exception as e:
+            logger.error(f"Error calculating scores: {e}")
+    
+    def _save_filtered_image(self):
+        """Save current filtered image."""
+        try:
+            if self.current_sem_image is not None:
+                from pathlib import Path
+                from datetime import datetime
+                
+                output_dir = Path("Results/Filtered")
+                output_dir.mkdir(parents=True, exist_ok=True)
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                filename = f"filtered_image_{timestamp}.png"
+                filepath = output_dir / filename
+                
+                cv2.imwrite(str(filepath), self.current_sem_image)
+                
+                self.status_bar.showMessage(f"Image saved: {filepath}")
+                print(f"Filtered image saved: {filepath}")
+            else:
+                print("No image to save")
+        except Exception as e:
+            print(f"Error saving image: {e}")
+    
+    # Error handling
+    def setup_error_handling(self):
+        """Setup comprehensive error handling."""
+        try:
             import sys
             sys.excepthook = self.handle_unhandled_exception
-            
-            # Setup error logging
-            self.setup_error_logging()
-            
             logger.info("Error handling setup complete")
-            
         except Exception as e:
             logger.error(f"Failed to setup error handling: {e}")
-
-    def setup_error_logging(self):
-        """Setup error logging to file and console."""
-        try:
-            import logging
-            from pathlib import Path
-            
-            # Create logs directory
-            logs_dir = Path("logs")
-            logs_dir.mkdir(exist_ok=True)
-            
-            # Setup file handler for errors
-            error_log_path = logs_dir / "error.log"
-            file_handler = logging.FileHandler(error_log_path)
-            file_handler.setLevel(logging.ERROR)
-            
-            # Setup formatter
-            formatter = logging.Formatter(
-                '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-            )
-            file_handler.setFormatter(formatter)
-            
-            # Add handler to root logger
-            root_logger = logging.getLogger()
-            root_logger.addHandler(file_handler)
-            
-            logger.info(f"Error logging setup to: {error_log_path}")
-            
-        except Exception as e:
-            logger.error(f"Failed to setup error logging: {e}")
-
+    
     def handle_unhandled_exception(self, exc_type, exc_value, exc_traceback):
-        """Handle unhandled exceptions globally."""
+        """Handle unhandled exceptions."""
         try:
             import traceback
-            
-            # Log the exception
             error_msg = f"Unhandled exception: {exc_type.__name__}: {exc_value}"
             logger.critical(error_msg)
             logger.critical("Traceback:\n" + "".join(traceback.format_tb(exc_traceback)))
             
-            # Show user-friendly error dialog
             if exc_type != KeyboardInterrupt:
-                self.show_critical_error("Application Error", 
-                                       f"An unexpected error occurred:\n\n{exc_value}\n\n" +
-                                       "Please check the error log for details.")
-            
+                QMessageBox.critical(self, "Application Error", 
+                                   f"An unexpected error occurred:\n\n{exc_value}")
         except Exception as e:
-            # Fallback error handling
             print(f"Critical error in error handler: {e}")
-
-    def show_critical_error(self, title: str, message: str):
-        """Show critical error dialog to user."""
-        try:
-            QMessageBox.critical(self, title, message)
-        except Exception as e:
-            logger.error(f"Failed to show critical error dialog: {e}")
-            print(f"Critical Error - {title}: {message}")
-
-    def handle_file_loading_error(self, error: Exception, file_path: str, file_type: str):
-        """Handle file loading errors with specific guidance."""
-        try:
-            error_msg = str(error)
-            
-            # Provide specific error messages based on error type
-            if "FileNotFoundError" in str(type(error)):
-                user_msg = f"File not found: {file_path}\n\nPlease check that the file exists and try again."
-            elif "PermissionError" in str(type(error)):
-                user_msg = f"Permission denied accessing: {file_path}\n\nPlease check file permissions and close any programs using this file."
-            elif "ValueError" in str(type(error)) and "format" in error_msg.lower():
-                user_msg = f"Unsupported file format: {file_path}\n\nSupported formats for {file_type}:\n" + \
-                          "- SEM: .tif, .tiff, .png\n- GDS: .gds, .gdsii"
-            elif "empty" in error_msg.lower():
-                user_msg = f"Empty or corrupted file: {file_path}\n\nPlease check the file and try again."
-            elif "gdstk" in error_msg.lower():
-                user_msg = f"GDS file reading error: {file_path}\n\nThe GDS file may be corrupted or use an unsupported format."
-            else:
-                user_msg = f"Error loading {file_type} file: {file_path}\n\nError: {error_msg}"
-            
-            # Log detailed error
-            logger.error(f"File loading error - {file_type}: {file_path} - {error}")
-            
-            # Show user-friendly message
-            QMessageBox.critical(self, f"{file_type} Loading Error", user_msg)
-            
-        except Exception as e:
-            logger.error(f"Error in file loading error handler: {e}")
-            QMessageBox.critical(self, "Error", f"Failed to load {file_type} file: {file_path}")
-
-    def handle_alignment_error(self, error: Exception, alignment_type: str):
-        """Handle alignment errors with specific guidance."""
-        try:
-            error_msg = str(error)
-            
-            # Provide specific error messages based on error type
-            if "No features detected" in error_msg:
-                user_msg = f"Auto alignment failed: No features detected in images.\n\n" + \
-                          "Suggestions:\n" + \
-                          "- Check image quality and contrast\n" + \
-                          "- Try manual alignment instead\n" + \
-                          "- Verify images are properly loaded"
-            elif "Not enough matches" in error_msg:
-                user_msg = f"Auto alignment failed: Not enough matching features found.\n\n" + \
-                          "Suggestions:\n" + \
-                          "- Images may be too different\n" + \
-                          "- Try adjusting feature detection settings\n" + \
-                          "- Use hybrid alignment with manual points"
-            elif "transformation matrix" in error_msg.lower():
-                user_msg = f"Alignment failed: Could not calculate transformation.\n\n" + \
-                          "Suggestions:\n" + \
-                          "- Try different alignment method\n" + \
-                          "- Check if images are properly aligned\n" + \
-                          "- Use manual alignment"
-            elif "Missing" in error_msg and "parameter" in error_msg:
-                user_msg = f"Alignment parameter error: {error_msg}\n\n" + \
-                          "Please reset alignment and try again."
-            else:
-                user_msg = f"{alignment_type} alignment failed: {error_msg}\n\n" + \
-                          "Please try a different alignment method or check your images."
-            
-            # Log detailed error
-            logger.error(f"Alignment error - {alignment_type}: {error}")
-            
-            # Show user-friendly message
-            QMessageBox.critical(self, f"{alignment_type} Alignment Error", user_msg)
-            
-        except Exception as e:
-            logger.error(f"Error in alignment error handler: {e}")
-            QMessageBox.critical(self, "Alignment Error", f"{alignment_type} alignment failed")
-
-    def handle_gds_processing_error(self, error: Exception, operation: str):
-        """Handle GDS processing errors with specific guidance."""
-        try:
-            error_msg = str(error)
-            
-            # Provide specific error messages based on error type
-            if "structure" in error_msg.lower() and "not found" in error_msg.lower():
-                user_msg = f"GDS structure error: {error_msg}\n\n" + \
-                          "Suggestions:\n" + \
-                          "- Check if the selected structure exists in the GDS file\n" + \
-                          "- Try a different structure (1-5)\n" + \
-                          "- Verify GDS file contains the expected structures"
-            elif "bounds" in error_msg.lower() or "coordinates" in error_msg.lower():
-                user_msg = f"GDS coordinate error: {error_msg}\n\n" + \
-                          "The GDS file may have unexpected coordinate ranges.\n" + \
-                          "Please check the GDS file structure."
-            elif "polygon" in error_msg.lower():
-                user_msg = f"GDS polygon error: {error_msg}\n\n" + \
-                          "The GDS file may contain invalid polygon data.\n" + \
-                          "Please check the GDS file integrity."
-            elif "transformation" in error_msg.lower():
-                user_msg = f"GDS transformation error: {error_msg}\n\n" + \
-                          "Alignment parameters may be out of range.\n" + \
-                          "Try resetting alignment or using smaller parameter values."
-            else:
-                user_msg = f"GDS processing error during {operation}: {error_msg}\n\n" + \
-                          "Please check the GDS file and try again."
-            
-            # Log detailed error
-            logger.error(f"GDS processing error - {operation}: {error}")
-            
-            # Show user-friendly message
-            QMessageBox.critical(self, "GDS Processing Error", user_msg)
-            
-        except Exception as e:
-            logger.error(f"Error in GDS processing error handler: {e}")
-            QMessageBox.critical(self, "GDS Error", f"GDS processing failed during {operation}")
-
-    def handle_save_error(self, error: Exception, file_path: str, file_type: str):
-        """Handle file saving errors with specific guidance."""
-        try:
-            error_msg = str(error)
-            
-            # Provide specific error messages based on error type
-            if "PermissionError" in str(type(error)):
-                user_msg = f"Permission denied saving to: {file_path}\n\n" + \
-                          "Suggestions:\n" + \
-                          "- Check folder permissions\n" + \
-                          "- Close any programs using the file\n" + \
-                          "- Try saving to a different location"
-            elif "FileNotFoundError" in str(type(error)):
-                user_msg = f"Directory not found: {file_path}\n\n" + \
-                          "The output directory may not exist or be accessible."
-            elif "disk" in error_msg.lower() or "space" in error_msg.lower():
-                user_msg = f"Insufficient disk space to save: {file_path}\n\n" + \
-                          "Please free up disk space and try again."
-            elif "readonly" in error_msg.lower() or "read-only" in error_msg.lower():
-                user_msg = f"Cannot write to read-only location: {file_path}\n\n" + \
-                          "Please choose a different save location."
-            else:
-                user_msg = f"Error saving {file_type} file: {file_path}\n\n" + \
-                          f"Error: {error_msg}"
-            
-            # Log detailed error
-            logger.error(f"Save error - {file_type}: {file_path} - {error}")
-            
-            # Show user-friendly message
-            QMessageBox.critical(self, f"Save Error", user_msg)
-            
-        except Exception as e:
-            logger.error(f"Error in save error handler: {e}")
-            QMessageBox.critical(self, "Save Error", f"Failed to save {file_type} file")
-
-    def validate_application_state(self) -> bool:
-        """Validate application state before operations."""
-        try:
-            # Check if required services are available
-            if not hasattr(self, 'file_service') or not self.file_service:
-                self.show_critical_error("Service Error", "File service not available. Please restart the application.")
-                return False
-            
-            # Check if required directories exist
-            from pathlib import Path
-            data_dir = Path("Data")
-            if not data_dir.exists():
-                self.show_critical_error("Directory Error", 
-                                       f"Data directory not found: {data_dir.absolute()}\n\n" +
-                                       "Please ensure the application is run from the correct directory.")
-                return False
-            
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error validating application state: {e}")
-            return False
-
-    def safe_operation(self, operation_func, operation_name: str, *args, **kwargs):
-        """Safely execute an operation with error handling."""
-        try:
-            # Validate application state first
-            if not self.validate_application_state():
-                return None
-            
-            # Execute operation
-            result = operation_func(*args, **kwargs)
-            return result
-            
-        except FileNotFoundError as e:
-            self.handle_file_loading_error(e, str(args[0]) if args else "unknown", operation_name)
-            return None
-        except PermissionError as e:
-            self.handle_save_error(e, str(args[0]) if args else "unknown", operation_name)
-            return None
-        except ValueError as e:
-            if "alignment" in operation_name.lower():
-                self.handle_alignment_error(e, operation_name)
-            elif "gds" in operation_name.lower():
-                self.handle_gds_processing_error(e, operation_name)
-            else:
-                QMessageBox.critical(self, f"{operation_name} Error", f"Invalid data: {e}")
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error in {operation_name}: {e}")
-            QMessageBox.critical(self, f"{operation_name} Error", 
-                               f"An unexpected error occurred during {operation_name}:\n\n{e}")
-            return None
-
-    def update_aligned_gds_real_time(self, transform_params: dict):
-        """Update aligned GDS display in real-time."""
-        try:
-            # This would update the GDS overlay with new transform parameters
-            # Implementation depends on the specific alignment service
-            logger.debug(f"Real-time GDS update with params: {transform_params}")
-        except Exception as e:
-            logger.error(f"Error in real-time GDS update: {e}")
     
-    def apply_final_alignment(self, transform_params: dict):
-        """Apply final alignment transformation."""
+    def closeEvent(self, event):
+        """Handle window close event."""
         try:
-            # This would apply the final alignment transformation
-            # Implementation depends on the specific alignment service
-            logger.info(f"Final alignment applied with params: {transform_params}")
+            reply = QMessageBox.question(
+                self, "Confirm Exit",
+                "Are you sure you want to exit?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                logger.info("Application closing")
+                event.accept()
+            else:
+                event.ignore()
+                
         except Exception as e:
-            logger.error(f"Error applying final alignment: {e}")
-    
-    def reset_alignment_state(self):
-        """Reset alignment to default state."""
-        try:
-            # Reset any alignment-related state
-            if hasattr(self, 'alignment_panel'):
-                # The alignment panel handles its own reset
-                pass
-            logger.info("Alignment state reset")
-        except Exception as e:
-            logger.error(f"Error resetting alignment state: {e}")
+            logger.error(f"Error during close: {e}")
+            event.accept()
+
 
 def main():
     """Main application entry point."""
     app = QApplication(sys.argv)
-    app.setApplicationName("Image Analysis Tool")
+    app.setApplicationName("Image Analysis Tool - Unified")
     app.setOrganizationName("Image Analysis")
     
     window = MainWindow()

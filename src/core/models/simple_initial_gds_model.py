@@ -10,11 +10,11 @@ This module provides the InitialGdsModel class for:
 import gdstk
 import numpy as np
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Any
+from typing import Dict, List, Optional, Tuple, Any, Union
 import logging
 import json
 
-from ...core.utils.error_handling import handle_errors
+from src.core.utils.error_handling import handle_errors
 
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,7 @@ class InitialGdsModel:
             self._metadata = {
                 'file_path': str(self.gds_path),
                 'file_size': self.gds_path.stat().st_size,
-                'cell_name': self.cell.name,
+                'cell_name': self.cell.name if self.cell else 'unknown',
                 'unit': self.unit,
                 'precision': self.precision,
                 'num_top_cells': len(top_cells),
@@ -107,7 +107,7 @@ class InitialGdsModel:
             }
             
             logger.info(f"Successfully loaded GDS file: {self.gds_path}")
-            logger.debug(f"Main cell: {self.cell.name}, Unit: {self.unit}, Precision: {self.precision}")
+            logger.debug(f"Main cell: {self.cell.name if self.cell else 'None'}, Unit: {self.unit}, Precision: {self.precision}")
             
         except Exception as e:
             logger.error(f"Failed to load GDS file {self.gds_path}: {e}")
@@ -116,16 +116,64 @@ class InitialGdsModel:
     def _calculate_bounds(self) -> None:
         """Calculate the bounding box of the main cell."""
         try:
-            bbox = self.cell.bounding_box()
-            if bbox is not None:
-                # bbox is ((min_x, min_y), (max_x, max_y))
-                self.bounds = (bbox[0][0], bbox[0][1], bbox[1][0], bbox[1][1])
-            else:
+            # FIX 1: Handle case where cell is None or doesn't have bounding_box method
+            if not self.cell:
                 self.bounds = (0, 0, 0, 0)
-                logger.warning("Cell has no bounding box - using default bounds")
+                logger.warning("No cell available - using default bounds")
+                return
+            
+            # FIX 2: Use getattr to safely access bounding_box method
+            bounding_box_method = getattr(self.cell, 'bounding_box', None)
+            if bounding_box_method is not None:
+                try:
+                    # Call the method if it exists
+                    bbox = bounding_box_method()
+                    if bbox is not None:
+                        # bbox is ((min_x, min_y), (max_x, max_y))
+                        self.bounds = (float(bbox[0][0]), float(bbox[0][1]), float(bbox[1][0]), float(bbox[1][1]))
+                    else:
+                        self.bounds = (0, 0, 0, 0)
+                        logger.warning("Cell has no bounding box - using default bounds")
+                except Exception as e:
+                    logger.warning(f"Error calling bounding_box method: {e}")
+                    self.bounds = self._calculate_manual_bounds()
+            else:
+                # Fallback: calculate bounds manually from polygons
+                logger.debug("Cell has no bounding_box method, calculating manually")
+                self.bounds = self._calculate_manual_bounds()
+                
         except Exception as e:
             logger.warning(f"Could not calculate bounds: {e}")
             self.bounds = (0, 0, 0, 0)
+    
+    def _calculate_manual_bounds(self) -> Tuple[float, float, float, float]:
+        """Calculate bounds manually from polygon data."""
+        if not self.cell:
+            return (0, 0, 0, 0)
+        
+        min_x = min_y = float('inf')
+        max_x = max_y = float('-inf')
+        found_polygons = False
+        
+        # FIX 3: Safely access polygons attribute
+        try:
+            polygons = getattr(self.cell, 'polygons', [])
+            for polygon in polygons:
+                if hasattr(polygon, 'points'):
+                    points = np.array(polygon.points)
+                    if len(points) > 0:
+                        found_polygons = True
+                        min_x = min(min_x, float(np.min(points[:, 0])))
+                        max_x = max(max_x, float(np.max(points[:, 0])))
+                        min_y = min(min_y, float(np.min(points[:, 1])))
+                        max_y = max(max_y, float(np.max(points[:, 1])))
+        except Exception as e:
+            logger.warning(f"Error accessing polygons: {e}")
+        
+        if not found_polygons:
+            return (0, 0, 0, 0)
+            
+        return (min_x, min_y, max_x, max_y)
     
     def get_layers(self) -> List[int]:
         """
@@ -139,13 +187,31 @@ class InitialGdsModel:
         
         layers = set()
         
-        # Get layers from polygons
-        for polygon in self.cell.polygons:
-            layers.add(polygon.layer)
+        # FIX 4: Safely access polygons and paths
+        try:
+            # Get layers from polygons
+            polygons = getattr(self.cell, 'polygons', [])
+            for polygon in polygons:
+                if hasattr(polygon, 'layer'):
+                    layers.add(polygon.layer)
+        except Exception as e:
+            logger.warning(f"Error accessing polygon layers: {e}")
         
-        # Get layers from paths (if any)
-        for path in self.cell.paths:
-            layers.add(path.layer)
+        try:
+            # Get layers from paths (if any)
+            paths = getattr(self.cell, 'paths', [])
+            for path in paths:
+                # FIX 5: Handle different path types that may have different layer access
+                if hasattr(path, 'layer'):
+                    layers.add(path.layer)
+                elif hasattr(path, 'layers') and path.layers:
+                    # Some path types might have multiple layers
+                    if isinstance(path.layers, (list, tuple)):
+                        layers.update(path.layers)
+                    else:
+                        layers.add(path.layers)
+        except Exception as e:
+            logger.warning(f"Error accessing path layers: {e}")
         
         return sorted(list(layers))
     
@@ -165,12 +231,18 @@ class InitialGdsModel:
         polygons = []
         target_layers = set(layers) if layers else None
         
-        for polygon in self.cell.polygons:
-            if target_layers is None or polygon.layer in target_layers:
-                # Convert gdstk polygon points to numpy array
-                points = np.array(polygon.points)
-                if len(points) > 0:
-                    polygons.append(points)
+        # FIX 6: Safely access polygons
+        try:
+            cell_polygons = getattr(self.cell, 'polygons', [])
+            for polygon in cell_polygons:
+                if hasattr(polygon, 'layer') and hasattr(polygon, 'points'):
+                    if target_layers is None or polygon.layer in target_layers:
+                        # Convert gdstk polygon points to numpy array
+                        points = np.array(polygon.points)
+                        if len(points) > 0:
+                            polygons.append(points)
+        except Exception as e:
+            logger.warning(f"Error accessing polygons: {e}")
         
         return polygons
     
@@ -184,14 +256,30 @@ class InitialGdsModel:
         if not self.cell:
             return {}
         
-        return {
-            'name': self.cell.name,
-            'num_polygons': len(self.cell.polygons),
-            'num_paths': len(self.cell.paths),
-            'num_references': len(self.cell.references),
-            'layers': self.get_layers(),
-            'bounds': self.bounds
-        }
+        # FIX 7: Safely access cell attributes
+        try:
+            num_polygons = len(getattr(self.cell, 'polygons', []))
+            num_paths = len(getattr(self.cell, 'paths', []))
+            num_references = len(getattr(self.cell, 'references', []))
+            
+            return {
+                'name': self.cell.name,
+                'num_polygons': num_polygons,
+                'num_paths': num_paths,
+                'num_references': num_references,
+                'layers': self.get_layers(),
+                'bounds': self.bounds
+            }
+        except Exception as e:
+            logger.warning(f"Error getting cell info: {e}")
+            return {
+                'name': getattr(self.cell, 'name', 'unknown'),
+                'num_polygons': 0,
+                'num_paths': 0,
+                'num_references': 0,
+                'layers': self.get_layers(),
+                'bounds': self.bounds
+            }
     
     def get_metadata(self) -> Dict[str, Any]:
         """
@@ -226,7 +314,8 @@ class InitialGdsModel:
             return self.METERS_TO_PIXELS
         
         # Convert GDS units (typically meters) to pixels
-        return self.unit * self.METERS_TO_PIXELS
+        # FIX 8: Ensure return type is float, not numpy float
+        return float(self.unit * self.METERS_TO_PIXELS)
     
     def scale_coordinates(self, coordinates: np.ndarray) -> np.ndarray:
         """
@@ -252,10 +341,16 @@ class InitialGdsModel:
             Scaled bounds (xmin, ymin, xmax, ymax) in pixels
         """
         if not self.bounds:
-            return (0, 0, 0, 0)
+            return (0.0, 0.0, 0.0, 0.0)
             
         scaling_factor = self.get_scaling_factor()
-        return tuple(coord * scaling_factor for coord in self.bounds)
+        # FIX 9: Ensure proper tuple type with correct length
+        return (
+            float(self.bounds[0] * scaling_factor),
+            float(self.bounds[1] * scaling_factor),
+            float(self.bounds[2] * scaling_factor),
+            float(self.bounds[3] * scaling_factor)
+        )
     
     def get_scaled_polygons(self, layers: Optional[List[int]] = None) -> List[np.ndarray]:
         """
@@ -288,7 +383,7 @@ class InitialGdsModel:
         def perpendicular_distance(point: np.ndarray, line_start: np.ndarray, line_end: np.ndarray) -> float:
             """Calculate perpendicular distance from point to line."""
             if np.allclose(line_start, line_end):
-                return np.linalg.norm(point - line_start)
+                return float(np.linalg.norm(point - line_start))
             
             line_vec = line_end - line_start
             point_vec = point - line_start
@@ -298,7 +393,8 @@ class InitialGdsModel:
             proj_length = np.dot(point_vec, line_unitvec)
             proj = line_start + proj_length * line_unitvec
             
-            return np.linalg.norm(point - proj)
+            # FIX 10: Ensure return type is float
+            return float(np.linalg.norm(point - proj))
         
         def rdp_recursive(points: np.ndarray, start_idx: int, end_idx: int, epsilon: float) -> List[int]:
             """Recursive RDP algorithm."""
@@ -382,14 +478,15 @@ class InitialGdsModel:
                     # Calculate bounds for this polygon
                     x_coords = polygon[:, 0]
                     y_coords = polygon[:, 1]
-                    poly_bounds = (x_coords.min(), y_coords.min(), x_coords.max(), y_coords.max())
+                    poly_bounds = (float(x_coords.min()), float(y_coords.min()), 
+                                 float(x_coords.max()), float(y_coords.max()))
                     
                     structures[structure_idx] = {
                         'index': structure_idx,
                         'layer': layer,
                         'polygon_index': poly_idx,
                         'bounds': poly_bounds,
-                        'scaled_bounds': tuple(coord * self.get_scaling_factor() for coord in poly_bounds),
+                        'scaled_bounds': tuple(float(coord * self.get_scaling_factor()) for coord in poly_bounds),
                         'vertex_count': len(polygon),
                         'area': self._calculate_polygon_area(polygon)
                     }
@@ -435,19 +532,20 @@ class InitialGdsModel:
         
         x = polygon[:, 0]
         y = polygon[:, 1]
-        return 0.5 * abs(sum(x[i] * y[i + 1] - x[i + 1] * y[i] for i in range(-1, len(x) - 1)))
+        return float(0.5 * abs(sum(x[i] * y[i + 1] - x[i + 1] * y[i] for i in range(-1, len(x) - 1))))
     
     def __str__(self) -> str:
         """String representation of the GDS model."""
         if not self.is_valid():
             return f"InitialGdsModel(invalid, path={self.gds_path})"
         
+        cell_name = getattr(self.cell, 'name', 'unknown') if self.cell else 'none'
         return (
             f"InitialGdsModel("
             f"file={self.gds_path.name}, "
-            f"cell={self.cell.name}, "
+            f"cell={cell_name}, "
             f"layers={len(self.get_layers())}, "
-            f"polygons={len(self.cell.polygons)}"
+            f"polygons={len(getattr(self.cell, 'polygons', []))}"
             f")"
         )
     
@@ -701,36 +799,41 @@ class InitialGdsModel:
             
             print(f"Scale factors: x={scale_x}, y={scale_y}")
             
-            # Extract polygons for specified layers with a limit to prevent infinite loops
+            # FIX 11: Safely access polygons and fix fillPoly call
             target_layers = set(layers) if layers else set()
             polygon_count = 0
             max_polygons = 10000  # Safety limit
             
-            for polygon in self.cell.polygons:
-                if polygon_count >= max_polygons:
-                    print(f"Reached maximum polygon limit ({max_polygons}), stopping")
-                    break
-                    
-                if not target_layers or polygon.layer in target_layers:
-                    polygon_count += 1
-                    try:
-                        # Convert gdstk polygon points to numpy array
-                        points = np.array(polygon.points)
-                        if len(points) >= 3:  # Need at least 3 points for a polygon
-                            # Scale and translate points to image coordinates
-                            scaled_points = np.zeros((len(points), 2), dtype=np.int32)
-                            scaled_points[:, 0] = ((points[:, 0] - min_x) * scale_x).astype(np.int32)
-                            scaled_points[:, 1] = ((max_y - points[:, 1]) * scale_y).astype(np.int32)  # Flip Y
-                            
-                            # Clip points to image bounds
-                            scaled_points[:, 0] = np.clip(scaled_points[:, 0], 0, width - 1)
-                            scaled_points[:, 1] = np.clip(scaled_points[:, 1], 0, height - 1)
-                            
-                            # Fill polygon on bitmap
-                            cv2.fillPoly(bitmap, [scaled_points], 255)
-                    except Exception as e:
-                        print(f"Error processing polygon {polygon_count}: {e}")
-                        continue
+            try:
+                cell_polygons = getattr(self.cell, 'polygons', [])
+                for polygon in cell_polygons:
+                    if polygon_count >= max_polygons:
+                        print(f"Reached maximum polygon limit ({max_polygons}), stopping")
+                        break
+                        
+                    if hasattr(polygon, 'layer') and hasattr(polygon, 'points'):
+                        if not target_layers or polygon.layer in target_layers:
+                            polygon_count += 1
+                            try:
+                                # Convert gdstk polygon points to numpy array
+                                points = np.array(polygon.points)
+                                if len(points) >= 3:  # Need at least 3 points for a polygon
+                                    # Scale and translate points to image coordinates
+                                    scaled_points = np.zeros((len(points), 2), dtype=np.int32)
+                                    scaled_points[:, 0] = ((points[:, 0] - min_x) * scale_x).astype(np.int32)
+                                    scaled_points[:, 1] = ((max_y - points[:, 1]) * scale_y).astype(np.int32)  # Flip Y
+                                    
+                                    # Clip points to image bounds
+                                    scaled_points[:, 0] = np.clip(scaled_points[:, 0], 0, width - 1)
+                                    scaled_points[:, 1] = np.clip(scaled_points[:, 1], 0, height - 1)
+                                    
+                                    # FIX 12: Fix cv2.fillPoly call with proper color format
+                                    cv2.fillPoly(bitmap, [scaled_points], (255,))
+                            except Exception as e:
+                                print(f"Error processing polygon {polygon_count}: {e}")
+                                continue
+            except Exception as e:
+                print(f"Error accessing cell polygons: {e}")
             
             print(f"Processed {polygon_count} polygons")
             

@@ -9,8 +9,8 @@ import sys
 from typing import Dict, List, Tuple, Optional, Any
 from pathlib import Path
 
-from ..core.models.simple_initial_gds_model import InitialGdsModel
-from ..core.models.structure_definitions import StructureDefinition, StructureDefinitionManager
+from src.core.models.simple_initial_gds_model import InitialGdsModel
+from src.core.models.structure_definitions import StructureDefinition, StructureDefinitionManager
 
 
 class GDSImageService:
@@ -49,7 +49,7 @@ class GDSImageService:
     
     def generate_binary_image(self, 
                              structure_name: str,
-                             output_dimensions: Tuple[int, int] = None) -> Optional[np.ndarray]:
+                             output_dimensions: Optional[Tuple[int, int]] = None) -> Optional[np.ndarray]:
         """
         Generate binary image from GDS structure, using cache if available.
         
@@ -63,7 +63,7 @@ class GDSImageService:
         if not self.current_gds_model:
             raise ValueError("No GDS file loaded. Call load_gds_file() first.")
         
-        # Use default dimensions if not specified
+        # FIX 1: Handle None dimensions properly
         if output_dimensions is None:
             output_dimensions = (self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         
@@ -93,7 +93,7 @@ class GDSImageService:
     
     def generate_multiple_images(self, 
                                 structure_names: List[str],
-                                output_dimensions: Tuple[int, int] = None) -> Dict[str, np.ndarray]:
+                                output_dimensions: Optional[Tuple[int, int]] = None) -> Dict[str, np.ndarray]:
         """
         Generate binary images for multiple structures.
         
@@ -104,6 +104,10 @@ class GDSImageService:
         Returns:
             Dictionary mapping structure names to binary images
         """
+        # FIX 2: Handle None dimensions properly
+        if output_dimensions is None:
+            output_dimensions = (self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
+        
         results = {}
         
         for name in structure_names:
@@ -277,7 +281,7 @@ class GDSImageService:
     def render_polygons(self, 
                        polygons: List[Dict[str, Any]], 
                        bounds: Tuple[float, float, float, float],
-                       dimensions: Tuple[int, int] = None) -> np.ndarray:
+                       dimensions: Optional[Tuple[int, int]] = None) -> np.ndarray:
         """
         Simple polygon-to-image rendering.
         
@@ -289,6 +293,7 @@ class GDSImageService:
         Returns:
             Rendered binary image
         """
+        # FIX 3: Handle None dimensions properly
         if dimensions is None:
             dimensions = (self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         
@@ -322,14 +327,14 @@ class GDSImageService:
             int_coords[:, 0] = np.clip(int_coords[:, 0], 0, width - 1)
             int_coords[:, 1] = np.clip(int_coords[:, 1], 0, height - 1)
             
-            # Draw filled polygon (black on white)
-            cv2.fillPoly(image, [int_coords], color=0)
+            # FIX 4 & 5: Fix fillPoly call with proper color format
+            cv2.fillPoly(image, [int_coords], (0,))
         
         return image
     
     def generate_structure_overlay(self, 
                                   structure_name: str,
-                                  sem_dimensions: Tuple[int, int] = None,
+                                  sem_dimensions: Optional[Tuple[int, int]] = None,
                                   opacity: float = 0.5) -> Optional[np.ndarray]:
         """
         Generate structure overlay for alignment visualization.
@@ -342,6 +347,7 @@ class GDSImageService:
         Returns:
             Grayscale overlay image or None if failed
         """
+        # FIX 6: Handle None dimensions properly
         if sem_dimensions is None:
             sem_dimensions = (self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         
@@ -362,7 +368,7 @@ class GDSImageService:
     def save_structure_image(self, 
                            structure_name: str, 
                            output_path: str,
-                           dimensions: Tuple[int, int] = None) -> bool:
+                           dimensions: Optional[Tuple[int, int]] = None) -> bool:
         """
         Save structure binary image to file.
         
@@ -375,16 +381,20 @@ class GDSImageService:
             True if saved successfully, False otherwise
         """
         try:
+            # FIX 7: Handle None dimensions properly
+            if dimensions is None:
+                dimensions = (self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
+            
             image = self.generate_binary_image(structure_name, dimensions)
             if image is None:
                 return False
             
-            # Ensure output directory exists
-            output_path = Path(output_path)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
+            # FIX 8 & 9: Fix Path type handling
+            output_path_obj = Path(output_path)
+            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
             
             # Save image
-            cv2.imwrite(str(output_path), image)
+            cv2.imwrite(str(output_path_obj), image)
             return True
             
         except Exception as e:
@@ -394,7 +404,7 @@ class GDSImageService:
     def generate_structure_image(self, 
                                structure_name: str, 
                                output_path: str,
-                               dimensions: Tuple[int, int] = None) -> bool:
+                               dimensions: Optional[Tuple[int, int]] = None) -> bool:
         """
         Deprecated: Generate structure image, use save_structure_image instead.
         
@@ -407,12 +417,15 @@ class GDSImageService:
             True if generated successfully, False otherwise
         """
         print("Warning: generate_structure_image is deprecated, use save_structure_image instead.", file=sys.stderr)
+        # FIX 10: Handle None dimensions properly
+        if dimensions is None:
+            dimensions = (self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         return self.save_structure_image(structure_name, output_path, dimensions)
     
     def save_multiple_structure_images(self, 
                                      structure_names: List[str],
                                      output_directory: str,
-                                     dimensions: Tuple[int, int] = None) -> Dict[str, bool]:
+                                     dimensions: Optional[Tuple[int, int]] = None) -> Dict[str, bool]:
         """
         Save multiple structure images to directory.
         
@@ -424,6 +437,10 @@ class GDSImageService:
         Returns:
             Dictionary mapping structure names to success status
         """
+        # FIX 11: Handle None dimensions properly
+        if dimensions is None:
+            dimensions = (self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
+        
         results = {}
         output_dir = Path(output_directory)
         output_dir.mkdir(parents=True, exist_ok=True)
@@ -454,9 +471,11 @@ class GDSImageService:
         # Add GDS-specific information if available
         if self.current_gds_model:
             try:
-                extracted = self.current_gds_model.extract_structure_from_definition(structure)
+                # FIX 12: Remove call to non-existent method and use available methods
+                # Instead of extract_structure_from_definition, use available methods
+                polygons = self.current_gds_model.get_polygons(structure.layers)
                 info.update({
-                    'polygon_count': extracted['polygon_count'],
+                    'polygon_count': len(polygons),
                     'gds_bounds': self.current_gds_model.bounds,
                     'available_layers': self.current_gds_model.get_layers()
                 })
@@ -488,10 +507,11 @@ class GDSImageService:
         if not self.current_gds_model:
             return None
         
+        # FIX 13: Use correct attribute name (unit instead of unit_size)
         return {
             'path': str(self.current_gds_model.gds_path),
             'bounds': self.current_gds_model.bounds,
-            'unit_size': self.current_gds_model.unit_size,
+            'unit': self.current_gds_model.unit,  # Fixed: use 'unit' not 'unit_size'
             'available_layers': self.current_gds_model.get_layers(),
             'cell_name': self.current_gds_model.cell.name if self.current_gds_model.cell else None
         }
@@ -513,6 +533,10 @@ if __name__ == "__main__":
     if structures:
         first_structure = structures[0]
         info = service.get_structure_info(first_structure)
-        print(f"\nStructure '{first_structure}' info:")
-        for key, value in info.items():
-            print(f"  {key}: {value}")
+        # FIX 14: Handle None return value properly
+        if info is not None:
+            print(f"\nStructure '{first_structure}' info:")
+            for key, value in info.items():
+                print(f"  {key}: {value}")
+        else:
+            print(f"\nNo info available for structure '{first_structure}'")

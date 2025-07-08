@@ -79,7 +79,7 @@ class AlignmentImageViewer(QWidget):
         self._show_point_labels = True
         self._show_correspondence_lines = False
         
-        self.setFocusPolicy(Qt.StrongFocus)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self._setup_ui()
         
         logger.info(f"AlignmentImageViewer initialized: type={viewer_type}")
@@ -179,9 +179,9 @@ class AlignmentImageViewer(QWidget):
         
         # Change cursor
         if enabled:
-            self.setCursor(Qt.CrossCursor)
+            self.setCursor(Qt.CursorShape.CrossCursor)
         else:
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(Qt.CursorShape.ArrowCursor)
         
         self.selection_mode_changed.emit(enabled)
         self.update()
@@ -333,7 +333,7 @@ class AlignmentImageViewer(QWidget):
         self.update()
     
     # Image management
-    def set_image(self, image: np.ndarray):
+    def set_image(self, image: Optional[np.ndarray]):
         """
         Set the main image to display.
         
@@ -353,7 +353,7 @@ class AlignmentImageViewer(QWidget):
         
         logger.info(f"Image set for {self.viewer_type}: {image.shape if image is not None else None}")
     
-    def set_overlay_image(self, overlay: np.ndarray):
+    def set_overlay_image(self, overlay: Optional[np.ndarray]):
         """Set overlay image (e.g., GDS overlay on SEM)."""
         self._overlay_image = overlay.copy() if overlay is not None else None
         self._current_pixmap = None  # Invalidate cache
@@ -451,7 +451,7 @@ class AlignmentImageViewer(QWidget):
     # Event handling
     def mousePressEvent(self, event: QMouseEvent):
         """Handle mouse press events."""
-        if event.button() == Qt.LeftButton:
+        if event.button() == Qt.MouseButton.LeftButton:
             if self._selection_mode:
                 # Check if clicking on existing point
                 point_index = self._find_point_at_position(event.pos())
@@ -470,9 +470,9 @@ class AlignmentImageViewer(QWidget):
                 # Start view panning
                 self._dragging = True
                 self._drag_start = event.pos()
-                self.setCursor(Qt.ClosedHandCursor)
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
         
-        elif event.button() == Qt.RightButton and self._selection_mode:
+        elif event.button() == Qt.MouseButton.RightButton and self._selection_mode:
             # Remove point on right click
             point_index = self._find_point_at_position(event.pos())
             if point_index >= 0:
@@ -510,21 +510,21 @@ class AlignmentImageViewer(QWidget):
                 if old_hover != self._hover_point_index:
                     # Update cursor
                     if self._hover_point_index >= 0:
-                        self.setCursor(Qt.OpenHandCursor)
+                        self.setCursor(Qt.CursorShape.OpenHandCursor)
                     else:
-                        self.setCursor(Qt.CrossCursor)
+                        self.setCursor(Qt.CursorShape.CrossCursor)
                     self.update()
     
     def mouseReleaseEvent(self, event: QMouseEvent):
         """Handle mouse release events."""
-        if event.button() == Qt.LeftButton and self._dragging:
+        if event.button() == Qt.MouseButton.LeftButton and self._dragging:
             self._dragging = False
             self._selected_point_index = -1
             
             if self._selection_mode:
-                self.setCursor(Qt.CrossCursor)
+                self.setCursor(Qt.CursorShape.CrossCursor)
             else:
-                self.setCursor(Qt.ArrowCursor)
+                self.setCursor(Qt.CursorShape.ArrowCursor)
     
     def wheelEvent(self, event: QWheelEvent):
         """Handle mouse wheel events for zooming."""
@@ -558,7 +558,7 @@ class AlignmentImageViewer(QWidget):
     def paintEvent(self, event: QPaintEvent):
         """Handle paint events."""
         painter = QPainter(self)
-        painter.setRenderHint(QPainter.Antialiasing)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         
         # Fill background
         painter.fillRect(self.rect(), QColor(50, 50, 50))
@@ -566,7 +566,7 @@ class AlignmentImageViewer(QWidget):
         if self._image is None:
             # Draw "No Image" text
             painter.setPen(QColor(200, 200, 200))
-            painter.drawText(self.rect(), Qt.AlignCenter, f"No {self.viewer_type} Image Loaded")
+            painter.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, f"No {self.viewer_type} Image Loaded")
             return
         
         # Draw main image
@@ -586,7 +586,7 @@ class AlignmentImageViewer(QWidget):
     
     def _draw_image(self, painter: QPainter):
         """Draw the main image."""
-        if self._current_pixmap is None:
+        if self._current_pixmap is None and self._image is not None:
             self._current_pixmap = self._create_pixmap_from_image(self._image)
         
         if self._current_pixmap and not self._image_rect.isEmpty():
@@ -594,11 +594,12 @@ class AlignmentImageViewer(QWidget):
     
     def _draw_overlay(self, painter: QPainter):
         """Draw overlay image."""
-        overlay_pixmap = self._create_pixmap_from_image(self._overlay_image)
-        if overlay_pixmap and not self._image_rect.isEmpty():
-            painter.setOpacity(self._overlay_alpha)
-            painter.drawPixmap(self._image_rect, overlay_pixmap)
-            painter.setOpacity(1.0)
+        if self._overlay_image is not None:
+            overlay_pixmap = self._create_pixmap_from_image(self._overlay_image)
+            if overlay_pixmap and not self._image_rect.isEmpty():
+                painter.setOpacity(self._overlay_alpha)
+                painter.drawPixmap(self._image_rect, overlay_pixmap)
+                painter.setOpacity(1.0)
     
     def _draw_points(self, painter: QPainter):
         """Draw selected points with visual markers."""
@@ -635,7 +636,7 @@ class AlignmentImageViewer(QWidget):
         """Draw indicator that selection mode is active."""
         # Draw border to indicate selection mode
         painter.setPen(QPen(QColor(0, 255, 0), 3))
-        painter.setBrush(QBrush(Qt.NoBrush))
+        painter.setBrush(QBrush(Qt.BrushStyle.NoBrush))
         painter.drawRect(self.rect().adjusted(1, 1, -1, -1))
         
         # Draw mode text
@@ -655,7 +656,7 @@ class AlignmentImageViewer(QWidget):
             # Grayscale
             height, width = image.shape
             bytes_per_line = width
-            q_image = QImage(image.data, width, height, bytes_per_line, QImage.Format_Grayscale8)
+            q_image = QImage(image.data, width, height, bytes_per_line, QImage.Format.Format_Grayscale8)
         else:
             # Color (assume BGR)
             height, width, channels = image.shape
@@ -663,8 +664,8 @@ class AlignmentImageViewer(QWidget):
                 # Convert BGR to RGB
                 rgb_image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
                 bytes_per_line = 3 * width
-                q_image = QImage(rgb_image.data, width, height, bytes_per_line, QImage.Format_RGB888)
+                q_image = QImage(rgb_image.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
             else:
                 return QPixmap()  # Unsupported format
         
-        return QPixmap.fromImage(q_image)
+        return QPixmap.fromImage(q_image) 
