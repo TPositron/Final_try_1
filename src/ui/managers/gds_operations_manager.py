@@ -1,7 +1,46 @@
 """
-GDS Operations Manager
-Handles all GDS file operations, structure loading, and GDS-related functionality.
-Extracted from main_window_v2.py to create a focused, maintainable module.
+GDS Operations Manager - Comprehensive GDS File and Structure Management
+
+This module handles all GDS file operations, structure loading, and GDS-related
+functionality, providing centralized GDS management capabilities.
+
+Main Class:
+- GDSOperationsManager: Manages all GDS operations
+
+Key Methods:
+- populate_structure_combo(): Populates structure selection combo
+- load_gds_file(): Loads GDS file with dialog selection
+- load_gds_file_from_path(): Loads GDS from specified path
+- on_structure_selected(): Handles structure selection from combo
+- select_structure_by_id(): Selects structure by ID
+- get_current_structure_info(): Gets current structure information
+- is_gds_loaded(): Checks if GDS file is loaded
+- is_structure_selected(): Checks if structure is selected
+- reset_structure_selection(): Resets structure selection
+- export_structure_overlay(): Exports structure overlay to file
+
+Signals Emitted:
+- gds_file_loaded(str): GDS file loaded with path
+- structure_selected(str, object): Structure selected with name and overlay
+- structure_combo_populated(int): Structure combo populated with count
+- gds_operation_error(str, str): GDS operation error with details
+
+Dependencies:
+- Uses: numpy, pathlib.Path (data processing and file operations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: services/new_gds_service.NewGDSService
+- Uses: ui/view_manager.ViewMode
+- Called by: UI main window and file management components
+- Coordinates with: Image viewers and alignment workflows
+
+Features:
+- Auto-loading of default GDS file (Institute_Project_GDS1.gds)
+- Structure selection with predefined structures (1-5)
+- Binary image generation from GDS structures
+- Overlay creation and display management
+- Structure information retrieval and validation
+- Error handling and recovery mechanisms
+- Integration with FileSelector component
 """
 
 import numpy as np

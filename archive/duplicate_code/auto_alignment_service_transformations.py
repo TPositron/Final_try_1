@@ -1,6 +1,66 @@
 """
-Auto Alignment Service
-Handles automatic alignment operations and algorithm integration.
+Auto Alignment Service Module
+
+This module provides automatic alignment functionality for GDS/SEM image pairs using various 
+computer vision algorithms. It handles the complete auto-alignment workflow including feature 
+detection, matching, transformation computation, and result application.
+
+The service supports multiple alignment methods (ORB, SIFT, SURF) and provides both synchronous 
+and asynchronous alignment operations with progress tracking. It integrates with Qt's threading 
+system for non-blocking UI operations.
+
+Dependencies:
+    - typing: Type hints (Dict, Optional, Any, Callable)
+    - PySide6.QtCore: Qt framework (QObject, Signal, QThread, QRunnable, QThreadPool)
+    - numpy: Numerical operations and array handling
+    - src.core.models: Data models (AlignedGdsModel, SemImage)
+
+Classes:
+    AutoAlignmentWorkerQt: Qt-compatible worker thread for alignment operations
+        - __init__(): Initializes worker with image data and method
+        - run(): Executes the alignment algorithm in separate thread
+
+    AutoAlignmentService: Main service class for automatic alignment operations
+        - initialize(): Sets up service with GDS model and SEM image
+        - set_sem_image(): Updates the current SEM image for alignment
+        - set_alignment_method(): Sets the alignment algorithm method
+        - get_available_methods(): Returns list of supported alignment methods
+        - start_auto_alignment(): Begins automatic alignment process
+        - stop_auto_alignment(): Stops current alignment operation
+        - apply_alignment_result(): Applies computed transformation to model
+        - get_current_transform(): Returns current transformation parameters
+        - reset_transforms(): Resets all transformations to defaults
+        - get_current_state(): Returns complete service state information
+        - set_canvas_size(): Updates rendering canvas dimensions
+        - _on_alignment_progress(): Handles progress updates from worker
+        - _on_alignment_completed(): Handles successful alignment completion
+        - _on_alignment_failed(): Handles alignment failure
+        - _cleanup_worker(): Cleans up worker thread resources
+        - _extract_transforms_from_matrix(): Extracts transform parameters from matrix
+        - _apply_transforms_to_model(): Applies transforms to GDS model
+        - _render_and_emit(): Renders aligned result and emits bitmap
+        - _emit_state_change(): Emits state change notifications
+
+Signals:
+    - alignment_started: Emitted when auto alignment begins
+    - alignment_progress: Emitted with progress percentage and status
+    - alignment_completed: Emitted when alignment completes with results
+    - auto_alignment_completed: Emitted when auto alignment process finishes
+    - alignment_failed: Emitted when alignment fails with error message
+    - transform_updated: Emitted when transforms are applied
+    - bitmap_rendered: Emitted when new bitmap is rendered
+    - state_changed: Emitted when alignment state changes
+
+Supported Alignment Methods:
+    - ORB (Oriented FAST and Rotated BRIEF): Feature-based matching
+    - SIFT (Scale-Invariant Feature Transform): Scale-invariant feature detection
+    - SURF (Speeded Up Robust Features): Fast feature detection and description
+
+Transform Parameters:
+    - translate_x, translate_y: Translation offsets in pixels
+    - rotation: Rotation angle in degrees
+    - scale: Uniform scaling factor
+    - transparency: Overlay transparency (0.0 to 1.0)
 """
 
 from typing import Dict, Optional, Any, Callable

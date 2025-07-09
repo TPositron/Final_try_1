@@ -1,7 +1,45 @@
 """
-File Operations Module
-Handles all file operations including loading SEM images, GDS files, and saving results.
-Extracted from main_window_v2.py to create a focused, maintainable module.
+File Operations Manager - Comprehensive File Handling Operations
+
+This module handles all file operations including loading SEM images, GDS files,
+and saving results, providing centralized file management capabilities.
+
+Main Class:
+- FileOperationsManager: Manages all file operations
+
+Key Methods:
+- load_sem_image(): Loads SEM image with cropping and saving
+- load_sem_image_from_path(): Loads SEM from specified path
+- save_results(): Saves current results to file
+- export_alignment_data(): Exports alignment data to file
+- export_scoring_results(): Exports scoring results to file
+- save_filtered_image(): Saves filtered image array
+- get_recent_files(): Gets list of recently used files
+- get_file_info(): Gets information about a file
+- cleanup_temp_files(): Cleans up temporary files
+
+Signals Emitted:
+- sem_image_loaded(str, object): SEM image loaded with path and data
+- gds_file_loaded(str): GDS file loaded with path
+- results_saved(str, str): Results saved with path and type
+- file_operation_error(str, str): File operation error with details
+
+Dependencies:
+- Uses: os, cv2, numpy, pathlib.Path (file and image operations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: PIL.Image (image format handling)
+- Uses: services/simple_file_service.FileService
+- Called by: UI main window and file management components
+- Coordinates with: Image processing and alignment workflows
+
+Features:
+- SEM image loading with automatic cropping to 1024x666
+- Automatic saving of cropped images to Results/cut folder
+- Composite image creation with SEM and GDS overlay
+- Export capabilities for alignment and scoring data
+- File validation and error handling
+- Recent files tracking and file information retrieval
+- Temporary file cleanup and management
 """
 
 import os

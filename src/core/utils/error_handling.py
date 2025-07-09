@@ -1,7 +1,35 @@
 """
-Basic error handling utilities for the SEM/GDS Alignment Tool.
+Error Handling Utilities - Comprehensive Error Management and Recovery
 
-Simple error handling with try-catch blocks and error display.
+This script provides error handling utilities for the SEM/GDS alignment tool.
+It includes decorators, safe operation wrappers, validation functions, and
+error display mechanisms for robust application operation.
+
+Key Functions:
+- safe_file_operation(): Safely executes file operations with error handling
+- handle_errors(): Decorator for basic error handling on any function
+- log_and_continue(): Decorator to log errors and continue execution
+- show_error_message(): Displays error messages to user
+- validate_file_exists(): Checks if file exists with error reporting
+- validate_directory_exists(): Checks if directory exists with error reporting
+- safe_json_load(): Safely loads JSON files with error handling
+- safe_json_save(): Safely saves JSON files with error handling
+
+Dependencies:
+- logging: Error logging and debugging
+- typing: Type hints for Any, Callable, Optional
+- functools.wraps: Decorator preservation
+- pathlib.Path: File system operations
+- json: JSON file operations
+
+Features:
+- Function decorators for automatic error handling
+- Safe file operation wrappers with specific exception handling
+- File and directory validation with user feedback
+- JSON file operations with error recovery
+- Consistent error message display interface
+- Logging integration for debugging and monitoring
+- Graceful error recovery without application crashes
 """
 
 import logging

@@ -1,3 +1,101 @@
+"""
+File Service - Comprehensive File Management and Data Operations
+
+This service provides comprehensive file management capabilities for the SEM/GDS
+alignment tool including loading, saving, and processing of various file formats.
+It handles SEM images, GDS files, alignment results, and provides fallback
+mechanisms for different model interfaces.
+
+Main Class:
+- FileManager: Central file management service with directory structure management
+
+Key Methods:
+- load_sem_images(): Loads SEM images with automatic cropping and fallback mechanisms
+- load_gds_files(): Loads GDS files with multiple interface fallbacks
+- load_gds_file(): Loads single GDS file with error handling
+- generate_structure_data(): Generates structure data for alignment operations
+- save_file(): Generic file saving with format detection (JSON, CSV, images)
+- load_file(): Generic file loading with format detection
+- save_alignment_results(): Saves alignment results with organized directory structure
+- save_scoring_results(): Saves scoring results with charts and reports
+- save_aligned_gds(): Saves transformed GDS files with applied transformations
+- save_aligned_image(): Saves aligned GDS as image using frame extraction
+- get_available_sem_files(): Lists available SEM files in data directory
+- get_available_gds_files(): Lists available GDS files in data directory
+- cleanup_temp_files(): Cleans up temporary files and directories
+
+Global Functions:
+- create_file_manager(): Factory function for FileManager instances
+
+Dependencies:
+- Uses: os, json, csv, logging, tempfile, pathlib.Path (standard libraries)
+- Uses: imageio, numpy (image processing)
+- Uses: core/models (SemImage, GDSModel data models)
+- Uses: services/gds_image_service.GDSImageService (GDS image operations)
+- Uses: core/models/structure_definitions.get_default_structures (structure metadata)
+- Uses: services/gds_transformation_service (GDS transformations)
+- Uses: services/frame_extraction_service (image extraction)
+- Used by: UI components for file operations
+- Used by: Workflow services for automated processing
+
+Directory Structure Management:
+- Data/SEM/: SEM image files (.tif, .tiff)
+- Data/GDS/: GDS layout files (.gds)
+- Results/: Output files organized by type
+- Results/Aligned/: Alignment results
+- Results/Scoring/: Scoring results with charts and reports
+- Extracted_Structures/: Extracted structure data
+- Automatic directory creation and validation
+
+Supported File Formats:
+- Images: PNG, JPG, TIFF, TIF (via imageio)
+- Data: JSON, CSV (structured data)
+- GDS: .gds layout files (via gdspy/gdstk)
+- SEM: .tif, .tiff image files with automatic processing
+
+Fallback Mechanisms:
+- Multiple loading methods for SemImage (from_file, load, manual)
+- Multiple loading methods for GDSModel (from_file, load, constructor)
+- Graceful degradation when methods are missing
+- Error handling with detailed logging
+
+Structure Data Generation:
+- Integration with structure manager for metadata
+- Multiple extraction methods with fallbacks
+- Temporary file handling for image generation
+- Coordinate and bounds extraction
+- Binary image generation for alignment
+
+Alignment and Scoring Results:
+- Organized directory structure for results
+- JSON metadata with image files
+- Chart and report generation
+- Transformation parameter preservation
+- Batch processing capabilities
+
+GDS Transformation Support:
+- Aligned GDS file generation with applied transformations
+- Integration with transformation services
+- Coordinate system conversion
+- Structure preservation with modifications
+- Image extraction from transformed GDS
+
+Error Handling:
+- Comprehensive exception handling for all operations
+- Detailed logging with operation context
+- Graceful fallbacks for missing methods
+- File existence validation
+- Directory creation with error recovery
+
+Features:
+- Automatic SEM image cropping to 1024x666 pixels
+- Multi-format file support with automatic detection
+- Batch processing for multiple files
+- Temporary file management and cleanup
+- Structured result organization
+- Fallback mechanisms for API compatibility
+"""
+
 import os
 import json
 import csv

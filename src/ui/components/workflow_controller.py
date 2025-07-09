@@ -1,13 +1,51 @@
 """
-Workflow Controller Widget for Step 15a-b.
+Workflow Controller - Processing Workflow Management and Navigation
 
-This component provides:
-- Visual step indicators showing current progress
-- Step navigation with clickable step buttons and validation
-- Mode switching integration
-- Workflow state management
-- Enhanced step navigation UI (Step 15b)
-- Step jump validation and descriptions
+This component provides visual step indicators, navigation controls, and workflow
+state management for processing pipeline coordination.
+
+Main Classes:
+- WorkflowStep: Enumeration of workflow steps
+- StepStatus: Enumeration of step statuses
+- DraggableStepWidget: Draggable widget for workflow steps
+- WorkflowController: Main workflow control widget
+
+Key Methods:
+- set_step_status(): Sets status of workflow step
+- get_current_mode(): Gets current workflow mode
+- get_current_step(): Gets current active step
+- is_workflow_running(): Checks if workflow is running
+- start_manual_pipeline_step(): Starts specific manual pipeline step
+- start_automatic_pipeline(): Starts complete automatic pipeline
+- reset_active_pipeline(): Resets currently active pipeline
+- validate_pipeline_selection(): Validates pipeline selection
+
+Signals Emitted:
+- step_requested(str): Step navigation requested
+- step_jump_requested(str, bool): Step jump with force flag
+- workflow_mode_changed(str): Workflow mode changed
+- workflow_reset_requested(): Workflow reset requested
+- step_status_updated(str, str): Step status updated
+- workflow_progress_changed(int): Overall progress changed
+- workflow_order_changed(list): Step order changed
+
+Dependencies:
+- Uses: logging, enum (workflow management)
+- Uses: typing (type hints)
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: core/pipeline/pipeline_selector.PipelineSelector (pipeline management)
+- Called by: UI main window
+- Coordinates with: Processing pipelines and workflow components
+
+Features:
+- Visual step indicators with progress tracking
+- Step navigation with validation and jump controls
+- Mode switching between manual and automatic workflows
+- Drag-and-drop step reordering capabilities
+- Enhanced step descriptions and validation feedback
+- Separate pipeline management (manual vs automatic)
+- Workflow state persistence and recovery
+- Context menus and detailed step information
 """
 
 import logging

@@ -1,7 +1,48 @@
 """
-Scoring Operations Manager
-Handles all scoring operations, metrics calculation, and scoring-related functionality.
-Extracted from main_window_v2.py to create a focused, maintainable module.
+Scoring Operations Manager - Comprehensive Scoring and Metrics Calculation
+
+This module handles all scoring operations, metrics calculation, and scoring-related
+functionality, providing centralized scoring management capabilities.
+
+Main Class:
+- ScoringOperationsManager: Manages all scoring operations
+
+Key Methods:
+- calculate_scores(): Calculates alignment scores using multiple metrics
+- set_scoring_method(): Sets current scoring method
+- get_scoring_results(): Gets current scoring results
+- has_scores(): Checks if scoring results are available
+- export_scores(): Exports scoring results to file
+- compare_methods(): Compares all scoring methods
+- clear_scores(): Clears current scoring results
+
+Private Methods:
+- _calculate_all_metrics(): Calculates all scoring metrics
+- _normalize_arrays(): Normalizes arrays for comparison
+- _calculate_edge_overlap(): Calculates edge overlap ratio
+- _calculate_cross_correlation(): Calculates cross-correlation
+- _calculate_mutual_information(): Calculates mutual information
+
+Signals Emitted:
+- scores_calculated(dict): Scores calculated with results
+- scoring_completed(str): Scoring completed with method
+- scoring_error(str, str): Scoring error with details
+
+Dependencies:
+- Uses: cv2, numpy (image processing and calculations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: skimage.metrics (SSIM, MSE calculations)
+- Uses: ui/view_manager.ViewMode
+- Called by: UI main window and scoring components
+- Coordinates with: Alignment operations and image viewers
+
+Features:
+- Multiple scoring metrics (SSIM, MSE, Edge Overlap, Cross-Correlation, Mutual Information)
+- Array normalization and preprocessing
+- Comprehensive error handling and validation
+- Export capabilities with detailed information
+- Method comparison and analysis
+- Integration with alignment workflow
 """
 
 import cv2

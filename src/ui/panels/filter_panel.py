@@ -1,6 +1,49 @@
 """
-Filter Panel
-Filter selection, previews, histogram, and kernel view for image processing.
+Filter Panel - Comprehensive Image Processing and Filtering Interface
+
+This module provides a comprehensive filtering panel with dynamic filter loading,
+parameter controls, histogram visualization, and preset management.
+
+Main Class:
+- FilterPanel: Main filtering interface with controls and visualization
+
+Key Methods:
+- setup_ui(): Initializes UI with filter controls and histogram display
+- set_available_filters(): Sets list of available filters
+- _on_filter_changed(): Handles filter selection changes
+- _update_parameter_controls(): Updates parameter controls for selected filter
+- _on_apply_clicked(): Applies selected filter with current parameters
+- _on_preview_clicked(): Generates filter preview
+- _on_reset_clicked(): Resets all filters to original image
+- update_histogram(): Updates histogram display with image data
+- _load_dynamic_filters(): Loads filters from configuration files
+- _on_save_clicked(): Saves current filtered image
+
+Signals Emitted:
+- filter_applied(str, dict): Filter applied with name and parameters
+- filter_previewed(str, dict): Filter previewed with parameters
+- filter_reset(): All filters reset to original
+- preset_saved(str, dict): Filter preset saved
+- preset_loaded(str, dict): Filter preset loaded
+- save_image_requested(): Image save requested
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: numpy (array processing)
+- Uses: json, os, logging (utilities)
+- Uses: typing (type hints)
+- Uses: ui/components (HistogramView, DynamicParameterPanel)
+- Called by: UI main window and filtering workflow
+- Coordinates with: Image processing services and histogram displays
+
+Features:
+- Dynamic filter loading from configuration files
+- Real-time parameter adjustment with preview capability
+- Filter history tracking and management
+- Preset system for saving and loading filter configurations
+- Integrated histogram display for image analysis
+- Progress tracking and status updates
+- Export capabilities for filtered images
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 

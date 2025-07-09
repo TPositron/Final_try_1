@@ -1,6 +1,47 @@
 """
 Filter Parameter Storage Service
-Manages storage and retrieval of filter parameter definitions.
+
+This module manages the storage, caching, and retrieval of filter parameter
+definitions. It provides a persistent storage layer that caches parsed filter
+definitions to avoid repeated parsing and offers comprehensive parameter
+validation and management capabilities.
+
+Dependencies:
+- json: For JSON serialization/deserialization of cached data
+- dataclasses.asdict: For converting dataclasses to dictionaries
+- FilterParameterParser: For parsing filter files
+- FilterDefinition, FilterParameter, ParameterType: Data classes and enums
+
+Main Classes:
+- FilterParameterStorage: Main storage and management class
+
+Key Methods:
+- initialize(): Initialize storage by loading from cache or parsing files
+- get_filter_definition(): Retrieve filter definition by name
+- get_all_filters(): Get all stored filter definitions
+- get_filter_names(): Get list of all available filter names
+- get_filters_by_category(): Get filters organized by category
+- get_filter_parameters(): Get parameter definitions for a specific filter
+- validate_filter_parameters(): Validate and normalize parameter values
+- get_default_parameters(): Get default parameter values for a filter
+- refresh_filters(): Re-parse all filter files and update cache
+- search_filters(): Search filters by name, description, or category
+- get_filter_statistics(): Get statistics about loaded filters
+
+Internal Methods:
+- _load_from_cache(): Load filter definitions from JSON cache file
+- _save_to_cache(): Save filter definitions to JSON cache file
+- _validate_parameter_value(): Validate a single parameter value
+
+Features:
+- JSON-based caching system for fast startup
+- Comprehensive parameter validation with type conversion
+- Range validation for numeric parameters
+- Choice validation for enumerated parameters
+- Automatic cache management and refresh capabilities
+- Search functionality across filter metadata
+- Statistical analysis of filter collections
+- Error handling for corrupted cache files
 """
 
 import json

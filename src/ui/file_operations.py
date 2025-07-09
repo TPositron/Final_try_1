@@ -1,6 +1,35 @@
 """
-File Operations Module
-Handles all file loading, saving, and management operations.
+File Operations - File Loading, Saving, and Management Operations
+
+This module handles all file operations including SEM image loading,
+GDS file loading, result saving, and file management workflows.
+
+Main Class:
+- FileOperations: Handler for all file operations
+
+Key Methods:
+- load_sem_image(): Loads SEM image, crops to 1024x666, and saves to cut folder
+- load_gds_file(): Loads GDS file and populates structure selection
+- populate_structure_combo(): Populates structure selection combo box
+- auto_load_default_gds(): Auto-loads default GDS file if available
+- save_results(): Saves alignment and scoring results
+- save_aligned_gds(): Saves aligned GDS structure
+
+Dependencies:
+- Uses: cv2, numpy (image processing)
+- Uses: pathlib.Path, PIL.Image (file operations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt integration)
+- Uses: core/simple_gds_loader.SimpleGDSLoader (GDS loading)
+- Called by: ui/main_window.py (file menu actions)
+- Coordinates with: File services and GDS operations
+
+Features:
+- Automatic SEM image cropping to standard size (1024x666)
+- GDS file loading with structure enumeration
+- Result compilation and saving
+- Default GDS file auto-loading
+- Error handling with user dialogs
+- Status bar updates during operations
 """
 
 import cv2

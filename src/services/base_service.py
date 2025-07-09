@@ -26,7 +26,7 @@ State Management:
 
 Dependencies:
 - Uses: PySide6.QtCore (QObject, Signal)
-- Uses: src.core.utils.logging_utils (logging integration)
+- Uses: src.core.utils.simple_logging (logging integration)
 - Inherited by: All service classes in the services package
 
 Usage Pattern:
@@ -46,7 +46,7 @@ Benefits:
 
 from typing import Any, Dict, Optional
 from PySide6.QtCore import QObject, Signal
-from src.core.utils.logging_utils import get_logger
+from src.core.utils.simple_logging import get_logger
 
 
 class BaseService(QObject):

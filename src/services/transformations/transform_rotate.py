@@ -1,5 +1,38 @@
 """
-Transform Rotate - Rotation transformation functionality.
+Transform Rotate - Rotation Transformation Operations
+
+This module provides rotation transformation functionality for image alignment
+operations, including angle validation, matrix generation, snapping to 90-degree
+increments, and residual rotation calculations.
+
+Main Class:
+- TransformRotate: Handles rotation transformation operations
+
+Key Methods:
+- set_rotation(): Sets rotation angle with optional 90-degree snapping
+- get_rotation(): Returns current rotation angle
+- apply_rotation(): Applies rotation transformation to images
+- get_rotation_matrix(): Returns 3x3 transformation matrix with center
+- get_rotation_matrix_simple(): Returns simple rotation matrix around origin
+- reset_rotation(): Resets rotation to zero
+- snap_to_nearest_90(): Snaps rotation to nearest 90-degree increment
+- get_90_degree_component(): Returns 90-degree component of rotation
+- get_residual_rotation(): Returns residual rotation after 90-degree removal
+
+Dependencies:
+- Uses: numpy, math (mathematical operations)
+- Uses: cv2 (OpenCV for image transformations)
+- Uses: logging (error reporting and debugging)
+- Used by: Transformation services and alignment operations
+- Used by: UI rotation controls
+
+Features:
+- Rotation validation with finite value checking
+- Optional snapping to 90-degree increments
+- 3x3 homogeneous transformation matrix generation
+- Image rotation with configurable center point
+- Residual rotation calculation for fine adjustments
+- Angle normalization and component separation
 """
 
 import numpy as np

@@ -1,6 +1,119 @@
 """
-New GDS Service - Based on Working Code Implementation
-Replaces the complex GDS loading system with a simple, working approach.
+New GDS Service - Simplified GDS Loading and Display System
+
+This service provides a simplified approach to GDS loading and display operations
+based on proven working code. It replaces complex GDS loading systems with
+straightforward methods and provides caching for performance optimization.
+
+Main Class:
+- NewGDSService: Simplified GDS service with working code implementation
+
+Key Methods:
+- load_gds_file(): Loads GDS file with validation
+- get_structure_info(): Returns structure metadata by number
+- list_available_structures(): Lists available structure numbers
+- get_all_structures_info(): Returns all structure information
+- generate_structure_display(): Generates display image for structure
+- generate_structure_aligned(): Generates aligned structure with transformations
+- generate_structure_with_simple_transforms(): Applies simple transformations
+- get_structure_by_name(): Maps structure names to numbers
+- generate_binary_image(): Compatibility method for binary image generation
+- clear_cache(): Clears all cached images
+- get_structure_bounds(): Returns structure bounds
+- get_structure_layers(): Returns structure layer information
+- validate_structure_number(): Validates structure number availability
+- get_file_info(): Returns GDS file information
+- _generate_with_custom_bounds(): Generates structure with custom bounds
+
+Global Functions:
+- load_and_generate_structure(): One-shot function for loading and generation
+- create_structure_overlay(): Creates structure overlay with transformations
+
+Dependencies:
+- Uses: numpy, cv2 (OpenCV), gdspy, os, pathlib.Path (standard libraries)
+- Uses: core/gds_display_generator (display generation functions)
+- Uses: core/gds_aligned_generator (alignment and transformation functions)
+- Used by: UI components for GDS visualization
+- Used by: Services requiring simplified GDS operations
+
+Structure Management:
+- Predefined structure numbers (1-5) with metadata
+- Structure name to number mapping
+- Bounds and layer information retrieval
+- Structure validation and availability checking
+- File information and statistics
+
+Caching System:
+- Display image caching for performance
+- Structure metadata caching
+- Cache invalidation and clearing
+- Memory-efficient caching strategy
+- Performance optimization for repeated operations
+
+Image Generation:
+- Display image generation with configurable size
+- Aligned image generation with transformation parameters
+- Simple transformation support (rotation, zoom, movement)
+- Custom bounds support for cropping
+- Binary image generation for compatibility
+
+Transformation Support:
+- Rotation: Arbitrary angle rotation in degrees
+- Zoom: Percentage-based scaling (100 = no change)
+- Movement: X/Y translation in pixels
+- Complex transformation parameter dictionaries
+- Simple parameter interface for ease of use
+
+Structure Mapping:
+- Structure 1: Circpol_T2
+- Structure 2: IP935Left_11
+- Structure 3: IP935Left_14
+- Structure 4: QC855GC_CROSS_Bottom
+- Structure 5: QC935_46
+- Name-based lookup with fallback handling
+
+File Operations:
+- GDS file loading with validation
+- File existence checking
+- File size and metadata extraction
+- Error handling for file operations
+- Path management and resolution
+
+Error Handling:
+- Comprehensive exception handling for all operations
+- Graceful fallbacks for missing functions or data
+- Detailed error reporting with context
+- File operation validation
+- Structure availability checking
+
+Compatibility Features:
+- Backward compatibility methods for existing code
+- Name-based structure lookup
+- Binary image generation interface
+- Simple parameter interfaces
+- Fallback mechanisms for API differences
+
+Performance Optimization:
+- Image caching for repeated operations
+- Lazy loading of structure data
+- Efficient memory management
+- Optimized rendering pipeline
+- Cache management and cleanup
+
+Usage Pattern:
+1. Create NewGDSService instance
+2. Load GDS file using load_gds_file()
+3. Generate structure displays or aligned images
+4. Apply transformations as needed
+5. Cache provides performance for repeated operations
+6. Clear cache when switching files or contexts
+
+Advantages:
+- Simple: Straightforward API with minimal complexity
+- Reliable: Based on proven working code
+- Fast: Caching and optimization for performance
+- Flexible: Multiple generation and transformation options
+- Compatible: Maintains compatibility with existing interfaces
 """
 
 import numpy as np

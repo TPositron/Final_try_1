@@ -1,6 +1,32 @@
 """
-Alignment Info Panel
-Displays current transform parameters and alignment status.
+Alignment Info Panel - Transform Parameters and Status Display
+
+This module provides an information panel for displaying current alignment
+transformation parameters and status information.
+
+Main Class:
+- AlignmentInfoPanel: Panel for displaying alignment information
+
+Key Methods:
+- setup_ui(): Initializes UI components and layout
+- update_transform_info(): Updates transform parameter display
+- update_status(): Updates alignment status with color coding
+- update_image_info(): Updates image loading status
+- update_metrics(): Updates alignment quality metrics
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: typing (type hints)
+- Called by: UI alignment components
+- Coordinates with: Alignment workflow and status management
+
+Features:
+- Real-time transform parameter display (translation, rotation, scale, transparency)
+- Color-coded status indicators for alignment state
+- Image loading status tracking (SEM/GDS)
+- Alignment quality metrics display (correlation, overlap)
+- Organized layout with grouped information sections
+- Visual separators and consistent styling
 """
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QGroupBox, QFrame

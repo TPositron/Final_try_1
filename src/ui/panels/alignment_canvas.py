@@ -1,7 +1,42 @@
 """
-Alignment Canvas Panel
-QGraphicsView overlay rendering for image alignment visualization.
-Updated for standard SEM dimensions (1024x666) with enhanced display and scaling.
+Alignment Canvas Panel - Graphics View for Image Alignment Visualization
+
+This module provides a graphics view canvas for displaying and aligning SEM and GDS
+images with enhanced visualization and transformation capabilities.
+
+Main Classes:
+- AlignmentCanvas: QGraphicsView for image display and alignment
+- AlignmentCanvasPanel: Panel wrapper for alignment canvas
+
+Key Methods:
+- display_sem_image(): Displays SEM image with scaling
+- display_gds_overlay(): Displays GDS overlay with transparency
+- scale_for_display(): Scales images to standard dimensions
+- update_gds_transform(): Updates GDS overlay transformation
+- fit_in_view(): Fits content in view with aspect ratio
+- zoom_in()/zoom_out(): Zoom controls
+- clear_images(): Clears all displayed images
+
+Signals Emitted:
+- mouse_clicked(float, float): Canvas clicked coordinates
+- zoom_requested(float): Zoom level change requested
+- transform_changed(dict): Transformation parameters changed
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: numpy (array processing)
+- Uses: typing (type hints)
+- Called by: UI alignment components
+- Coordinates with: Image viewers and alignment workflow
+
+Features:
+- Standard SEM dimensions (1024x666) optimization
+- Real-time GDS overlay transformation (translate, rotate, scale)
+- Transparency control for overlay visualization
+- Mouse interaction for point selection and navigation
+- Zoom and pan capabilities with proper aspect ratio
+- Colored overlay rendering for structure visualization
+- Transform validation and error handling
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QGraphicsView, QGraphicsScene, 

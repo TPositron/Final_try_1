@@ -1,13 +1,47 @@
 """
-Alignment Image Viewer with 3-Point Selection for Step 10.
+Alignment Image Viewer - Enhanced Image Viewer with 3-Point Selection
 
-This component provides:
-- Point selection mode for both GDS and SEM image viewers
-- Visual markers for selected points
-- User adjustment of point positions
+This component provides an enhanced image viewer specifically designed for
+hybrid alignment with 3-point selection capabilities.
+
+Main Class:
+- AlignmentImageViewer: Enhanced image viewer with point selection
+
+Key Methods:
+- enable_selection_mode(): Enables/disables point selection mode
+- add_point(): Adds point at specified image coordinates
+- remove_point(): Removes point by index
+- move_point(): Moves point to new coordinates
+- clear_points(): Clears all selected points
+- get_selected_points(): Returns list of selected points
+- set_image(): Sets main image to display
+- set_overlay_image(): Sets overlay image
+
+Signals Emitted:
+- point_added(int, float, float): Point added at coordinates
+- point_removed(int): Point removed by index
+- point_moved(int, float, float): Point moved to new coordinates
+- points_cleared(): All points cleared
+- selection_mode_changed(bool): Selection mode enabled/disabled
+- point_count_changed(int): Point count changed
+- view_changed(dict): View parameters changed
+
+Dependencies:
+- Uses: numpy (image processing)
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: cv2 (image operations)
+- Called by: UI alignment components
+- Coordinates with: Alignment workflow components
+
+Features:
+- Point selection mode for both GDS and SEM images
+- Visual markers for selected points with color coding
+- User adjustment of point positions via drag and drop
 - Validation of exactly 3 points on both images
 - Clear visual feedback about point correspondences
-- Enable/disable alignment calculation based on point completion
+- Enable/disable alignment calculation based on completion
+- Zoom and pan capabilities with mouse wheel and drag
+- Overlay support with transparency control
 """
 
 import numpy as np
@@ -472,11 +506,13 @@ class AlignmentImageViewer(QWidget):
                 self._drag_start = event.pos()
                 self.setCursor(Qt.CursorShape.ClosedHandCursor)
         
-        elif event.button() == Qt.MouseButton.RightButton and self._selection_mode:
-            # Remove point on right click
-            point_index = self._find_point_at_position(event.pos())
-            if point_index >= 0:
-                self.remove_point(point_index)
+        elif event.button() == Qt.MouseButton.RightButton:
+            # Right click for canvas navigation only (no point operations)
+            if not self._selection_mode:
+                # Start view panning with right click when not in selection mode
+                self._dragging = True
+                self._drag_start = event.pos()
+                self.setCursor(Qt.CursorShape.ClosedHandCursor)
     
     def mouseMoveEvent(self, event: QMouseEvent):
         """Handle mouse move events."""

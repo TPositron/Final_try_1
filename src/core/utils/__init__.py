@@ -28,13 +28,22 @@ from .file_utils import (
     list_files_by_extension
 )
 
-# Simple logging
+# Simple logging (now with advanced features)
 from .simple_logging import (
     setup_logging,
     get_logger,
     log_error,
     log_info,
-    log_debug
+    log_debug,
+    # Advanced features
+    log_execution_time,
+    log_performance,
+    stage_logger,
+    log_operation,
+    ProgressLogger,
+    setup_advanced_logging,
+    archive_old_logs,
+    get_log_statistics
 )
 
 # Simple configuration
@@ -83,12 +92,21 @@ __all__ = [
     "setup_results_directories",
     "get_unique_filename",
     "list_files_by_extension",
-    # Logging utils
+    # Logging utils (basic)
     "setup_logging", 
     "get_logger", 
     "log_error", 
     "log_info", 
     "log_debug",
+    # Logging utils (advanced)
+    "log_execution_time",
+    "log_performance",
+    "stage_logger",
+    "log_operation",
+    "ProgressLogger",
+    "setup_advanced_logging",
+    "archive_old_logs",
+    "get_log_statistics",
     # Config utils
     "load_config", 
     "get_config", 

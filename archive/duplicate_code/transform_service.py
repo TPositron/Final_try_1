@@ -1,9 +1,50 @@
 """
-Transform Service for managing transformation operations.
+Transform Service - Transformation Operations Coordination
 
-This service coordinates transformation operations between the UI and core models.
-It serves as a compatibility layer for existing code while delegating actual
-transformation math to the utilities module.
+This service coordinates transformation operations between UI components and
+core transformation utilities, providing a Qt-based interface with signal
+emission and state management.
+
+Main Class:
+- TransformService: Qt-based service for transformation coordination
+
+Key Methods:
+- apply_translation(): Applies translation transformation with validation
+- apply_rotation(): Applies rotation transformation with validation
+- apply_scale(): Applies scale transformation with validation
+- get_transformation_matrix(): Returns current 3x3 transformation matrix
+- reset_transforms(): Resets all transformations to identity
+- get_current_transforms(): Returns current transformation parameters
+- convert_pixels_to_gds(): Converts pixel coordinates to GDS units
+- convert_gds_to_pixels(): Converts GDS coordinates to pixel units
+- apply_transform_from_dict(): Applies transformations from parameter dictionary
+
+Signals Emitted:
+- transform_applied(dict): Transformation successfully applied
+- transform_updated(str, float): Individual transformation parameter updated
+- transform_error(str): Transformation operation failed
+
+Dependencies:
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: logging (error reporting and debugging)
+- Uses: utils/transformations (core transformation utilities)
+- Used by: UI transformation controls and alignment interfaces
+- Used by: Workflow services requiring transformation operations
+
+Features:
+- Parameter validation using transformation utilities
+- State management with current transformation tracking
+- History tracking for transformation operations
+- Signal-based communication with UI components
+- Coordinate system conversion utilities
+- Error handling with user-friendly messages
+
+Transformation State:
+- Translation X/Y in pixels
+- Rotation angle in degrees
+- Scale factor (positive values)
+- Transformation matrix generation
+- History tracking for undo operations
 """
 
 import logging

@@ -1,4 +1,73 @@
-"""Service for scanning and listing available SEM and GDS files."""
+"""
+File Listing Service - Data File Discovery and Management
+
+This service handles the discovery, scanning, and listing of available SEM images
+and GDS layout files in the project data directories. It provides file system
+monitoring and metadata extraction for data file management.
+
+Main Class:
+- FileListingService: Qt-based service for file discovery and listing
+
+Key Methods:
+- scan_data_directory(): Scans Data directory for SEM and GDS files
+- get_sem_files(): Returns list of available SEM image files
+- get_gds_files(): Returns list of available GDS layout files
+- refresh(): Rescans directories to update file lists
+- get_file_info(): Extracts metadata information for specific files
+- _get_file_type(): Determines file type based on extension and location
+
+Signals Emitted:
+- files_updated(dict): Emitted when file lists are updated with new scan results
+
+Dependencies:
+- Uses: pathlib.Path (file system operations), typing (type hints)
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: core/utils (get_data_path, list_files_by_extension utilities)
+- Used by: ui/file_selector.py (file selection dialogs)
+- Used by: services/file_service.py (file loading operations)
+
+Supported File Types:
+- SEM Images: .tif, .tiff, .png formats
+- GDS Layouts: .gds format
+- Automatic file type detection based on extension and directory location
+
+Directory Structure:
+- Data/SEM/: SEM image files (.tif, .tiff, .png)
+- Data/GDS/: GDS layout files (.gds)
+- Recursive scanning within subdirectories
+- Alphabetical sorting of discovered files
+
+File Information:
+- File name and full path
+- File size in bytes
+- Last modified timestamp
+- File extension and detected type
+- Metadata extraction for file properties
+
+Features:
+- Automatic file type detection based on extension
+- Recursive directory scanning for comprehensive file discovery
+- File metadata extraction (size, modification time, type)
+- Sorted file lists for consistent UI presentation
+- Signal-based updates for reactive UI components
+- Error handling for missing or inaccessible directories
+- Efficient file system operations with pathlib
+
+Usage Pattern:
+1. Service scans Data/SEM and Data/GDS directories
+2. Discovers files with supported extensions
+3. Extracts metadata for each discovered file
+4. Sorts files alphabetically by name
+5. Emits files_updated signal with complete file lists
+6. UI components connect to signal for automatic updates
+7. Provides file information on demand for selection dialogs
+
+Refresh Capability:
+- Manual refresh through refresh() method
+- Automatic rescanning when directories change
+- Signal emission for UI synchronization
+- Maintains current file list state between scans
+"""
 
 from pathlib import Path
 from typing import List, Dict

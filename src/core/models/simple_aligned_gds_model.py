@@ -108,6 +108,9 @@ class AlignedGdsModel:
         # Image-level rotation for non-90° angles
         self.residual_rotation = 0.0  # Applied to final bitmap
         
+        # Store pixel transformations directly for UI consistency
+        self._pixel_translation = (0.0, 0.0)
+        
         logger.info(f"Initialized AlignedGdsModel with layers: {self.required_layers}")
         logger.debug(f"Original frame: {self.original_frame}")
 
@@ -508,7 +511,7 @@ class AlignedGdsModel:
 
     def to_bitmap(self, resolution: Tuple[int, int] = (1024, 666), layers: Optional[List[int]] = None) -> np.ndarray:
         """
-        Convert frame to bitmap - REQUIRES explicit layers.
+        Convert frame to bitmap using same calculations as GDS generator.
         """
         if layers is None and self.required_layers is None:
             raise ValueError("Must specify layers for rendering - no defaults")
@@ -541,46 +544,52 @@ class AlignedGdsModel:
             logger.warning("Invalid frame dimensions for rendering")
             return bitmap
         
-        # Calculate scaling and offset for coordinate mapping
-        scale_x = width / frame_width
-        scale_y = height / frame_height
-        scale = min(scale_x, scale_y)
+        # Use same calculation as GDS generator
+        base_scale = min(width / frame_width, height / frame_height)
+        zoom_factor = self.frame_scale
+        scale = base_scale * zoom_factor
         
-        # Calculate centering offsets for letterboxing
+        # Calculate scaled dimensions
         scaled_width = frame_width * scale
         scaled_height = frame_height * scale
-        offset_x = (width - scaled_width) / 2
-        offset_y = (height - scaled_height) / 2
         
-        # Render each polygon
+        # Use pixel movement directly - 1 pixel = constant GDS distance regardless of zoom
+        move_x, move_y = self._pixel_translation
+        
+        # Calculate center position with same formula as GDS generator
+        center_x_pixels = width // 2 + move_x
+        center_y_pixels = height // 2 + move_y
+        
+        # Calculate offset to center the scaled image
+        offset_x = center_x_pixels - scaled_width // 2
+        offset_y = center_y_pixels - scaled_height // 2
+        
+        # Render each polygon using same approach as GDS generator
         rendered_count = 0
         for polygon in visible_polygons:
             if len(polygon) < 3:
                 continue
             
-            # Map from GDS coordinates to canvas coordinates  
-            canvas_poly = (polygon - np.array([frame_xmin, frame_ymin])) * scale
-            canvas_poly += np.array([offset_x, offset_y])
+            # Transform to pixel coordinates (same as GDS generator)
+            norm_poly = (polygon - [frame_xmin, frame_ymin]) * scale
+            int_poly = np.round(norm_poly).astype(np.int32)
+            int_poly += [int(offset_x), int(offset_y)]
             
-            # Flip Y-axis (GDS Y+ is up, image Y+ is down)
-            canvas_poly[:, 1] = height - canvas_poly[:, 1]
+            # Flip Y coordinate (image coordinate system)
+            int_poly[:, 1] = height - 1 - int_poly[:, 1]
             
-            # Convert to integer coordinates
-            int_poly = np.round(canvas_poly).astype(np.int32)
+            # Clip to image bounds
+            int_poly = np.clip(int_poly, [0, 0], [width-1, height-1])
             
-            # Clip to canvas bounds
-            int_poly[:, 0] = np.clip(int_poly[:, 0], 0, width - 1)
-            int_poly[:, 1] = np.clip(int_poly[:, 1], 0, height - 1)
-            
-            # Draw polygon in black
-            try:
-                import cv2
-                cv2.fillPoly(bitmap, [int_poly], 0)
-                rendered_count += 1
-            except ImportError:
-                # Fallback: use numpy-based polygon filling
-                self._fill_polygon_numpy(bitmap, int_poly)
-                rendered_count += 1
+            # Draw polygon
+            if len(int_poly) >= 3:
+                try:
+                    import cv2
+                    cv2.fillPoly(bitmap, [int_poly], color=(0,))
+                    rendered_count += 1
+                except ImportError:
+                    self._fill_polygon_numpy(bitmap, int_poly)
+                    rendered_count += 1
         
         logger.debug(f"Rendered {rendered_count}/{len(visible_polygons)} polygons using frame {[round(x, 2) for x in frame_bounds]}")
         return bitmap

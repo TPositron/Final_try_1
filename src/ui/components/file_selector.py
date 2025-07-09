@@ -1,6 +1,44 @@
 """
-Enhanced File selector component for SEM/GDS file selection.
-Prioritizes .tif files, provides simple file listing, and displays basic file information.
+File Selector - Enhanced File Selection Component
+
+This module provides an enhanced file selector component for SEM/GDS file selection,
+prioritizing .tif files, providing simple file listing, and displaying file information.
+
+Main Class:
+- FileSelector: Enhanced widget for selecting SEM and GDS files
+
+Key Methods:
+- update_sem_files(): Updates list of available SEM files
+- update_gds_files(): Updates list of available GDS files
+- populate_structure_dropdown(): Populates structure selection dropdown
+- scan_directories(): Scans directories for files
+- refresh_files(): Refreshes file listings
+- get_selected_sem_file(): Gets currently selected SEM file
+- get_selected_gds_file(): Gets default GDS file path
+- get_selected_structure_id(): Gets currently selected structure ID
+
+Signals Emitted:
+- sem_file_selected(str): SEM file selected
+- gds_file_loaded(str): GDS file loaded
+- gds_structure_selected(str, int): Structure selected with path and ID
+- refresh_requested(): Refresh requested
+- file_info_requested(str): File info requested
+
+Dependencies:
+- Uses: pathlib.Path, datetime (file operations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: core/gds_display_generator.get_all_structures_info
+- Called by: UI main window and file management components
+- Coordinates with: File loading and structure selection workflows
+
+Features:
+- Enhanced file selection with priority for .tif files
+- Auto-loading of default GDS file (Institute_Project_GDS1.gds)
+- Structure selection dropdown with predefined structures
+- File information display with metadata
+- Directory scanning with extension filtering
+- Status updates and progress indication
+- Error handling for missing files and directories
 """
 
 import os

@@ -1,12 +1,47 @@
 """
-Transformation Preview and Confirmation Component for Step 11.
+Transformation Preview Widget - Affine Transformation Calculation and Preview
 
-This component provides:
+This component provides affine transformation calculation from 3-point pairs with
+preview and confirmation capabilities for alignment workflow.
+
+Main Class:
+- TransformationPreviewWidget: Widget for previewing and confirming transformations
+
+Key Methods:
+- set_point_pairs(): Sets SEM and GDS point pairs for calculation
+- set_images_for_preview(): Sets images for transformation preview
+- _calculate_transformation(): Calculates affine transformation from points
+- _generate_preview(): Generates transformation preview image
+- _validate_transformation(): Validates transformation parameters
+- _confirm_transformation(): Confirms and emits transformation
+- _reject_transformation(): Rejects transformation
+- _reset_transformation(): Resets all transformation data
+
+Signals Emitted:
+- transformation_calculated(dict): Transformation parameters calculated
+- transformation_confirmed(dict): Confirmed transformation
+- transformation_rejected(str): Rejection reason
+- preview_updated(np.ndarray): Preview image updated
+- validation_status_changed(bool, str): Validation status and message
+- parameter_adjusted(str, float): Parameter manually adjusted
+
+Dependencies:
+- Uses: logging, numpy (calculations and logging)
+- Uses: typing (type hints)
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: cv2 (image transformations)
+- Called by: UI alignment components
+- Coordinates with: 3-point selection and alignment workflow
+
+Features:
 - Affine transformation calculation from 3-point pairs
 - Translation, rotation (90-degree increments), and scaling calculation
-- Validation that transformation makes sense (no extreme distortions)
-- Transformation preview before applying
-- User confirmation or adjustment of transformation
+- Validation for extreme distortions and invalid transformations
+- Real-time transformation preview with overlay visualization
+- Manual parameter adjustment with fine-tuning controls
+- Comprehensive validation with detailed feedback
+- Quality metrics and assessment scoring
+- User confirmation or rejection workflow
 """
 
 import logging

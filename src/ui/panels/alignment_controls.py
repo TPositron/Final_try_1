@@ -1,6 +1,44 @@
 """
-Alignment Controls Panel
-Contains translate/rotate/zoom widgets for manual alignment.
+Alignment Controls Panel - Manual Transformation Controls
+
+This module provides manual alignment controls for translate, rotate, scale, and
+transparency adjustments with real-time parameter updates.
+
+Main Class:
+- AlignmentControlsPanel: Panel with manual alignment controls
+
+Key Methods:
+- setup_ui(): Initializes UI components and layout
+- set_transform(): Sets current transform values
+- reset_transforms(): Resets all transforms to defaults
+- get_current_transform(): Gets current transform parameters
+
+Private Methods:
+- _on_translate_x_changed(): Handles X translation changes
+- _on_translate_y_changed(): Handles Y translation changes
+- _on_rotation_changed(): Handles rotation changes
+- _on_scale_changed(): Handles scale changes
+- _on_transparency_changed(): Handles transparency changes
+- _on_reset_clicked(): Handles reset button click
+
+Signals Emitted:
+- transform_changed(dict): Transform parameters changed
+- reset_transform(): Reset button clicked
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: typing (type hints)
+- Called by: UI alignment components
+- Coordinates with: Alignment canvas and transformation workflow
+
+Features:
+- Translation controls (X/Y with spinboxes)
+- Rotation control with degree precision
+- Scale control with decimal precision
+- Transparency slider for overlay visibility
+- Real-time parameter updates and validation
+- Reset functionality for all parameters
+- Consistent UI styling and layout
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 

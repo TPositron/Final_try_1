@@ -1,59 +1,139 @@
 """
-Simple File Service - Core File Management System (Implementation Steps 71-75)
+Simple File Service - Core File Management System
 
 This service provides comprehensive file management capabilities for the SEM/GDS alignment
 application. It handles all file I/O operations with proper validation, error handling,
 and progress reporting.
 
-Core Capabilities:
-- SEM image loading with automatic cropping to 1024x666 pixels
-- GDS file loading with structure extraction and validation
-- Result saving with organized directory structure
-- File format validation and conversion
-- Recent files tracking and management
+Main Class:
+- FileService: Qt-based service for comprehensive file management operations
+
+Key Methods:
+- scan_data_directories(): Discovers available SEM and GDS files
+- load_sem_file(): Loads and crops SEM images with validation
+- load_gds_file(): Loads GDS files with structure extraction
+- save_alignment_result(): Saves alignment data with timestamps
+- save_filter_result(): Saves filter processing results
+- save_scoring_result(): Saves scoring and analysis results
+- get_file_info(): Returns basic file information
+- save_file(): Generic file saving with format support
+- load_file(): Generic file loading with format support
+- add_recent_file(): Manages recent file history
+- get_recent_files(): Returns recent files list
+- set_data_directories(): Sets custom data directories
+- save_aligned_gds(): Creates new GDS files with transformations
+- test_initial_gds_loading(): Tests GDS loading workflow
+
+Signals Emitted:
+- files_scanned(list, list): Directory scanning completed
+- file_loaded(str, str): Files successfully loaded
+- loading_progress(str): Progress messages during loading
+- loading_error(str): Loading operation failures
+- file_saved(str, str): Files successfully saved
+- error_occurred(str): General error notifications
+- recent_files_changed(list): Recent files list updated
+
+Dependencies:
+- Uses: pathlib, json, csv (file operations)
+- Uses: PIL/Pillow (image processing), numpy (array operations)
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: pandas (optional, for enhanced CSV support)
+- Uses: core/models (SemImage, GDS models)
+- Uses: core/models/simple_gds_extraction (structure extraction)
+- Uses: services/gds_transformation_service (GDS transformations)
+- Called by: ui/file_handler.py, ui/file_operations.py
+- Called by: services/file_loading_service.py
 
 Directory Structure Management:
 - Data/SEM/: SEM image files (TIFF, PNG)
 - Data/GDS/: GDS layout files
 - Results/Aligned/: Alignment results (manual/auto)
 - Results/SEM_Filters/: Filter processing results
-- Results/Scoring/: Analysis and scoring results
+- Results/Scoring/: Analysis and scoring results with subdirectories
 - Results/cut/: Cropped SEM images
-
-Key Methods:
-- load_sem_file(): Loads and crops SEM images with validation
-- load_gds_file(): Loads GDS files with structure extraction
-- save_alignment_result(): Saves alignment data with timestamps
-- scan_data_directories(): Discovers available files
-- get_recent_files(): Manages recent file history
+- Automatic directory creation and validation
 
 File Format Support:
-- SEM: TIFF, PNG (automatically cropped to standard size)
-- GDS: GDS, GDS2 (with structure validation)
+- SEM: TIFF, PNG, JPG (automatically cropped to 1024x666)
+- GDS: GDS, GDS2, GDSII (with structure validation)
 - Results: JSON, CSV, TXT (with proper encoding)
+- Image formats with PIL/Pillow support
+- Fallback mechanisms for missing dependencies
 
-Dependencies:
-- Uses: pathlib, json, csv (file operations)
-- Uses: PIL/Pillow (image processing)
-- Uses: src.core.models (SemImage, GDS models)
-- Uses: src.core.models.simple_gds_extraction (structure extraction)
-- Called by: ui/file_handler.py, ui/file_operations.py
-- Called by: services/file_loading_service.py
+SEM Image Processing:
+- Automatic cropping to exactly 1024x666 pixels
+- Bottom pixel removal (removes bottom 102 pixels from 768px height)
+- Grayscale conversion for consistency
+- Original and cropped image preservation
+- Automatic saving of cropped images to Results/cut/
+- Format validation and error handling
 
-Signals (Step 75):
-- files_scanned: Emitted when directory scanning completes
-- file_loaded: Emitted when files are successfully loaded
-- loading_progress: Emitted during loading operations
-- loading_error: Emitted when loading fails
-- file_saved: Emitted when files are saved
-- recent_files_changed: Emitted when recent files list updates
+GDS File Processing:
+- Structure extraction with predefined structure support
+- Binary image generation from polygon data
+- Layer filtering and bounds validation
+- Metadata extraction (unit, precision, cell names)
+- Integration with InitialGdsModel and extraction utilities
+- Structure-specific processing (1-5 predefined structures)
 
-Critical Features:
-- Automatic SEM image cropping to 1024x666 (removes bottom 102 pixels)
-- GDS structure validation against predefined structure definitions
+Result Management:
+- Organized directory structure for different result types
+- Timestamp-based filename generation
+- JSON serialization with proper encoding
+- CSV export with pandas integration (optional)
+- Alignment, filter, and scoring result separation
+- Automatic subdirectory creation
+
+Recent Files Management:
+- Configurable maximum recent files (default 10)
+- File type and path tracking
+- Duplicate removal and ordering
+- Signal emission for UI updates
+- Persistence support for application sessions
+
+Error Handling:
+- Comprehensive exception handling for all operations
+- User-friendly error messages with context
+- Progress reporting for long-running operations
+- Graceful fallbacks for missing dependencies
+- Signal-based error reporting for UI integration
+
+Binary Image Generation:
+- Polygon-to-image conversion with coordinate transformation
+- Configurable output dimensions (default 1024x666)
+- Bounds validation and scaling calculations
+- OpenCV integration for polygon filling
+- Error recovery with empty image fallbacks
+
+GDS Transformation Support:
+- Integration with GdsTransformationService
+- Aligned GDS file creation with applied transformations
+- Coordinate system conversion and validation
+- New GDS library creation with gdstk
+- Transformation parameter extraction and application
+
+Testing and Validation:
+- Built-in testing methods for workflow validation
+- Structure extraction testing
+- Binary image validation
+- File format and content verification
+- Debug logging and error reporting
+
+Compatibility Features:
+- Backward compatibility methods for existing interfaces
+- Stub methods for gradual migration
+- Optional dependency handling (pandas)
+- Multiple file format support with fallbacks
+- Cross-platform path handling
+
+Features:
+- Automatic SEM image cropping to 1024x666 (removes bottom pixels)
+- GDS structure validation against predefined definitions
 - Comprehensive error handling with user-friendly messages
 - Progress reporting for long operations
 - File history management with configurable limits
+- Organized result directory structure
+- Multiple file format support with validation
 """
 
 import logging

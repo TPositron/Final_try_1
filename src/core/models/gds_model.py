@@ -1,3 +1,49 @@
+"""
+GDS Model - Core GDS File Data Management
+
+This module provides a simplified, object-oriented interface for loading and managing
+GDS (GDSII) file data. It focuses on data extraction and polygon management without
+complex image generation, which is handled by separate service classes.
+
+Main Class:
+- GDSModel: Core class for GDS file operations and data management
+
+Key Methods:
+- load_gds_data(): Loads GDS file and extracts basic structure information
+- get_polygons(): Retrieves polygon data filtered by layers
+- get_layers(): Lists available layer numbers in the GDS file
+- get_polygons_in_region(): Extracts polygons within specified coordinate bounds
+- get_layer_info(): Provides statistics and metadata for each layer
+- get_gds_info(): Returns comprehensive GDS file information
+
+Dependencies:
+- Uses: gdstk (modern GDS library), numpy (array operations), pathlib (file handling)
+- Called by: services/gds_image_service.py (for image generation)
+- Called by: services/file_service.py (for file operations)
+- Called by: ui/gds_manager.py (for UI data management)
+
+Data Flow:
+1. Loads GDS file using gdstk library
+2. Identifies main cell (prefers 'nazca' cell or first top-level cell)
+3. Extracts polygon data organized by layers
+4. Provides filtered access to polygons by layer and region
+5. Calculates bounds, areas, and other geometric properties
+6. Serves as data source for image generation services
+
+Features:
+- Automatic cell detection and selection
+- Layer-based polygon filtering
+- Region-based polygon extraction
+- Comprehensive metadata extraction
+- Error handling with custom GDSError exception
+- Legacy compatibility functions for older code
+
+Note:
+- Complex image generation moved to GDSImageService for separation of concerns
+- Uses gdstk (modern) instead of gdspy (legacy) for better performance
+- Provides foundation for alignment and visualization operations
+"""
+
 import gdstk
 import numpy as np
 from pathlib import Path

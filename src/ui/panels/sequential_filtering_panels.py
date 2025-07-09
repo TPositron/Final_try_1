@@ -1,7 +1,73 @@
 """
-Phase 3: Sequential Filtering Panels
-4-Step Sequential Workflow: Contrast Enhancement → Blur & Noise Reduction → Binarization → Edge Detection
-Each step feeds into the next with stage-specific controls.
+Sequential Filtering Panels - 4-Stage Image Processing Workflow
+
+This module implements a comprehensive 4-stage sequential image processing workflow
+for SEM image enhancement. Each stage builds upon the previous result, providing
+a structured approach to image filtering and analysis.
+
+Main Classes:
+- SequentialFilterConfigManager: Manages filter configurations for all stages
+- StageParameterWidget: Parameter control widget for individual filter parameters
+- StageControlPanel: Control panel for each processing stage
+- SequentialFilteringLeftPanel: Left panel with stage controls and filter selection
+- SequentialFilteringRightPanel: Right panel with progress tracking and statistics
+
+Key Methods (SequentialFilterConfigManager):
+- _initialize_stages(): Sets up the 4 processing stages
+- _load_sequential_filters(): Loads all filters organized by stage
+- get_filters_for_stage(): Gets filters available for a specific stage
+- get_stage_config(): Gets configuration for a processing stage
+
+Key Methods (StageControlPanel):
+- setup_ui(): Creates stage-specific UI with filter selection and parameters
+- _on_filter_selected(): Handles filter selection and parameter setup
+- get_current_parameters(): Gets current parameter values for the stage
+- reset_stage(): Resets stage to initial state
+
+Key Methods (SequentialFilteringLeftPanel):
+- init_panel(): Initializes panel with all 4 stage controls
+- _on_stage_preview(): Handles stage preview requests
+- _on_stage_apply(): Handles stage application requests
+- reset_all_stages(): Resets all stages to initial state
+
+Key Methods (SequentialFilteringRightPanel):
+- update_stage_progress(): Updates progress indicators for stages
+- update_histogram(): Updates histogram display for current stage
+- set_processing_status(): Sets overall processing status message
+
+Signals Emitted:
+- stage_preview_requested(int, str, dict): Stage preview with parameters
+- stage_apply_requested(int, str, dict): Stage application with parameters
+- stage_reset_requested(int): Stage reset requested
+- stage_save_requested(int): Stage save requested
+- reset_all_requested(): Reset all stages requested
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: numpy, cv2 (image processing)
+- Uses: json, logging, os (system operations)
+- Uses: typing, dataclasses, enum (type definitions)
+- Uses: ui/view_manager.ViewMode, ui/components/histogram_view.HistogramView
+- Called by: Main filtering workflow and UI management
+- Coordinates with: Image processing services and filter operations
+
+Processing Stages:
+1. Contrast Enhancement: CLAHE, gamma correction, histogram equalization
+2. Blur & Noise Reduction: Gaussian blur, median filter, bilateral filter, NLM denoising
+3. Binarization: Simple threshold, adaptive threshold, Otsu threshold
+4. Edge Detection: Canny, Laplacian, Sobel edge detection
+
+Features:
+- Sequential 4-stage processing workflow with stage dependencies
+- Comprehensive filter library with pre-configured parameters
+- Real-time parameter adjustment with immediate feedback
+- Progress tracking with visual indicators for each stage
+- Histogram analysis and statistics for each processing stage
+- Stage-specific controls with preview and apply functionality
+- Dark theme styling with color-coded stage indicators
+- Parameter validation and error handling
+- Save and reset functionality for individual stages
+- Scrollable interface for compact display of all stages
 """
 
 from PySide6.QtWidgets import (

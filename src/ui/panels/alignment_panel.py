@@ -1,7 +1,49 @@
 """
-Alignment Panel
-Restructured alignment panel with sub-mode switcher, transformation controls, and file selection.
-Layout: Left (sub-modes + controls) | Center (image display) | Right (file selection)
+Alignment Panel - Comprehensive Alignment Interface with Multi-Mode Support
+
+This module provides a comprehensive alignment panel with manual, hybrid, and automatic
+alignment modes, featuring integrated file selection and real-time transformation preview.
+
+Main Classes:
+- AlignmentPanel: Main alignment interface with sub-mode switching
+- OverlayCanvas: Graphics view for SEM and GDS image overlay display
+
+Key Methods:
+- setup_ui(): Initializes 3-panel layout (controls, display, file selection)
+- _create_manual_controls(): Creates manual alignment transformation controls
+- _create_hybrid_controls(): Creates 3-point alignment interface
+- _create_automatic_controls(): Creates automatic alignment interface
+- set_initial_sem_image(): Sets SEM image for alignment operations
+- set_initial_gds_image(): Sets GDS overlay for alignment operations
+- _generate_aligned_gds(): Generates aligned GDS file from transformations
+- update_transform(): Updates real-time transformation preview
+
+Signals Emitted:
+- transform_changed(dict): Transform parameters changed
+- alignment_applied(dict): Alignment transformation applied
+- sem_file_selected(str): SEM file selected from FileSelector
+- gds_structure_selected(str, int): GDS structure selected
+- three_points_selected(list, list): 3-point alignment points selected
+- transformation_calculated(dict): Transformation matrix calculated
+- transformation_confirmed(dict): Transformation confirmed and applied
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: numpy (array processing)
+- Uses: typing, logging, os, pathlib (utilities)
+- Uses: ui/components (SliderInput, ThreePointSelectionController, etc.)
+- Uses: services (GdsTransformationService)
+- Called by: UI main window and alignment workflow
+- Coordinates with: File operations, image processing, and transformation services
+
+Features:
+- Three alignment modes: Manual (sliders), Hybrid (3-point), Automatic
+- Integrated FileSelector for consistent file management
+- Real-time transformation preview with overlay canvas
+- 3-point alignment workflow with point validation
+- Automatic GDS file generation with applied transformations
+- Sub-mode switching with dedicated control panels
+- Interactive image display with zoom and pan capabilities
 """
  
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QSplitter, 

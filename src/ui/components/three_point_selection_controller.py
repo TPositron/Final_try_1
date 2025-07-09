@@ -1,11 +1,50 @@
 """
-3-Point Selection Controller for Step 10.
+3-Point Selection Controller - Hybrid Alignment Point Management
 
-This component coordinates:
+This component coordinates 3-point selection between SEM and GDS viewers for hybrid
+alignment workflow, providing point correspondence validation and alignment calculation.
+
+Main Class:
+- ThreePointSelectionController: Controller for managing 3-point selection workflow
+
+Key Methods:
+- update_sem_points(): Updates SEM points list and refreshes display
+- update_gds_points(): Updates GDS points list and refreshes display
+- add_sem_point(): Adds or updates a SEM point
+- add_gds_point(): Adds or updates a GDS point
+- remove_sem_point(): Removes a SEM point
+- remove_gds_point(): Removes a GDS point
+- clear_sem_points(): Clears all SEM points
+- clear_gds_points(): Clears all GDS points
+- get_sem_points(): Gets current SEM points
+- get_gds_points(): Gets current GDS points
+- is_alignment_ready(): Checks if alignment calculation is ready
+- get_point_pairs(): Gets point pairs for alignment calculation
+
+Signals Emitted:
+- alignment_ready(bool): True when 3 points on both images
+- point_correspondence_changed(list, list): SEM points, GDS points
+- calculate_alignment_requested(): User requested alignment calculation
+- clear_all_points_requested(): User requested to clear all points
+- point_validation_status(str, bool): Status message, is_valid
+
+Dependencies:
+- Uses: logging (error tracking)
+- Uses: typing (type hints)
+- Uses: PySide6.QtWidgets (UI components)
+- Uses: PySide6.QtCore (Qt framework)
+- Uses: PySide6.QtGui (styling)
+- Called by: UI alignment components
+- Coordinates with: Image viewers and alignment workflow
+
+Features:
 - 3-point selection between SEM and GDS viewers
-- Point correspondence validation
-- Alignment calculation enablement
-- Visual feedback and status management
+- Point correspondence validation (exactly 3 points each)
+- Visual feedback with progress indicators
+- Point correspondence table display
+- Alignment calculation enablement based on completion
+- Status management and user instructions
+- Error handling and validation
 """
 
 import logging

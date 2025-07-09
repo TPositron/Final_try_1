@@ -1,6 +1,45 @@
 """
-Dynamic Parameter Input Components
-Advanced parameter input widgets with up/down buttons, validation, and real-time updates.
+Dynamic Parameter Input Components - Advanced Parameter Input Widgets
+
+This module provides advanced parameter input widgets with up/down buttons,
+validation, and real-time updates for filter parameter management.
+
+Main Classes:
+- ParameterInputWidget: Base class for parameter input widgets
+- NumericParameterWidget: Widget for numeric parameters (int/float)
+- BooleanParameterWidget: Widget for boolean parameters
+- ChoiceParameterWidget: Widget for parameters with predefined choices
+- TupleParameterWidget: Widget for tuple parameters
+- DynamicParameterPanel: Panel for dynamic parameter generation
+
+Key Methods:
+- setup_ui(): Sets up UI for parameter widget
+- get_value(): Gets current parameter value
+- set_value(): Sets parameter value
+- reset_to_default(): Resets parameter to default value
+- set_filter_parameters(): Sets parameters for selected filter
+- get_current_parameters(): Gets current parameter values
+
+Signals Emitted:
+- value_changed(str, object): Parameter value changed
+- value_preview(str, object): Parameter value preview for real-time updates
+- parameters_changed(dict): All parameters changed
+- parameters_preview(dict): All parameters preview
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: services/filters/filter_parameter_parser.FilterParameter
+- Called by: UI filtering components
+- Coordinates with: Filter parameter management system
+
+Features:
+- Advanced parameter input widgets with validation
+- Up/down buttons for enhanced control
+- Real-time preview updates with timer delays
+- Dynamic parameter generation based on filter definitions
+- Support for multiple parameter types (numeric, boolean, choice, tuple)
+- Dark theme styling for consistent UI appearance
+- Parameter reset and default value management
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 

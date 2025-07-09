@@ -1,3 +1,57 @@
+"""
+Alignment Service - GDS Structure Alignment and Transformation Operations
+
+This service provides comprehensive alignment capabilities for GDS structures
+with SEM images, including transformations, batch processing, scoring,
+and result visualization.
+
+Main Class:
+- AlignmentService: Service for GDS-to-SEM alignment operations
+
+Key Methods:
+- apply_transformations(): Applies transformations to single structure
+- apply_transformations_all_structures(): Applies transformations to all structures
+- batch_alignment_search(): Searches for optimal alignment parameters
+- batch_alignment_search_all_structures(): Batch search for all structures
+- save_alignment_result(): Saves alignment results to files
+
+Global Functions:
+- create_alignment_service(): Factory function for service creation
+- align_gds_to_sem(): Quick alignment function for single structure
+
+Dependencies:
+- Uses: numpy, cv2 (OpenCV), pathlib.Path (standard libraries)
+- Uses: skimage.metrics.structural_similarity (optional SSIM scoring)
+- Uses: core/models.SemImage (SEM image data model)
+- Used by: UI alignment components and workflow services
+- Used by: Batch processing and automated alignment tools
+
+Transformation Operations:
+- Translation: X/Y offset in pixels
+- Rotation: Angle in degrees (-180 to 180)
+- Scaling: Scale factor (positive values)
+- Transparency: Overlay transparency (0-100%)
+- Combined transformation matrix computation
+
+Alignment Scoring:
+- SSIM-based structural similarity scoring
+- Correlation-based fallback scoring
+- Normalized score computation (0.0 to 1.0)
+- Robust error handling for scoring failures
+
+Batch Processing:
+- Parameter range search for optimal alignment
+- Multi-structure batch processing
+- Configurable search ranges for all parameters
+- Best parameter selection based on scoring
+
+Visualization:
+- Overlay preview generation with transparency
+- Difference map computation
+- Transformed GDS visualization
+- Result saving to image files
+"""
+
 import numpy as np
 import cv2
 from typing import Tuple, Dict, Optional, Union, List, Any

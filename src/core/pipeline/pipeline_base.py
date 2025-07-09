@@ -1,3 +1,61 @@
+"""
+Processing Pipeline Base - Foundation for Image Processing Workflows
+
+This module provides the base class for all processing pipelines in the application.
+It implements shared functionality including state management, signal handling,
+result aggregation, and configuration management that is inherited by specific
+pipeline implementations (manual, automatic, hybrid).
+
+Main Class:
+- ProcessingPipelineBase: Abstract base class for all processing pipelines
+
+Key Methods:
+- initialize(): Sets up pipeline with input images and processing mode
+- run(): Executes the complete pipeline workflow
+- load_config()/save_config(): Configuration file management
+- export_results(): Exports all pipeline results to files
+- save_pipeline_state()/load_pipeline_state(): Session persistence
+- validate_pipeline(): Validates pipeline state and results
+
+Core Functionality:
+- Stage Management: Handles filtering, alignment, and scoring stages
+- Signal System: Emits detailed progress and status signals for UI updates
+- Result Aggregation: Collects and organizes results from all processing stages
+- Error Handling: Comprehensive error reporting and recovery mechanisms
+- Configuration Management: Loads, validates, and saves processing parameters
+- State Persistence: Saves and restores complete pipeline state
+
+Dependencies:
+- Uses: PySide6.QtCore (signal system), pipeline_results, pipeline_utils
+- Uses: ImageProcessingService, AlignmentService, ScoringService
+- Inherited by: pipeline_automatic.py, pipeline_manual.py, pipeline_hybrid.py
+- Called by: ui/workflow_controller.py (pipeline orchestration)
+
+Signal System:
+- Progress Signals: stage_started, stage_progress, stage_completed
+- Status Signals: pipeline_started, pipeline_completed, pipeline_error
+- Detailed Signals: filter_trial_*, alignment_method_*, scoring_method_*
+- Real-time Signals: status_message, processing_statistics
+
+Data Flow:
+1. Initialize with SEM and GDS images plus processing mode
+2. Load configuration parameters for processing stages
+3. Execute stages sequentially: filtering → alignment → scoring
+4. Collect intermediate results and emit progress signals
+5. Aggregate final results with metadata and statistics
+6. Export results to various formats (JSON, images, matrices)
+7. Optionally save complete pipeline state for session persistence
+
+Features:
+- Mode-agnostic base functionality
+- Comprehensive logging and debugging support
+- Flexible configuration system with validation
+- Multiple export formats for results
+- Session persistence for workflow continuity
+- Detailed progress tracking and error reporting
+- Service integration with automatic signal connection
+"""
+
 from PySide6.QtCore import QObject, Signal
 from .pipeline_results import PipelineResults
 from .pipeline_utils import *

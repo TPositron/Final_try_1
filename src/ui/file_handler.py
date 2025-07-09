@@ -1,45 +1,12 @@
 """
 File Handler - Comprehensive File Operation Manager
 
-This module provides a high-level interface for all file operations in the SEM/GDS
-alignment application. It acts as a bridge between the UI and the file services,
-handling user interactions and coordinating complex file operations.
+This module provides a high-level interface for all file operations,
+acting as a bridge between the UI and file services, handling user
+interactions and coordinating complex file operations.
 
-Core File Operations:
-1. SEM Image Loading:
-   - File dialog integration for user selection
-   - Automatic image validation and format checking
-   - Integration with SemImage model creation
-   - Image viewer updates and status reporting
-
-2. GDS File Loading:
-   - GDS file selection and validation
-   - Coordination with GDS manager for structure loading
-   - Error handling for invalid or corrupted files
-
-3. Result Saving:
-   - Analysis result compilation and organization
-   - Multiple format support (JSON, images, overlays)
-   - Timestamp and metadata inclusion
-   - Directory structure management
-
-File Format Support:
-- SEM Images: TIFF, PNG, JPG, JPEG, BMP
-- GDS Files: GDS, GDS2
-- Results: JSON (analysis data), PNG (images), various formats
-
-Dependencies:
-- Uses: services/simple_file_service.py (core file operations)
-- Uses: core/models (SemImage and data models)
-- Uses: PySide6.QtWidgets (file dialogs and UI integration)
-- Uses: cv2, numpy (image processing)
-- Called by: ui/main_window.py (menu actions and toolbar)
-- Coordinates with: ui/image_viewer.py (display updates)
-
-Signals Emitted:
-- sem_image_loaded: When SEM images are successfully loaded
-- gds_file_loaded: When GDS files are loaded
-- results_saved: When analysis results are saved
+Main Class:
+- FileHandler: Qt-based handler for all file operations
 
 Key Methods:
 - load_sem_image(): Handles SEM image loading workflow
@@ -47,24 +14,33 @@ Key Methods:
 - save_results(): Compiles and saves analysis results
 - save_current_image(): Exports processed images
 - export_alignment_overlay(): Saves alignment visualizations
+- get_current_file_info(): Returns information about loaded files
+- clear_file_data(): Clears all loaded file data
 
-Data Integration:
-- Collects data from multiple application components
-- Compiles comprehensive analysis reports
-- Maintains file path tracking and history
-- Provides file information and statistics
+Signals Emitted:
+- sem_image_loaded(object, str): SEM image loaded successfully
+- gds_file_loaded(str): GDS file loaded successfully
+- results_saved(str): Analysis results saved
 
-Error Handling:
-- User-friendly error dialogs
-- Graceful handling of file access issues
-- Validation of file formats and content
-- Recovery from partial operation failures
+Dependencies:
+- Uses: services/simple_file_service.FileService (core file operations)
+- Uses: core/models.SemImage (SEM image data model)
+- Uses: PySide6.QtWidgets (file dialogs and UI integration)
+- Uses: cv2, numpy (image processing and file operations)
+- Called by: ui/main_window.py (menu actions and toolbar)
+- Coordinates with: UI components for display updates
 
-User Experience Features:
-- Progress indication for long operations
+File Format Support:
+- SEM Images: TIFF, PNG, JPG, JPEG, BMP
+- GDS Files: GDS, GDS2
+- Results: JSON (analysis data), PNG (images)
+
+Features:
+- File dialog integration for user selection
+- Automatic image validation and format checking
+- Analysis result compilation and organization
+- Error handling with user-friendly dialogs
 - Status bar updates during operations
-- Automatic file path suggestions
-- Recent file tracking integration
 """
 
 import os

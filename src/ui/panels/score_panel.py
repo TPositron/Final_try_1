@@ -1,6 +1,50 @@
 """
-Score Panel
-Score selection, overlay visualization, charts and export functionality.
+Score Panel - Comprehensive Scoring and Analysis Interface
+
+This module provides a comprehensive scoring panel with multiple metrics, overlay
+visualization, results display, and export functionality for image comparison.
+
+Main Class:
+- ScorePanel: Main scoring interface with metric selection and results display
+
+Key Methods:
+- setup_ui(): Initializes UI with metric selection and results display
+- _on_calculate_clicked(): Handles score calculation requests
+- _on_metric_changed(): Handles metric selection changes
+- _get_selected_metric(): Gets currently selected scoring metric
+- _on_generate_overlay_clicked(): Generates color-coded difference overlay
+- _create_difference_overlay(): Creates overlay from SEM and GDS comparison
+- update_scores(): Updates score display with calculated results
+- update_chart_display(): Updates text-based chart visualization
+- on_score_completed(): Handles score calculation completion
+
+Signals Emitted:
+- score_calculated(str, dict): Score calculation requested
+- overlay_generated(np.ndarray): Overlay image generated
+- export_requested(str, dict): Export operation requested
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: numpy (array processing)
+- Uses: typing, logging (utilities)
+- Called by: UI main window and scoring workflow
+- Coordinates with: Image comparison and analysis services
+
+Metrics:
+- Pixel Match: Direct pixel-to-pixel comparison
+- SSIM: Structural Similarity Index Measure
+- IoU: Intersection over Union
+- Cross Correlation: Normalized cross-correlation
+- MSE: Mean Squared Error
+
+Features:
+- Multiple scoring metrics with radio button selection
+- Color-coded difference overlay generation
+- Score results table with detailed interpretations
+- Text-based chart visualization
+- Export functionality (JSON, CSV, overlay images)
+- Progress tracking and status updates
+- Session state management and restoration
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 

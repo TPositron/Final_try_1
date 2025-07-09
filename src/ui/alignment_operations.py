@@ -1,6 +1,42 @@
 """
-Alignment Operations Module
-Handles all alignment operations, transformations, and alignment-related functionality.
+Alignment Operations - Alignment Operation Management
+
+This module handles all alignment operations, transformations, and alignment-related
+functionality for SEM/GDS image alignment workflows.
+
+Main Class:
+- AlignmentOperations: Qt-based handler for alignment operations
+
+Key Methods:
+- auto_align(): Performs automatic alignment between SEM and GDS images
+- manual_align_3_point(): Handles manual 3-point alignment operations
+- apply_transformation(): Applies custom transformation matrices
+- reset_alignment(): Resets alignment to original state
+- update_alignment_display(): Updates UI alignment displays
+- export_alignment_result(): Exports alignment results to file
+- get_alignment_info(): Returns current alignment information
+- is_aligned(): Checks if alignment has been performed
+- get_transformation_matrix(): Returns current transformation matrix
+
+Signals Emitted:
+- alignment_completed(object): Alignment operation completed
+- alignment_reset(): Alignment reset to original state
+- transformation_applied(object): Transformation applied successfully
+
+Dependencies:
+- Uses: cv2, numpy (image processing and matrix operations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt integration)
+- Uses: services/simple_alignment_service.AlignmentService
+- Uses: services/transformation_service.TransformationService
+- Used by: UI alignment components and main window
+- Coordinates with: Image viewers and alignment panels
+
+Features:
+- Automatic and manual alignment workflows
+- Transformation matrix management
+- Alignment state tracking and validation
+- Error handling with user feedback
+- Result export and information retrieval
 """
 
 import cv2

@@ -1,87 +1,45 @@
 """
 Base Panel Classes - Foundation for View-Specific UI Panels
 
-This module provides the foundational base classes for all view-specific panels in the
-SEM/GDS alignment application. It establishes consistent patterns for panel behavior,
-signal communication, and view management across different application modes.
+This module provides foundational base classes for all view-specific panels,
+establishing consistent patterns for panel behavior, signal communication,
+and view management across different application modes.
 
-Panel Architecture:
+Main Classes:
 - BaseViewPanel: Foundation for all view-specific panels
 - BaseLeftPanel: Specialized for control panels (left side)
 - BaseRightPanel: Specialized for information panels (right side)
 - ViewPanelManager: Coordinates panel switching and management
 
-View Modes Supported:
+Key Methods:
+- BaseViewPanel: init_panel(), update_panel_data(), reset_panel(), get_panel_data()
+- BaseLeftPanel: setup_modes(), add_mode(), switch_mode(), get_current_mode()
+- BaseRightPanel: setup_display_sections(), add_display_section(), update_display_section()
+- ViewPanelManager: register_left_panel(), register_right_panel(), switch_to_view()
+
+Signals Emitted:
+- panel_data_changed(dict): Panel data modified
+- action_requested(str, dict): User actions triggered
+- panels_switched(ViewMode, ViewMode): View modes changed
+- panel_ready(ViewMode, str): Panels initialized
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: ui/view_manager.ViewMode (view mode enumeration)
+- Called by: ui/main_window.py (panel integration)
+- Inherited by: ui/panels/* (specific panel implementations)
+
+View Modes:
 - ALIGNMENT: Manual and automatic alignment operations
 - FILTERING: Image processing and enhancement
 - SCORING: Analysis and comparison metrics
 
-Panel Responsibilities:
-1. BaseViewPanel (Foundation):
-   - Common signal/slot patterns for UI communication
-   - Data management and state tracking
-   - Panel lifecycle management (init, update, reset)
-   - View mode association and validation
-
-2. BaseLeftPanel (Controls):
-   - Mode switching capabilities (Manual/3-point for alignment)
-   - Control buttons and parameter inputs
-   - Action triggers and user interactions
-   - Real-time parameter validation
-
-3. BaseRightPanel (Information):
-   - Status displays and result visualization
-   - Information panels and secondary controls
-   - Progress indicators and feedback
-   - Result formatting and presentation
-
-4. ViewPanelManager (Coordination):
-   - Panel registration and lifecycle management
-   - View switching and transition coordination
-   - Signal routing between panels and main application
-   - Panel availability and state management
-
-Dependencies:
-- Uses: PySide6.QtWidgets (UI components and layouts)
-- Uses: PySide6.QtCore (signals, QObject, and Qt framework)
-- Uses: ui/view_manager.py (ViewMode enumeration)
-- Called by: ui/main_window.py (panel integration)
-- Inherited by: ui/panels/* (specific panel implementations)
-
-Signals (Common to all panels):
-- panel_data_changed: Emitted when panel data is modified
-- action_requested: Emitted when user actions are triggered
-- panels_switched: Emitted when view modes change
-- panel_ready: Emitted when panels are initialized
-
-Panel Creation and Management:
-1. Panel Registration: Panels register with ViewPanelManager
-2. View Association: Each panel is associated with specific view modes
-3. Signal Connection: Automatic signal routing setup
-4. State Management: Panel state tracking and synchronization
-5. Dynamic Switching: Runtime view mode changes
-
-Key Features:
+Features:
 - Enhanced error handling for missing panel modules
 - Graceful fallback to placeholder panels
 - Flexible panel architecture supporting tabbed interfaces
 - Automatic signal connection and routing
 - Comprehensive state management
-
-Integration Points:
-- Main Window: Panel container and coordination
-- View Controller: View mode switching coordination
-- Service Layer: Business logic integration
-- Specific Panels: Concrete implementations
-
-Panel Lifecycle:
-1. Creation: Panel instantiation and initialization
-2. Registration: Registration with panel manager
-3. Signal Connection: Automatic signal routing setup
-4. Activation: Panel becomes active for current view
-5. Updates: Real-time data and state updates
-6. Deactivation: Panel becomes inactive when view changes
-7. Cleanup: Resource cleanup and state preservation
 """
 
 from typing import Dict, Any, Optional, Union

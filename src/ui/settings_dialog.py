@@ -1,3 +1,35 @@
+"""
+Settings Dialog - Application Settings Management
+
+This module provides a settings dialog for managing application preferences
+and configuration options.
+
+Main Class:
+- SettingsDialog: Qt dialog for application settings
+
+Global Functions:
+- load_app_settings(): Loads settings from file
+- save_app_settings(): Saves settings to file
+
+Key Methods:
+- get_settings(): Returns current settings values
+
+Dependencies:
+- Uses: PySide6.QtWidgets (Qt dialog components)
+- Uses: json, os (file operations)
+- Called by: ui/main_window.py (settings menu)
+
+Settings:
+- Default Directory: Default file directory
+- Dark Theme: Enable/disable dark theme
+
+Features:
+- Persistent settings storage
+- User-friendly dialog interface
+- JSON-based configuration file
+- Cross-platform settings location
+"""
+
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QDialogButtonBox, QFormLayout, QLineEdit, QCheckBox
 import json
 import os

@@ -1,4 +1,48 @@
-"""IOU score service for computing Intersection-over-Union metrics."""
+"""
+IOU Score Service - Intersection-over-Union Metrics Computation
+
+This service provides comprehensive Intersection-over-Union (IoU) metrics
+computation for binary image comparison, including multi-threshold analysis,
+class-wise metrics, visualization, and local region analysis.
+
+Main Class:
+- IOUScoreService: Qt-based service for IoU metrics computation
+
+Key Methods:
+- compute_iou(): Computes basic IoU between two binary images
+- compute_multi_threshold_iou(): Tests multiple threshold values
+- compute_class_wise_iou(): Computes IoU for each class separately
+- create_iou_visualization(): Creates color-coded IoU visualization
+- get_last_result(): Returns most recent IoU computation result
+- compute_local_iou(): Computes IoU for local image regions
+
+Signals Emitted:
+- iou_computed(dict): IoU computation completed successfully
+- iou_error(str): IoU computation failed with error
+
+Dependencies:
+- Uses: numpy (array operations), cv2 (OpenCV image processing)
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: core/utils.get_logger (logging functionality)
+- Used by: Scoring services and alignment evaluation
+- Used by: UI components for metric display and visualization
+
+Metrics Computed:
+- IoU Score: Intersection over Union ratio (0-1)
+- Dice Coefficient: 2 * intersection / (area1 + area2)
+- Precision: True positives / (true positives + false positives)
+- Recall: True positives / (true positives + false negatives)
+- F1 Score: Harmonic mean of precision and recall
+- Coverage Ratio: Union area / total image area
+
+Features:
+- Multi-threshold analysis for optimal threshold selection
+- Class-wise IoU for foreground and background separately
+- Local region analysis with configurable grid size
+- Color-coded visualization generation
+- Statistical analysis of local IoU distributions
+- Comprehensive error handling and logging
+"""
 
 from typing import Optional, Dict, List, Tuple
 from PySide6.QtCore import QObject, Signal

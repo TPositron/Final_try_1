@@ -1,6 +1,49 @@
 """
-Image Processor Module
-Handles all image processing operations including filtering, enhancement, and transformations.
+Image Processor - Advanced Image Processing Operations
+
+This module handles all image processing operations including filtering,
+enhancement, transformations, and processing workflow management.
+
+Main Class:
+- ImageProcessor: Qt-based handler for advanced image processing
+
+Key Methods:
+- set_original_image(): Sets original SEM image for processing
+- on_filter_applied(): Handles filter application from UI panels
+- on_filter_preview(): Generates real-time filter previews
+- on_reset_filters(): Resets all processing to original image
+- apply_custom_filter(): Applies user-defined filter functions
+- apply_enhancement(): Applies image enhancement operations
+- create_filter_chain(): Processes multiple filters in sequence
+- get_image_statistics(): Returns current image statistics
+- get_applied_filters(): Returns list of applied filters
+- get_filter_history(): Returns complete filter history
+- export_processed_image(): Exports processed image to file
+- compare_original_processed(): Creates side-by-side comparison
+- undo_last_filter(): Undoes last applied filter
+
+Signals Emitted:
+- filter_applied(str, dict): Filter successfully applied
+- filter_preview_ready(str, dict, object): Filter preview generated
+- filters_reset(): All filters reset to original
+- image_processed(object): Image processing completed
+
+Dependencies:
+- Uses: services/simple_image_processing_service.ImageProcessingService
+- Uses: cv2, numpy (image processing operations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt integration)
+- Called by: ui/main_window.py (image processing operations)
+- Coordinates with: UI components for display updates
+
+Features:
+- Advanced filter application with history tracking
+- Real-time filter preview generation
+- Image enhancement operations (contrast, sharpen, denoise)
+- Sequential filter chain processing
+- Undo functionality for filter operations
+- Image statistics and comparison tools
+- Export capabilities for processed images
+- Error handling with user dialogs
 """
 
 import cv2

@@ -1,7 +1,47 @@
 """
-Alignment Operations Manager
-Handles all alignment operations, transformations, and alignment-related functionality.
-Extracted from main_window_v2.py to create a focused, maintainable module.
+Alignment Operations Manager - Comprehensive Alignment Operations Handler
+
+This module handles all alignment operations, transformations, and alignment-related
+functionality, providing a centralized interface for alignment workflows.
+
+Main Class:
+- AlignmentOperationsManager: Manages all alignment operations
+
+Key Methods:
+- reset_alignment(): Resets alignment using panel system
+- auto_align(): Performs automatic alignment between SEM and GDS
+- manual_align_3_point(): Performs manual 3-point alignment
+- apply_transformation(): Applies custom transformation matrix
+- apply_manual_transformation(): Applies manual transformation from parameters
+- generate_aligned_gds(): Generates aligned GDS file
+- get_alignment_info(): Gets current alignment information
+- is_aligned(): Checks if alignment has been performed
+- export_alignment_result(): Exports alignment result to file
+
+Signals Emitted:
+- alignment_completed(dict): Alignment result completed
+- alignment_reset(): Alignment reset
+- auto_alignment_finished(dict): Auto alignment search result
+- alignment_error(str, str): Operation and error message
+
+Dependencies:
+- Uses: cv2, numpy (image processing and transformations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: skimage.metrics (SSIM, MSE calculations)
+- Uses: services/simple_alignment_service.AlignmentService
+- Uses: ui/view_manager.ViewMode
+- Called by: UI main window
+- Coordinates with: Image viewers, GDS operations, and scoring
+
+Features:
+- Automatic alignment with batch search capabilities
+- Manual 3-point alignment with affine transformation
+- Real-time transformation preview and application
+- Alignment scoring and quality assessment
+- GDS file generation with applied transformations
+- Comprehensive error handling and validation
+- Integration with panel management system
+- Export capabilities for alignment results
 """
 
 import cv2
@@ -450,7 +490,62 @@ class AlignmentOperationsManager(QObject):
         QMessageBox.critical(self.main_window, f"{operation_name} Error", error_msg)
         self.alignment_error.emit(operation_name.lower().replace(" ", "_"), str(error))
 
-    def generate_aligned_gds(self):
+    def apply_preview_transformations(self, overlay, params):
+        """Apply transformations for UI preview."""
+        try:
+            import cv2
+            import numpy as np
+            
+            transformed = overlay.copy()
+            height, width = transformed.shape[:2]
+            
+            # Get transformation parameters
+            x_offset = params.get('x_offset', 0)
+            y_offset = params.get('y_offset', 0)
+            scale = params.get('scale', 1.0)
+            rotation = params.get('rotation', 0)
+            
+            # Calculate center point for scaling and rotation
+            center_x = width / 2.0
+            center_y = height / 2.0
+            
+            # Create transformation matrix for combined operations
+            transform_matrix = cv2.getRotationMatrix2D((center_x, center_y), rotation, scale)
+            
+            # Add translation to the transformation matrix
+            transform_matrix[0, 2] += x_offset
+            transform_matrix[1, 2] += y_offset
+            
+            # Apply the combined transformation
+            transformed = cv2.warpAffine(transformed, transform_matrix, (width, height),
+                                       flags=cv2.INTER_LINEAR,
+                                       borderMode=cv2.BORDER_CONSTANT,
+                                       borderValue=0)
+            
+            return transformed
+            
+        except Exception as e:
+            print(f"Error applying preview transformations: {e}")
+            return overlay
+    
+    def generate_aligned_gds(self, structure_id, params):
+        """Generate aligned GDS using UnifiedTransformationService."""
+        try:
+            # Use the unified transformation service
+            transform_service = self.main_window.transform_service
+            transform_service.current_params = {
+                'move_x': params.get('x_offset', 0),
+                'move_y': params.get('y_offset', 0),
+                'zoom': params.get('scale', 1.0) * 100,
+                'rotation': params.get('rotation', 0)
+            }
+            return transform_service.generate_aligned_image(structure_id)
+            
+        except Exception as e:
+            print(f"Error generating aligned GDS: {e}")
+            return None
+    
+    def generate_aligned_gds_file(self):
         """Generate aligned GDS file based on current alignment."""
         try:
             # Check if alignment result is available

@@ -1,8 +1,48 @@
-
 """
-Image Processing Manager
-Handles all image processing operations, filtering, and image-related functionality.
-Extracted from main_window_v2.py to create a focused, maintainable module.
+Image Processing Manager - Comprehensive Image Processing Operations
+
+This module handles all image processing operations, filtering, and image-related
+functionality, providing centralized image processing capabilities.
+
+Main Class:
+- ImageProcessingManager: Manages all image processing operations
+
+Key Methods:
+- set_image(): Sets original image for processing
+- on_filter_applied(): Handles filter application from panels
+- on_filter_preview(): Handles filter preview generation
+- on_reset_filters(): Resets all filters to original image
+- apply_custom_filter(): Applies custom filter function
+- get_applied_filters(): Gets list of applied filters
+- get_image_statistics(): Gets statistics about current image
+- export_filtered_image(): Exports filtered image to file
+- create_filter_chain(): Applies chain of filters in sequence
+- undo_last_filter(): Undoes last applied filter
+- save_current_image(): Saves current filtered image
+
+Signals Emitted:
+- filter_applied(str, dict): Filter applied with name and parameters
+- filter_previewed(str, dict, object): Filter previewed with details
+- filters_reset(): All filters reset to original
+- image_processing_error(str, str): Processing error with details
+
+Dependencies:
+- Uses: cv2, numpy (image processing operations)
+- Uses: typing (type hints)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: services/simple_image_processing_service.ImageProcessingService
+- Called by: UI main window and filtering components
+- Coordinates with: Image viewers and histogram displays
+
+Features:
+- Comprehensive filter application and preview system
+- Filter history tracking and undo capabilities
+- Custom filter function support
+- Image statistics calculation and export
+- Filter chain creation and management
+- Real-time histogram updates
+- Integration with alignment display updates
+- Error handling and validation
 """
 
 import cv2

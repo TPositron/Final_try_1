@@ -1,6 +1,104 @@
 """
-GDS Image Generation Service
-Generates binary images from GDS structures with scaling and rendering capabilities.
+GDS Image Service - Binary Image Generation from GDS Structures
+
+This service generates binary images from GDS layout structures with scaling,
+rendering, and conversion capabilities to match SEM image dimensions. It provides
+caching, batch processing, and overlay generation for alignment visualization.
+
+Main Class:
+- GDSImageService: Service for generating binary images from GDS structures
+
+Key Methods:
+- load_gds_file(): Loads GDS file for image generation
+- generate_binary_image(): Generates binary image from GDS structure with caching
+- generate_multiple_images(): Batch generation of binary images
+- save_structure_image_with_bounds(): Saves structure image with custom bounds and rotation
+- scale_to_dimensions(): Scales images to target dimensions with aspect ratio control
+- render_polygons(): Renders polygon data to binary images
+- generate_structure_overlay(): Creates overlay images for alignment visualization
+- save_structure_image(): Saves structure binary image to file
+- save_multiple_structure_images(): Batch saving of structure images
+- get_structure_info(): Retrieves structure metadata and GDS information
+- list_available_structures(): Lists available structure names
+- is_gds_loaded(): Checks if GDS file is loaded
+- get_gds_info(): Returns loaded GDS file information
+
+Dependencies:
+- Uses: numpy, cv2 (OpenCV), sys, pathlib.Path (standard libraries)
+- Uses: PIL.Image (image processing and rotation)
+- Uses: core/models/simple_initial_gds_model.InitialGdsModel (GDS data model)
+- Uses: core/models/structure_definitions (StructureDefinition, StructureDefinitionManager)
+- Used by: services/file_service.py (structure data generation)
+- Used by: UI components for GDS visualization
+
+Image Generation Features:
+- Binary image generation from GDS polygon data
+- Configurable output dimensions (default 1024x666 for SEM matching)
+- Image caching for performance optimization
+- Batch processing for multiple structures
+- Custom bounds and layer filtering
+- 90-degree rotation support for alignment
+
+Scaling and Rendering:
+- Aspect ratio preservation with centering
+- Coordinate system conversion (GDS to image pixels)
+- Y-axis flipping for proper orientation
+- Polygon filling with OpenCV
+- White background with black structure rendering
+- Clipping and bounds validation
+
+Overlay Generation:
+- Opacity-controlled overlay images for alignment visualization
+- Structure mask generation for transparency effects
+- Grayscale overlay output for UI composition
+- Real-time preview support
+
+File Operations:
+- Multiple image format support (PNG, JPG, TIFF)
+- Automatic directory creation for output paths
+- Batch saving with success/failure tracking
+- Custom bounds and rotation parameters
+- Error handling with detailed logging
+
+Caching System:
+- Image cache based on structure name and dimensions
+- Cache invalidation on GDS file reload
+- Memory-efficient caching for repeated operations
+- Performance optimization for UI responsiveness
+
+Structure Management:
+- Integration with StructureDefinitionManager
+- Structure metadata extraction and validation
+- Layer information and bounds retrieval
+- Available structure listing
+- GDS file information reporting
+
+Coordinate System Handling:
+- GDS coordinate to pixel coordinate conversion
+- Scaling factor calculation from bounds and dimensions
+- Y-axis orientation correction (GDS up vs image down)
+- Bounds clipping and validation
+- Transformation parameter support
+
+Error Handling:
+- Comprehensive exception handling for all operations
+- Graceful fallbacks for missing structures or data
+- Detailed error reporting with context
+- File operation validation
+- Parameter validation with defaults
+
+Constants:
+- DEFAULT_WIDTH: 1024 (standard SEM width after cropping)
+- DEFAULT_HEIGHT: 666 (standard SEM height after cropping)
+- Consistent dimensions for SEM/GDS alignment
+
+Usage Pattern:
+1. Create GDSImageService instance
+2. Load GDS file using load_gds_file()
+3. Generate binary images for structures
+4. Apply scaling, rotation, or overlay effects
+5. Save results to files or use in UI
+6. Cache provides performance for repeated operations
 """
 
 import numpy as np

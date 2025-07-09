@@ -1,6 +1,49 @@
 """
 Enhanced Filter Service with Parameter System Integration
-Integrates the new filter parameter system with the existing filter service.
+
+This module provides a comprehensive filter service that integrates dynamic parameter
+discovery, validation, and filter application with Qt-based signal/slot communication.
+It serves as the main interface for applying image filters with automatic parameter
+validation and management.
+
+Dependencies:
+- PySide6.QtCore: For Qt signal/slot communication and QObject inheritance
+- numpy: For image array processing
+- importlib.util: For dynamic module loading
+- FilterParameterStorage: For parameter definition storage and retrieval
+- FilterDefinition, FilterParameter: Data classes for filter metadata
+
+Main Classes:
+- EnhancedFilterService: Main service class inheriting from QObject
+
+Key Methods:
+- __init__(): Initialize service with filters directory and parameter storage
+- apply_filter(): Apply a single filter to an image with parameter validation
+- apply_filter_chain(): Apply a sequence of filters to an image
+- get_available_filters(): Return list of all available filter names
+- get_filter_definition(): Get complete filter definition including parameters
+- get_filter_parameters(): Get parameter definitions for a specific filter
+- get_filters_by_category(): Get filters organized by category
+- validate_parameters(): Validate filter parameters against definitions
+- save_preset()/load_preset(): Save and load filter chains as presets
+- refresh_filters(): Reload filter definitions from files
+- get_filter_history(): Get history of applied filters
+- search_filters(): Search filters by name or description
+
+Signals:
+- filter_applied: Emitted when a filter is successfully applied
+- filter_error: Emitted when filter application fails
+- preset_loaded: Emitted when a preset is loaded
+- filters_updated: Emitted when filter definitions are refreshed
+
+Features:
+- Automatic parameter validation and type conversion
+- Dynamic filter function loading from modules
+- Filter chain processing with error handling
+- Preset management for saving/loading filter combinations
+- Search functionality for finding filters
+- Comprehensive error handling and logging
+- Signal-based communication for UI integration
 """
 
 import os

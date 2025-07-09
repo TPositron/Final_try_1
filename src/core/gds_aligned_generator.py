@@ -106,9 +106,13 @@ def generate_transformed_gds_image(gds_path: str, cell_name: str, struct_info: D
         render_width = gds_width
         render_height = gds_height
     
+    # Calculate pixel size for consistent coordinate conversion
+    pixel_size = min(gds_width / target_size[0], gds_height / target_size[1])
+    
     # Apply zoom to the scale calculation
     zoom_factor = zoom_percent / 100.0
-    scale = min(target_size[0]/render_width, target_size[1]/render_height) * zoom_factor
+    base_scale = min(target_size[0]/render_width, target_size[1]/render_height)
+    scale = base_scale * zoom_factor
     
     # Calculate scaled dimensions
     scaled_width = int(render_width * scale)
@@ -117,9 +121,13 @@ def generate_transformed_gds_image(gds_path: str, cell_name: str, struct_info: D
     # Create output image
     image = np.ones((target_size[1], target_size[0]), dtype=np.uint8) * 255
     
-    # Calculate center position with movement offset
+    # Convert pixel movement to GDS units (consistent with AlignedGdsModel)
+    dx_gds = move_x * pixel_size
+    dy_gds = -move_y * pixel_size  # Y flipped
+    
+    # Calculate center position with direct movement
     center_x_pixels = target_size[0] // 2 + move_x
-    center_y_pixels = target_size[1] // 2 - move_y  # Negative because image Y is flipped
+    center_y_pixels = target_size[1] // 2 + move_y
     
     # Calculate offset to center the scaled image at the desired position
     offset_x = int(center_x_pixels - scaled_width // 2)
@@ -157,7 +165,7 @@ def generate_transformed_gds_image(gds_path: str, cell_name: str, struct_info: D
                     else:
                         rotated_poly = poly
                     
-                    # Transform to pixel coordinates
+                    # Transform to pixel coordinates with consistent offset
                     norm_poly = (rotated_poly - [render_xmin, render_ymin]) * scale
                     int_poly = np.round(norm_poly).astype(np.int32)
                     int_poly += [offset_x, offset_y]

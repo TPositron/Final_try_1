@@ -1,5 +1,3 @@
-# Moved from src/image_analysis/core/processors/filters/filter_dog.py
-
 class DoG:
     """
     Difference of Gaussians (DoG) filter class.

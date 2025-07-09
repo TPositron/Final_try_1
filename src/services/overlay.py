@@ -1,3 +1,112 @@
+"""
+Overlay Service - Structure Overlay Rendering on SEM Images
+
+This service handles rendering of extracted GDS structure binary images onto SEM
+images with coordinate transformation, multiple rendering modes, and interactive
+transformation support including rotation, zoom, and pan operations.
+
+Main Classes:
+- OverlayRenderer: Renders structure overlays with coordinate transformations
+- OverlayError: Custom exception for overlay rendering errors
+
+Key Methods:
+- __init__(): Initializes renderer with SEM image and GDS bounds
+- _apply_transformations(): Applies rotation, zoom, and pan transformations
+- _coordinate_to_pixel(): Converts coordinate space to pixel positions
+- _pixel_to_sem_coordinate(): Converts pixel positions to SEM coordinates
+- render_overlay(): Renders structure overlays with transformations
+- _render_structure(): Renders individual structure with coordinate transformation
+- _is_edge_pixel(): Detects edge pixels for edge rendering mode
+- render_composite(): Creates composite overlay on background image
+- get_transformed_bounds(): Returns coordinate bounds after transformations
+- export_overlay_image(): Exports overlay as image file
+
+Dependencies:
+- Uses: numpy (array operations), imageio (image I/O)
+- Uses: matplotlib.path.Path (path operations), typing (type hints)
+- Uses: core/models.SemImage (SEM image data model)
+- Used by: UI components for overlay visualization
+- Used by: Alignment services for visual feedback
+
+Coordinate System Management:
+- GDS coordinate space to pixel space conversion
+- SEM image coordinate system integration
+- Frame-based transformation calculations
+- Y-axis flipping for proper image orientation
+- Scale factor computation for coordinate mapping
+
+Transformation Operations:
+- Rotation: Arbitrary angle rotation around center point
+- Zoom: Scale factor with center-based zooming (1.1 = 110% zoom in)
+- Pan: Translation in coordinate units (X/Y offsets)
+- Combined transformations with proper order of operations
+- Bounding box calculations after transformations
+
+Rendering Modes:
+- filled: Solid filled structures
+- edges: Edge-only rendering with configurable line width
+- mask: Binary mask rendering
+- composite: Full-color composite with transparency
+- Antialiasing support for smooth edges
+
+Overlay Features:
+- Multiple structure overlay support
+- Configurable overlay colors and transparency
+- Background image integration
+- Structure positioning with coordinate offsets
+- Clipping and bounds checking for safe rendering
+
+Coordinate Transformations:
+- Frame bounds calculation with rotation support
+- Corner-based rotation for accurate bounding boxes
+- Normalized coordinate conversion (0-1 range)
+- Pixel-perfect coordinate mapping
+- Inverse transformations for coordinate recovery
+
+Image Processing:
+- Binary image overlay composition
+- Maximum value blending for multiple structures
+- RGB composite generation with transparency
+- Edge detection for outline rendering
+- Safe array indexing with bounds checking
+
+Error Handling:
+- SEM image validation and fallback dimensions
+- Coordinate bounds checking and clipping
+- Safe array operations with boundary validation
+- Graceful handling of missing image data
+- Custom exception types for specific error conditions
+
+Performance Optimization:
+- Efficient numpy array operations
+- Minimal memory allocation for large images
+- Optimized coordinate transformation calculations
+- Cached transformation matrices where applicable
+- Memory-efficient overlay composition
+
+Export Capabilities:
+- Multiple export formats via imageio
+- Configurable export modes (overlay, composite, mask)
+- High-quality image output with proper scaling
+- Metadata preservation where supported
+- Batch export support for multiple overlays
+
+Usage Pattern:
+1. Initialize OverlayRenderer with SEM image and GDS bounds
+2. Prepare structure data as binary images with coordinates
+3. Apply desired transformations (rotation, zoom, pan)
+4. Render overlay using appropriate mode
+5. Export or display the resulting overlay image
+6. Repeat with different parameters for interactive adjustment
+
+Advantages:
+- Accurate: Precise coordinate system handling
+- Flexible: Multiple rendering modes and transformations
+- Interactive: Real-time transformation support
+- Efficient: Optimized for performance with large images
+- Extensible: Easy to add new rendering modes and features
+"""
+
 import numpy as np
 import imageio
 from typing import Optional, Tuple, Union, List, Dict

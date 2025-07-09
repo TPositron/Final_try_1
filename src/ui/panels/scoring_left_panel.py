@@ -1,10 +1,58 @@
 """
-Scoring Left Panel with scoring method selection and data display.
+Scoring Left Panel Module
 
-This panel provides controls for alignment scoring operations with:
-- Scoring method selection (SSIM, MSE, etc.)
-- Batch scoring options
-- Results display and export
+This module provides a comprehensive user interface for alignment scoring operations in a GDS/SEM 
+image alignment application. It implements a tabbed interface with scoring method selection, 
+parameter configuration, batch analysis capabilities, and results visualization.
+
+The module handles multiple scoring algorithms including SSIM (Structural Similarity Index),
+MSE (Mean Squared Error), Cross-Correlation, Edge Overlap, and Mutual Information methods.
+It supports both single alignment scoring and batch parameter sweep analysis.
+
+Dependencies:
+    - PySide6.QtWidgets: UI components (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, 
+      QRadioButton, QButtonGroup, QPushButton, QGroupBox, QListWidget, QTableWidget, 
+      QTableWidgetItem, QLabel, QCheckBox, QSpinBox, QDoubleSpinBox, QProgressBar, 
+      QTextEdit, QComboBox, QSlider)
+    - PySide6.QtCore: Core functionality (Qt, Signal)
+    - src.ui.base_panels: BaseViewPanel class
+    - src.ui.view_manager: ViewMode enumeration
+
+Classes:
+    ScoringMethodTab: Tab widget for scoring method selection and single scoring operations
+        - setup_ui(): Creates the user interface layout
+        - setup_ssim_parameters(): Configures SSIM-specific parameters (data range, window size)
+        - setup_edge_parameters(): Configures edge detection parameters (Canny thresholds)
+        - clear_parameters(): Removes all parameter widgets from layout
+        - connect_signals(): Connects UI signals to handlers
+        - on_method_changed(): Handles scoring method selection changes
+        - score_current(): Requests scoring with current method and parameters
+        - score_all_methods(): Requests batch scoring with selected methods
+        - get_current_parameters(): Retrieves current parameter values
+        - update_scores(): Updates the scores display table
+
+    BatchScoringTab: Tab widget for batch scoring operations and results analysis
+        - setup_ui(): Creates the batch analysis interface
+        - connect_signals(): Connects UI signals to handlers
+        - start_batch_analysis(): Initiates batch parameter sweep analysis
+        - stop_batch_analysis(): Stops running batch analysis
+        - update_progress(): Updates progress bar and status
+        - add_result(): Adds a result to the results table
+        - clear_results(): Clears all batch results
+
+    ScoringLeftPanel: Main panel class inheriting from BaseViewPanel
+        - init_panel(): Initializes the complete panel UI with tabs
+        - get_current_tab_name(): Returns name of currently active tab
+        - switch_to_tab(): Switches to specified tab
+        - update_scores(): Updates scoring results display
+        - add_batch_result(): Adds batch analysis result to table
+
+Signals:
+    - scoring_method_changed: Emitted when scoring method is changed
+    - score_requested: Emitted when single scoring is requested
+    - batch_score_requested: Emitted when multi-method scoring is requested
+    - batch_analysis_started: Emitted when batch analysis begins
+    - export_results_requested: Emitted when results export is requested
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget, 

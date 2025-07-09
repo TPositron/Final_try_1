@@ -1,4 +1,76 @@
-"""Service for loading selected files into models."""
+"""
+File Loading Service - SEM and GDS File Loading Operations
+
+This service handles loading SEM images and GDS layout files into their respective
+data models with automatic processing, cropping, and error handling. It provides
+fallback mechanisms for different model interfaces and batch loading capabilities.
+
+Main Functions:
+- get_predefined_structure_info(): Returns metadata for predefined GDS structures
+
+Main Class:
+- FileLoadingService: Qt-based service for file loading operations
+
+Key Methods:
+- load_sem_image(): Loads SEM images with automatic 1024x666 cropping
+- load_gds(): Loads GDS files with structure-specific bounds and layers
+- get_current_sem(): Returns currently loaded SEM image
+- get_current_gds(): Returns currently loaded GDS model
+- clear_all(): Clears all loaded files from memory
+- get_loading_status(): Returns status of loaded files
+- load_multiple_sem_images(): Batch loading of multiple SEM files
+
+Signals Emitted:
+- sem_loaded(object): SEM image successfully loaded
+- gds_loaded(object): GDS model successfully loaded
+- aligned_gds_loaded(object): AlignedGdsModel successfully loaded
+- loading_error(str): Error message when loading fails
+
+Dependencies:
+- Uses: pathlib.Path, cv2 (OpenCV), numpy (image processing)
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: core/models (InitialGdsModel, AlignedGdsModel, SemImage)
+- Uses: core/utils.get_logger (logging functionality)
+- Used by: ui/file_operations.py (file loading UI)
+- Used by: services/workflow_service.py (automated workflows)
+
+Predefined GDS Structures:
+1. Circpol_T2: bounds (688.55, 5736.55, 760.55, 5807.1), layer 14
+2. IP935Left_11: bounds (693.99, 6406.40, 723.59, 6428.96), layers 1,2
+3. IP935Left_14: bounds (980.959, 6025.959, 1001.770, 6044.979), layer 1
+4. QC855GC_CROSS_Bottom: bounds (3730.00, 4700.99, 3756.00, 4760.00), layers 1,2
+5. QC935_46: bounds (7195.558, 5046.99, 7203.99, 5055.33964), layer 1
+
+SEM Image Processing:
+- Automatic cropping to 1024x666 pixels (removes bottom portion)
+- Support for .tif, .tiff, .png formats
+- Fallback loading mechanisms for different SemImage interfaces
+- Grayscale conversion and resizing when necessary
+- Center-horizontal, top-vertical cropping strategy
+
+GDS Loading Features:
+- Structure-specific bounds and layer filtering
+- Integration with InitialGdsModel and AlignedGdsModel
+- Predefined structure metadata lookup
+- Feature-focused model creation
+- Alignment parameter support (planned)
+
+Error Handling:
+- Comprehensive exception handling for file operations
+- Fallback mechanisms for missing model methods
+- Detailed error logging and signal emission
+- Graceful degradation when loading fails
+
+Batch Operations:
+- Multiple SEM image loading with individual error handling
+- Progress tracking and success/failure reporting
+- Memory-efficient processing of file lists
+
+State Management:
+- Current file tracking for SEM, GDS, and aligned models
+- Loading status reporting
+- Memory cleanup and file clearing operations
+"""
 
 from pathlib import Path
 from typing import Optional, Dict, Any

@@ -1,3 +1,71 @@
+"""
+Scoring Service V2 - Advanced Image Comparison and Analysis
+
+This service provides advanced scoring capabilities for SEM/GDS image comparison
+with edge-based analysis, multi-scale evaluation, region-based scoring,
+and comprehensive diagnostic tools.
+
+Main Class:
+- ScoringService: Advanced service for comprehensive image scoring
+
+Key Methods:
+- compute_score(): Computes comprehensive scores with edge and IoU analysis
+- compute_score_with_legacy(): Includes legacy SSIM and MSE metrics
+- compute_region_scores(): Computes scores for specific image regions
+- compute_multi_scale_scores(): Multi-scale analysis at different resolutions
+- set_edge_params(): Configures edge detection parameters
+- set_binarization_params(): Configures binarization parameters
+- get_score_summary(): Extracts numeric summary from results
+
+Global Functions:
+- create_scoring_service(): Factory function for service creation
+- compute_alignment_score(): Quick composite score computation
+- batch_score_images(): Batch processing for multiple image pairs
+
+Dependencies:
+- Uses: numpy, cv2 (OpenCV), warnings (standard libraries)
+- Uses: skimage.metrics (SSIM, MSE), skimage.filters (edge detection)
+- Uses: scipy.ndimage (distance transforms), scipy.spatial.distance (Hausdorff)
+- Uses: core/models.SemImage, core/models.gds_model.GDSModel
+- Used by: Advanced scoring workflows and batch processing
+- Used by: Research and analysis tools requiring detailed metrics
+
+Scoring Metrics:
+- Edge Overlap: Intersection over Union of detected edges
+- IoU: Intersection over Union of binary regions
+- Edge Distance: Hausdorff distance between edge sets
+- Chamfer Distance: Average distance between edge points
+- Composite Score: Weighted combination of primary metrics
+- Legacy SSIM: Structural similarity index
+- Legacy MSE: Mean squared error
+
+Edge Detection:
+- Canny edge detection with configurable thresholds
+- Sobel edge detection with Gaussian smoothing
+- Binary edge detection for GDS overlays
+- Configurable parameters for different image types
+
+Binarization Methods:
+- Otsu thresholding for automatic threshold selection
+- Adaptive thresholding for varying illumination
+- Manual thresholding with configurable values
+- Gaussian smoothing preprocessing option
+
+Diagnostic Features:
+- Binary image visualization
+- Overlap and difference maps
+- Edge overlay visualization
+- Distance map computation
+- Multi-channel diagnostic outputs
+
+Advanced Analysis:
+- Region-based scoring for specific areas of interest
+- Multi-scale analysis at different resolutions
+- Batch processing capabilities
+- Configurable scoring parameters
+- Comprehensive error handling with warnings
+"""
+
 import numpy as np
 import cv2
 from typing import Dict, Tuple, Optional, Union

@@ -1,84 +1,43 @@
 """
-Image Processing Module - Comprehensive SEM Image Enhancement and Filtering
+Image Processing - SEM Image Enhancement and Filtering
 
-This module provides advanced image processing capabilities for SEM images, including
+This module provides image processing capabilities for SEM images, including
 filter application, enhancement operations, and processing workflow management.
-It serves as the UI-level coordinator for all image processing operations.
 
-Core Processing Capabilities:
-1. Filter Application:
-   - Real-time filter application with immediate visual feedback
-   - Filter parameter validation and bounds checking
-   - Filter preview generation without permanent changes
-   - Filter history tracking with undo capabilities
-
-2. Image Enhancement:
-   - Contrast enhancement using histogram equalization
-   - Sharpening operations with configurable kernels
-   - Noise reduction using advanced denoising algorithms
-   - Custom enhancement operations
-
-3. Filter Chain Processing:
-   - Sequential application of multiple filters
-   - Batch processing with progress reporting
-   - Filter combination optimization
-   - Chain validation and error recovery
-
-Supported Filter Types (via ImageProcessingService):
-- Gaussian Blur: Noise reduction with sigma control
-- Threshold: Binary conversion with adaptive thresholds
-- Edge Detection: Canny edge detection with dual thresholds
-- Median Filter: Salt-and-pepper noise removal
-- CLAHE: Contrast Limited Adaptive Histogram Equalization
-
-Dependencies:
-- Uses: services/simple_image_processing_service.py (core processing)
-- Uses: cv2, numpy (image processing operations)
-- Uses: PySide6.QtCore (signals and QObject)
-- Called by: ui/main_window.py (filter panel interactions)
-- Coordinates with: ui/image_viewer.py (display updates)
-- Coordinates with: ui/panels/filtering_panels.py (UI integration)
-
-Signals Emitted:
-- filter_applied: When filters are successfully applied
-- filter_preview_ready: When filter previews are generated
-- filters_reset: When all filters are reset to original
-
-State Management:
-- original_sem_image: Unmodified source image for reset operations
-- filtered_sem_image: Current processed image state
-- current_filters: Active filter configuration tracking
+Main Class:
+- ImageProcessing: Qt-based handler for image processing operations
 
 Key Methods:
+- set_original_image(): Sets original SEM image for processing
 - on_filter_applied(): Handles filter application from UI panels
 - on_filter_preview(): Generates real-time filter previews
 - on_reset_filters(): Resets all processing to original image
 - apply_custom_filter(): Applies user-defined filter functions
 - create_filter_chain(): Processes multiple filters in sequence
+- get_image_statistics(): Returns current image statistics
+- get_applied_filters(): Returns list of applied filters
+- export_filtered_image(): Exports processed image to file
 
-Image Statistics and Analysis:
-- Real-time image statistics calculation
-- Histogram analysis and reporting
-- Quality metrics for processed images
-- Processing history and metadata tracking
+Signals Emitted:
+- filter_applied(str, dict): Filter successfully applied
+- filter_preview_ready(str, dict, object): Filter preview generated
+- filters_reset(): All filters reset to original
 
-Error Handling:
-- Graceful handling of filter application failures
-- Image format validation and conversion
-- Memory management for large images
-- Recovery from processing errors
+Dependencies:
+- Uses: services/simple_image_processing_service.ImageProcessingService
+- Uses: cv2, numpy (image processing operations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt integration)
+- Called by: ui/main_window.py (filter panel interactions)
+- Coordinates with: UI components for display updates
 
-Integration Features:
-- Seamless integration with alignment workflows
+Features:
+- Real-time filter application with visual feedback
+- Filter preview generation without permanent changes
+- Filter history tracking and reset capabilities
+- Sequential filter chain processing
+- Image statistics and analysis
 - Export capabilities for processed images
-- Comparison tools for before/after analysis
-- Processing history management and replay
-
-Performance Optimizations:
-- Efficient memory management for large images
-- Optimized filter parameter validation
-- Caching of frequently used operations
-- Progressive processing for real-time feedback
+- Error handling with user dialogs
 """
 
 import cv2

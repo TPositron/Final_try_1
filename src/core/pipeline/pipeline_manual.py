@@ -1,3 +1,55 @@
+"""
+Manual Processing Pipeline - User-Controlled Image Processing Workflow
+
+This module implements the manual processing pipeline that provides complete user
+control over all processing parameters. It collects parameters from UI panels,
+allows step-by-step processing, and provides manual adjustment capabilities.
+
+Main Class:
+- ManualProcessingPipeline: User-controlled workflow with UI parameter collection
+
+Key Methods:
+- _execute_manual_mode(): Main entry point for manual processing
+- _collect_ui_parameters(): Gathers parameters from UI panels
+- _get_ui_filter_parameters(): Collects filter settings from UI
+- _get_ui_alignment_parameters(): Collects alignment settings from UI
+- _get_ui_scoring_parameters(): Collects scoring settings from UI
+- _perform_manual_alignment(): Applies manual transformation parameters
+- validate_manual_mode_readiness(): Checks if UI panels are ready
+- set_ui_panels(): Registers UI panel references for parameter collection
+
+Dependencies:
+- Inherits from: pipeline_base.ProcessingPipelineBase (shared functionality)
+- Uses: numpy (transformation matrices), typing (type hints)
+- Called by: ui/workflow_controller.py (manual mode selection)
+- Integrates with: UI panels for parameter collection
+
+Data Flow:
+1. Collects parameters from connected UI panels
+2. Applies user-specified filters with custom parameters
+3. Performs manual alignment using user-provided transformation values
+4. Calculates scores using user-selected methods and parameters
+5. Provides fallback parameters if UI collection fails
+6. Validates UI panel connectivity and parameter availability
+
+Features:
+- Complete user control over all processing parameters
+- Real-time parameter collection from UI panels
+- Manual transformation matrix creation from user inputs
+- Fallback parameter system for robustness
+- UI panel validation and connectivity checking
+- Step-by-step processing with user confirmation
+- Detailed logging of all user actions and parameters
+
+Manual Workflow:
+1. Filter Selection: User chooses filters and adjusts parameters via UI
+2. Manual Alignment: User sets translation, rotation, and scale values
+3. Scoring Configuration: User selects scoring methods and thresholds
+4. Step Execution: Each step waits for user confirmation before proceeding
+5. Parameter Validation: Ensures all required parameters are available
+6. Result Review: User can review and adjust results at each stage
+"""
+
 from .pipeline_base import ProcessingPipelineBase
 from typing import Any, Dict, List
 import numpy as np

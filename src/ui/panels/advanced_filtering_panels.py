@@ -1,6 +1,50 @@
 """
-Phase 2: Unified Layout Advanced Filtering Panels
-Improvements: Merged action buttons, streamlined UI, unified control panel
+Advanced Filtering Panels - Comprehensive Image Filtering Interface
+
+This module provides advanced filtering panels with unified layout and comprehensive
+filter management capabilities for image processing operations.
+
+Main Classes:
+- FilterParameter: Data class for filter parameter definition
+- FilterConfig: Data class for filter configuration
+- AdvancedFilterConfigManager: Manages filter configurations
+- SimpleParameterWidget: Widget for individual parameter control
+- UnifiedActionPanel: Unified action buttons panel
+- AdvancedFilteringLeftPanel: Main left panel for filter controls
+- AdvancedFilteringRightPanel: Right panel for statistics and status
+
+Key Methods:
+- _load_working_filters(): Loads all available filter configurations
+- _on_filter_selected(): Handles filter selection from dropdown
+- _preview_filter(): Generates filter preview
+- _apply_filter(): Applies selected filter
+- _reset_filters(): Resets all applied filters
+- _save_image(): Saves current filtered image
+- update_histogram(): Updates histogram display
+
+Signals Emitted:
+- filter_applied(str, dict): Filter applied with name and parameters
+- filter_previewed(str, dict): Filter previewed with parameters
+- filter_reset(): All filters reset
+- save_image_requested(): Image save requested
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: numpy, cv2 (image processing)
+- Uses: json, logging, os (utilities)
+- Uses: typing, dataclasses (type definitions)
+- Uses: ui/view_manager.ViewMode, ui/components/histogram_view.HistogramView
+- Called by: UI main window and filtering workflow
+- Coordinates with: Image processing services and histogram displays
+
+Features:
+- Comprehensive filter library (CLAHE, Canny, DoG, Threshold, etc.)
+- Unified action panel with preview, apply, reset, and save
+- Parameter validation and real-time adjustment
+- Filter history tracking and export capabilities
+- Tabbed interface for controls and history management
+- Dark theme styling with consistent UI design
+- Error handling and validation feedback
 """
 
 from PySide6.QtWidgets import (

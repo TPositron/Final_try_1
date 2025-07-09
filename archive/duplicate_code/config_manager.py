@@ -1,19 +1,19 @@
 """
-Simple Configuration Management - Basic Config File Handling
+Configuration Manager - Application Configuration and Settings Management
 
-This module provides a lightweight configuration management system for the
-SEM/GDS alignment tool. It handles JSON-based configuration files with
-dot-notation access and automatic default value fallback.
+This script provides comprehensive configuration management for the SEM/GDS alignment tool.
+It handles JSON-based configuration files, user overrides, session state management, and
+environment variable integration for flexible deployment and customization.
 
-Main Class:
-- Config: Simple configuration manager with JSON file persistence
+Main Classes:
+- Config: Simple configuration manager for basic JSON operations
 
 Key Methods:
-- load(): Loads configuration from JSON file or returns defaults
+- load(): Loads configuration from JSON file with fallback to defaults
 - save(): Saves current configuration to JSON file
-- get(): Retrieves configuration values using dot notation
-- set(): Sets configuration values using dot notation
-- _get_defaults(): Returns default configuration structure
+- get(): Gets configuration value using dot notation (e.g., 'ui.window.width')
+- set(): Sets configuration value using dot notation
+- _get_defaults(): Returns default configuration values
 
 Global Functions:
 - load_config(): Loads configuration using global instance
@@ -22,41 +22,25 @@ Global Functions:
 - save_config(): Saves configuration using global instance
 
 Dependencies:
-- Uses: json (configuration file parsing), pathlib.Path (file operations)
-- Uses: typing (type hints for Dict, Any)
-- Used by: All modules requiring configuration access
-- Alternative to: core/utils/config_manager.py (more advanced configuration)
-
-Configuration Structure:
-- window: UI window settings (width, height)
-- paths: Directory paths (data, results, logs)
-- logging: Logging configuration (level)
+- json: Configuration file parsing and serialization
+- os: Environment variable access and file system operations
+- pathlib.Path: Cross-platform path handling
+- typing: Type hints for Dict, Any, Optional
 
 Features:
-- JSON-based configuration persistence
+- JSON-based configuration with hierarchical structure
 - Dot notation for nested configuration access (e.g., 'window.width')
-- Automatic default value fallback if config file missing
-- Simple error handling with console output
-- Automatic directory creation for config file
-- Global configuration instance for easy access
-
-Usage:
-- load_config(): Initialize configuration system
-- get_config('window.width', 1200): Get value with default
-- set_config('window.width', 1600): Set configuration value
-- save_config(): Persist changes to file
-
-Default Configuration:
-- Window: 1400x900 pixels
-- Data directory: 'Data'
-- Results directory: 'Results'
-- Logs directory: 'logs'
-- Logging level: 'INFO'
+- Default configuration values with automatic fallback
+- Graceful error handling with fallback to defaults
+- Global configuration instance for application-wide access
+- Directory creation for configuration files
+- Simple and lightweight configuration management
 """
 
 import json
+import os
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 class Config:
     """Simple configuration manager."""

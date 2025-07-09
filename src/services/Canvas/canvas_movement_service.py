@@ -1,6 +1,43 @@
 """
-Canvas Movement Service
-Handles panning and movement functionality for the image canvas in the alignment view.
+Canvas Movement Service - Image Canvas Panning and Movement Operations
+
+This service handles panning and movement functionality for image canvases in
+alignment views, providing smooth interactive navigation with position tracking
+and bounds management.
+
+Main Class:
+- CanvasMovementService: Qt-based service for canvas panning operations
+
+Key Methods:
+- start_pan(): Initiates panning operation from starting point
+- continue_pan(): Continues panning with current mouse position
+- end_pan(): Ends current panning operation
+- pan_by(): Pans canvas by specified delta values
+- pan_to(): Pans to specific absolute position
+- reset_position(): Resets canvas position to center
+- get_position(): Returns current canvas position
+- set_canvas_bounds(): Sets canvas boundaries for bounds checking
+- get_canvas_bounds(): Returns current canvas boundaries
+- is_panning(): Checks if currently in panning mode
+- center_on_point(): Centers canvas on specific point
+
+Signals Emitted:
+- position_changed(float, float): Canvas position changed
+- position_reset(): Position reset to center
+
+Dependencies:
+- Uses: PySide6.QtCore (QObject, Signal, QPointF for Qt integration)
+- Uses: typing (type hints for method signatures)
+- Used by: UI canvas components and image viewers
+- Used by: Alignment interfaces requiring pan functionality
+
+Features:
+- Interactive panning with mouse drag operations
+- Position tracking with coordinate management
+- Canvas bounds configuration and validation
+- Center positioning and point focusing
+- Signal-based position change notifications
+- State management for panning operations
 """
 
 from typing import Tuple, Optional

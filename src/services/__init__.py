@@ -53,7 +53,7 @@ from .base_service import BaseService
 from .file_listing_service import FileListingService
 from .file_loading_service import FileLoadingService
 from .filters.filter_service import FilterService
-from .transformations.transform_service import TransformService
+from .unified_transformation_service import UnifiedTransformationService
 from .manual_alignment_service import ManualAlignmentService
 from .auto_alignment_service import AutoAlignmentService
 from .scoring.pixel_score_service import PixelScoreService
@@ -61,17 +61,23 @@ from .scoring.ssim_score_service import SSIMScoreService
 from .scoring.iou_score_service import IOUScoreService
 # Updated to use simple scoring service (Step 8)
 from .simple_scoring_service import ScoringService
+from .simple_alignment_service import AlignmentService
+from .simple_image_processing_service import ImageProcessingService
+from .simple_file_service import FileService
 
 __all__ = [
     'BaseService',
     'FileListingService',
     'FileLoadingService',
     'FilterService',
-    'TransformService',
+    'UnifiedTransformationService',
     'ManualAlignmentService',
     'AutoAlignmentService',
     'PixelScoreService',
     'SSIMScoreService',
     'IOUScoreService',
-    'ScoringService'
+    'ScoringService',
+    'AlignmentService',
+    'ImageProcessingService',
+    'FileService'
 ]

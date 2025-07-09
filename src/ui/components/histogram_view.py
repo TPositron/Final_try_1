@@ -1,6 +1,37 @@
 """
-Histogram View Component
-Matplotlib embedded histogram and kernel view for filter analysis.
+Histogram View Component - Matplotlib Embedded Histogram Display
+
+This module provides a matplotlib embedded histogram view component
+for image analysis and filter visualization.
+
+Main Class:
+- HistogramView: Widget for displaying image histograms
+
+Key Methods:
+- setup_ui(): Initializes UI components
+- update_histogram(): Updates histogram display with new image data
+- clear_displays(): Clears histogram display
+- save_plots(): Saves current histogram plot to file
+- get_histogram_data(): Gets current histogram data
+
+Signals Emitted:
+- histogram_updated(): Histogram display updated
+
+Dependencies:
+- Uses: numpy (numerical operations)
+- Uses: matplotlib.pyplot, matplotlib.backends.backend_qt5agg (plotting)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Called by: UI main window and filtering components
+- Coordinates with: Image processing and analysis workflows
+
+Features:
+- Matplotlib embedded histogram display
+- Dark theme styling to match application
+- Automatic grayscale conversion for color images
+- Responsive sizing with proper layout management
+- Histogram data export capabilities
+- Real-time updates during image processing
+- Grid and axis styling for better visualization
 """
 
 import numpy as np

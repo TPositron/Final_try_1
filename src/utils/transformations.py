@@ -1,9 +1,59 @@
 """
-Transformation Utilities
+Transformation Utilities - Mathematical Transformation Functions
 
-Pure mathematical transformation functions for coordinate and matrix operations.
-This module provides reusable transformation utilities that can be used by
-different services and models without coupling to specific implementations.
+This module provides comprehensive mathematical transformation functions for
+coordinate and matrix operations used throughout the SEM/GDS alignment tool.
+It handles 2D transformations including translation, rotation, scaling, and
+coordinate system conversions between pixel and GDS units.
+
+Main Functions:
+- create_transformation_matrix(): Creates 3x3 homogeneous transformation matrices
+- apply_affine_transform(): Applies transformation matrices to point sets
+- apply_polygon_transform(): Transforms polygon vertices with specified parameters
+- convert_pixels_to_gds_units(): Converts pixel coordinates to GDS units
+- convert_gds_to_pixel_units(): Converts GDS coordinates to pixel units
+- calculate_frame_bounds(): Calculates new bounds after transformations
+- apply_90_rotation_to_bounds(): Applies 90-degree rotations to bounding boxes
+- decompose_transformation_matrix(): Extracts transformation components from matrices
+- validate_transformation_parameters(): Validates transformation parameter ranges
+- create_rotation_matrix_2d(): Creates 2D rotation matrices for OpenCV
+- transform_points_with_matrix(): Transforms points using 2x3 or 3x3 matrices
+- calculate_zoom_transform_matrix(): Creates zoom transformation matrices
+- calculate_movement_transform_matrix(): Creates translation matrices
+- combine_transformation_matrices(): Combines multiple transformation matrices
+- invert_transformation_matrix(): Inverts transformation matrices
+- snap_rotation_to_90_degrees(): Snaps angles to 90-degree increments
+- create_composite_transform(): Creates composite transformations for UI operations
+
+Dependencies:
+- Uses: numpy (matrix operations), math (trigonometric functions)
+- Uses: cv2 (OpenCV for 2D rotation matrices), logging (error reporting)
+- Used by: services/transformation_service.py (transformation operations)
+- Used by: services/gds_transformation_service.py (GDS coordinate transformations)
+- Used by: ui/alignment_canvas.py (canvas transformations)
+- Used by: core/models (coordinate system conversions)
+
+Key Features:
+- Homogeneous coordinate system support (3x3 matrices)
+- Center-based transformations for rotation and scaling
+- Coordinate system conversion between pixel and GDS units
+- Bounding box calculations with transformation support
+- 90-degree rotation snapping for UI convenience
+- Matrix composition and decomposition utilities
+- Parameter validation with reasonable bounds checking
+- Support for both 2x3 and 3x3 transformation matrices
+
+Transformation Order:
+1. Translation to origin (if center-based)
+2. Scaling around origin
+3. Rotation around origin
+4. Translation back from origin
+5. Final translation offset
+
+Coordinate Systems:
+- Pixel coordinates: Origin at top-left, Y increases downward
+- GDS coordinates: Origin at bottom-left, Y increases upward
+- Automatic Y-axis flipping for coordinate system conversion
 """
 
 import numpy as np

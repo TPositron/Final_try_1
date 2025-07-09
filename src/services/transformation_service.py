@@ -1,3 +1,91 @@
+"""
+Transformation Service - GDS Structure Transformation Operations
+
+This service provides comprehensive transformation capabilities for GDS structures
+including rotation, zoom, movement, and overlay generation with validation,
+history tracking, and error handling.
+
+Main Class:
+- TransformationService: Qt-based service for GDS structure transformations
+
+Key Methods:
+- set_structure(): Sets current structure for transformation operations
+- apply_transformations(): Applies rotation, zoom, and movement transformations
+- apply_transform_dict(): Applies transformations using parameter dictionary
+- get_current_transform(): Returns current transformation parameters
+- reset_transforms(): Resets all transformations to default values
+- rotate_structure(): Rotates structure to specified angle
+- zoom_structure(): Zooms structure to specified percentage
+- move_structure(): Moves structure by relative offset
+- set_absolute_position(): Sets absolute position of structure
+- get_structure_info(): Returns information about current structure
+- create_overlay_image(): Creates colored overlay image
+- undo_last_transform(): Undoes the last transformation
+- get_transform_history(): Returns transformation history
+- get_transform_summary(): Returns summary of transformation state
+
+Signals Emitted:
+- transformation_applied(np.ndarray): Transformation successfully applied
+- transformation_error(str): Transformation operation failed
+
+Dependencies:
+- Uses: numpy (array operations), cv2 (OpenCV for image processing)
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: core/gds_aligned_generator (aligned GDS generation)
+- Uses: core/gds_display_generator (structure information)
+- Used by: UI transformation controls and alignment interfaces
+- Used by: Workflow services for automated transformations
+
+Transformation Parameters:
+- rotation: Rotation angle in degrees (-360 to 360)
+- zoom: Zoom percentage (1% to 1000%)
+- move_x: Horizontal movement in pixels
+- move_y: Vertical movement in pixels
+- target_size: Output image dimensions (default 1024x666)
+
+Validation Features:
+- Parameter type and range validation
+- Reasonable bounds checking for all parameters
+- Color format validation for overlays
+- Structure existence verification
+- Error reporting with descriptive messages
+
+History and Undo:
+- Transformation history tracking (configurable size limit)
+- Undo functionality for last transformation
+- History entry metadata (action type, timestamp, structure)
+- Clear history and state management
+- Last successful transformation tracking
+
+Overlay Generation:
+- Colored overlay creation with customizable colors
+- Background and structure color configuration
+- Binary mask generation for structure areas
+- RGB overlay output for visualization
+- Error handling for overlay operations
+
+Error Handling:
+- Comprehensive parameter validation
+- Graceful error recovery with user feedback
+- Signal-based error reporting for UI integration
+- Detailed error messages with context
+- Safe fallbacks for failed operations
+
+State Management:
+- Current structure tracking
+- Base transformation parameter storage
+- History management with size limits
+- Last successful transformation caching
+- Transform summary generation
+
+Advanced Features:
+- Relative and absolute positioning
+- Transform parameter dictionary support
+- History-based undo functionality
+- Overlay generation with color customization
+- Comprehensive state reporting
+"""
+
 import numpy as np
 import cv2
 from typing import Dict, Any, List, Optional, Tuple

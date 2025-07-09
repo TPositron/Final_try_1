@@ -1,3 +1,53 @@
+"""
+Image Processing Service - Advanced Filter Application and Management
+
+This service provides comprehensive image processing capabilities with multiple
+filters, preview functionality, history management, and parameter validation
+for SEM image enhancement and analysis.
+
+Main Class:
+- ImageProcessingService: Service for advanced image filter operations
+
+Key Methods:
+- load_image(): Loads SEM image for processing
+- preview_filter(): Previews filter without permanent application
+- apply_filter(): Applies filter with history tracking
+- reset_to_original(): Resets to original unprocessed image
+- get_current_image(): Returns current processed image
+- get_original_image(): Returns original unprocessed image
+- get_available_filters(): Lists all available filters
+- get_filter_parameters(): Returns filter parameter specifications
+- undo(): Undoes last filter application
+
+Available Filters:
+- fft_highpass: FFT-based high-pass filtering
+- gabor: Gabor filter for texture analysis
+- laplacian: Laplacian edge detection
+- threshold: Binary thresholding with multiple methods
+- top_hat: Morphological top-hat transformation
+- total_variation: Total variation denoising
+- wavelet: Wavelet-based edge detection
+- dog: Difference of Gaussians
+- canny: Canny edge detection
+- clahe: Contrast Limited Adaptive Histogram Equalization
+
+Dependencies:
+- Uses: numpy (array operations), cv2 (OpenCV image processing)
+- Uses: importlib (dynamic module loading), copy.deepcopy (deep copying)
+- Uses: typing (type hints), skimage.restoration (optional denoising)
+- Uses: pywt (optional wavelet processing)
+- Used by: UI image processing components
+- Used by: Filter management and workflow services
+
+Features:
+- Dynamic filter module loading
+- Parameter validation and specification
+- History tracking with undo functionality
+- Preview mode for non-destructive testing
+- Comprehensive filter parameter management
+- Error handling with fallback implementations
+"""
+
 import importlib
 import numpy as np
 import cv2

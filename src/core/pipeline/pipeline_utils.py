@@ -1,3 +1,44 @@
+"""
+Pipeline Utilities - Helper Functions for Processing Pipelines
+
+This module provides utility functions used across all processing pipelines
+including configuration management, transformation matrix creation, and
+validation functions that support the pipeline infrastructure.
+
+Key Functions:
+- create_transform_matrix(): Creates 3x3 transformation matrices from parameters
+- load_config_from_file(): Loads pipeline configuration from JSON/YAML files
+- save_config_to_file(): Saves pipeline configuration to JSON/YAML files
+- validate_config(): Validates configuration dictionaries for required keys
+- get_default_config(): Returns default pipeline configuration
+- get_mode_configs(): Returns mode-specific configurations (manual/automatic)
+
+Dependencies:
+- Uses: numpy (matrix operations), json (config files), os (file operations)
+- Optional: yaml (YAML config support)
+- Used by: All pipeline classes for configuration and transformation support
+- Used by: UI components for parameter validation
+
+Configuration Management:
+- Supports both JSON and YAML configuration formats
+- Provides default configurations for different processing modes
+- Validates configuration completeness and structure
+- Handles file I/O with proper error handling
+
+Transformation Support:
+- Creates transformation matrices from user parameters
+- Supports translation, rotation, and scaling transformations
+- Uses standard 3x3 homogeneous coordinate matrices
+- Compatible with OpenCV and other computer vision libraries
+
+Features:
+- Mode-specific configuration templates
+- Flexible file format support (JSON/YAML)
+- Configuration validation with missing key detection
+- Transformation matrix generation from intuitive parameters
+- Error handling for file operations and missing dependencies
+"""
+
 import numpy as np
 from typing import Dict, Any, Tuple
 import json

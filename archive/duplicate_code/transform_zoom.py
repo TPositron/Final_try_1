@@ -1,5 +1,38 @@
 """
-Transform Zoom - Scaling transformation functionality.
+Transform Zoom - Scaling Transformation Operations
+
+This module provides scaling (zoom) transformation functionality for image
+resizing operations, including validation, matrix generation, and fit-to-bounds
+calculations.
+
+Main Class:
+- TransformZoom: Handles scaling transformation operations
+
+Key Methods:
+- set_scale(): Sets scaling factor with optional center point
+- get_scale(): Returns current scaling factor
+- apply_zoom(): Applies zoom transformation to images
+- get_zoom_matrix(): Returns 3x3 transformation matrix with center
+- get_zoom_matrix_simple(): Returns simple scaling matrix around origin
+- reset_zoom(): Resets scaling to 1.0 (no scaling)
+- zoom_in(): Zooms in by specified factor
+- zoom_out(): Zooms out by specified factor
+- fit_to_bounds(): Calculates scale to fit image within bounds
+
+Dependencies:
+- Uses: numpy (array operations), cv2 (OpenCV for image transformations)
+- Uses: logging (error reporting and debugging)
+- Used by: Transformation services and zoom operations
+- Used by: UI zoom controls and fit-to-window functionality
+
+Features:
+- Scale validation with configurable limits
+- Configurable scaling center point
+- 3x3 homogeneous transformation matrix generation
+- Image scaling with OpenCV warpAffine
+- Zoom in/out operations with default factors
+- Fit-to-bounds calculation for window sizing
+- Error handling and logging
 """
 
 import numpy as np

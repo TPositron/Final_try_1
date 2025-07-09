@@ -1,6 +1,42 @@
 """
-Scoring Tab Panel for the unified main window.
-Provides scoring method selection and results display.
+Scoring Tab Panel - Unified Scoring Interface for Main Window
+
+This module provides a scoring tab panel for the unified main window interface,
+featuring scoring method selection, calculation controls, and results display
+for alignment quality assessment.
+
+Main Class:
+- ScoringTabPanel: Panel for scoring operations in the main tab widget
+
+Key Methods:
+- setup_ui(): Initializes UI with method selection and results display
+- setup_styling(): Applies dark theme styling to all components
+- _on_method_changed(): Handles scoring method selection changes
+- _on_calculate_clicked(): Handles calculate scores button clicks
+- display_results(): Displays scoring results in formatted text
+
+Signals Emitted:
+- scoring_method_changed(str): Scoring method selection changed
+- calculate_scores_requested(str): Score calculation requested for method
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Called by: Main window tab widget and scoring workflow
+- Coordinates with: Scoring services and result processing
+
+Scoring Methods:
+- SSIM: Structural Similarity Index Measure
+- MSE: Mean Squared Error
+- PSNR: Peak Signal-to-Noise Ratio
+- Cross-Correlation: Normalized cross-correlation
+
+Features:
+- Dropdown method selection with multiple scoring algorithms
+- Calculate button for triggering score computation
+- Results display with formatted text output
+- Dark theme styling consistent with application design
+- Read-only results area with monospace font for clarity
+- Grouped UI elements with clear visual organization
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel, 

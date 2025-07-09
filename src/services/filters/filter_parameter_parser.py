@@ -1,8 +1,50 @@
 """
 Filter Parameter Parser Service
-Reads filter files and extracts parameter information for dynamic UI generation.
-"""
 
+This module provides AST-based parsing of Python filter files to automatically
+extract parameter information for dynamic UI generation. It analyzes Python
+source code to discover filter functions/classes and their parameters, creating
+structured definitions that can be used for automatic UI generation.
+
+Dependencies:
+- ast: For Abstract Syntax Tree parsing of Python source code
+- inspect: For runtime introspection of Python objects
+- importlib.util: For dynamic module loading
+- dataclasses: For structured data representation
+- enum: For parameter type enumeration
+
+Main Classes:
+- ParameterType: Enum defining supported parameter types (int, float, bool, str, tuple, list)
+- FilterParameter: Dataclass representing a single filter parameter with constraints
+- FilterDefinition: Dataclass representing complete filter metadata
+- FilterParameterParser: Main parser class for extracting filter information
+
+Key Methods:
+- parse_all_filters(): Parse all filter files in the specified directory
+- get_filter_definition(): Get parsed definition for a specific filter
+- get_filters_by_category(): Get filters organized by category
+- get_all_categories(): Get all available filter categories
+- export_filter_definitions(): Export parsed definitions to JSON
+
+Internal Methods:
+- _parse_filter_file(): Parse a single Python filter file
+- _extract_filter_info(): Extract filter information from AST
+- _create_filter_definition_from_function(): Create definition from function node
+- _create_filter_definition_from_class(): Create definition from class node
+- _create_parameter_from_arg(): Create parameter definition from function argument
+- _infer_type_from_value(): Infer parameter type from default value
+- _get_parameter_constraints(): Get parameter constraints based on name/type
+- _determine_category(): Categorize filters based on name patterns
+
+Features:
+- Automatic parameter discovery from function signatures
+- Type inference from default values
+- Constraint generation based on parameter names
+- Category assignment based on filter names
+- Support for both function and class-based filters
+- Comprehensive error handling for malformed files
+- Export functionality for caching parsed definitions
+"""
 import os
 import ast
 import inspect

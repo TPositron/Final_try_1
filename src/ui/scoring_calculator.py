@@ -1,6 +1,49 @@
 """
-Scoring Calculator Module
-Handles all scoring operations, metrics calculation, and evaluation functionality.
+Scoring Calculator - Comprehensive Metrics Calculation and Evaluation
+
+This module handles all scoring operations, metrics calculation, and evaluation
+functionality for SEM/GDS alignment assessment.
+
+Main Class:
+- ScoringCalculator: Qt-based handler for scoring operations
+
+Key Methods:
+- calculate_scores(): Calculates comprehensive alignment scores
+- batch_scoring(): Performs batch scoring on multiple image pairs
+- set_scoring_method(): Sets primary scoring method
+- get_current_scores(): Returns current scoring results
+- export_scores(): Exports scoring results to file
+- compare_scoring_methods(): Compares all scoring methods
+- get_best_score(): Returns best score from current results
+
+Signals Emitted:
+- scores_calculated(dict): Scoring results calculated
+- batch_scoring_completed(list): Batch scoring completed
+- scoring_progress(str): Progress message during operations
+
+Dependencies:
+- Uses: cv2, numpy (image processing and calculations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt integration)
+- Uses: skimage.metrics (SSIM, MSE calculations)
+- Uses: services/simple_scoring_service.ScoringService
+- Called by: ui/main_window.py (scoring operations)
+- Coordinates with: UI scoring components
+
+Scoring Methods:
+- SSIM: Structural Similarity Index
+- MSE: Mean Squared Error
+- PSNR: Peak Signal-to-Noise Ratio
+- Cross-Correlation: Template matching correlation
+- Mutual Information: Information theory metric
+- Edge Overlap: Edge detection overlap analysis
+
+Features:
+- Comprehensive multi-metric scoring
+- Batch processing capabilities
+- Scoring history tracking
+- Export functionality with context information
+- Method comparison and analysis
+- Error handling with user feedback
 """
 
 import cv2

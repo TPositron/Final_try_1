@@ -1,54 +1,12 @@
 """
 GDS Manager - Comprehensive GDS File and Structure Management
 
-This module provides centralized management for all GDS-related operations in the
-SEM/GDS alignment application. It handles GDS file loading, structure selection,
-overlay generation, and coordinates between the UI and GDS services.
+This module provides centralized management for all GDS-related operations,
+handling GDS file loading, structure selection, overlay generation, and
+coordination between UI and GDS services.
 
-Core Responsibilities:
-1. GDS File Management:
-   - Loading and validation of GDS files
-   - File format verification and error handling
-   - Integration with NewGDSService for modern GDS processing
-   - Automatic loading of default GDS files
-
-2. Structure Management:
-   - Population of structure selection interfaces
-   - Structure metadata retrieval and caching
-   - Structure-to-number mapping and validation
-   - Structure information display and organization
-
-3. Overlay Generation:
-   - Real-time structure visualization generation
-   - Canvas size adaptation based on SEM images
-   - Overlay caching and optimization
-   - Integration with image viewer for display
-
-Predefined Structures (Consistent with core modules):
-1. Circpol_T2 (Structure 1) - Layer 14
-2. IP935Left_11 (Structure 2) - Layers 1,2
-3. IP935Left_14 (Structure 3) - Layer 1
-4. QC855GC_CROSS_Bottom (Structure 4) - Layers 1,2
-5. QC935_46 (Structure 5) - Layer 1
-
-Dependencies:
-- Uses: services/new_gds_service.py (modern GDS processing)
-- Uses: core/simple_gds_loader.py (fallback GDS loading)
-- Uses: PySide6.QtCore (signals and QObject)
-- Called by: ui/main_window.py (structure selection events)
-- Coordinates with: ui/image_viewer.py (overlay display)
-- Coordinates with: ui/alignment_controller.py (alignment operations)
-
-Signals Emitted:
-- gds_file_loaded: When GDS files are successfully loaded
-- structure_selected: When structures are selected and overlays generated
-- structure_combo_updated: When structure lists are refreshed
-
-State Management:
-- current_gds_filename: Active GDS file name
-- current_gds_filepath: Full path to active GDS file
-- current_gds_overlay: Generated structure overlay image
-- current_structure_name: Selected structure identifier
+Main Class:
+- GDSManager: Qt-based handler for GDS operations
 
 Key Methods:
 - load_gds_file(): Loads GDS files with validation
@@ -56,24 +14,31 @@ Key Methods:
 - on_structure_selected(): Handles structure selection events
 - auto_load_default_gds(): Automatically loads default files
 - get_current_structure_info(): Provides structure metadata
+- reset_structure_selection(): Resets structure selection
+- is_gds_loaded(): Checks if GDS file is loaded
+- is_structure_selected(): Checks if structure is selected
+- get_available_structures(): Returns list of available structures
+- export_structure_overlay(): Exports structure overlay as image
 
-Canvas Size Adaptation:
-- Automatically detects SEM image dimensions
-- Adapts overlay generation to match display requirements
-- Maintains aspect ratios and scaling consistency
-- Provides fallback to standard dimensions (1024x666)
+Signals Emitted:
+- gds_file_loaded(str): GDS file successfully loaded
+- structure_selected(str, object): Structure selected and overlay generated
+- structure_combo_updated(list): Structure list refreshed
 
-Error Handling:
-- Graceful handling of missing or corrupted GDS files
-- User-friendly error messages for file loading issues
-- Recovery from structure selection failures
-- Validation of structure numbers and mappings
+Dependencies:
+- Uses: services/new_gds_service.NewGDSService (modern GDS processing)
+- Uses: core/simple_gds_loader.SimpleGDSLoader (fallback GDS loading)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt integration)
+- Called by: ui/main_window.py (structure selection events)
+- Coordinates with: UI components for display and alignment
 
-Integration Features:
-- Seamless integration with alignment workflows
-- Real-time overlay updates during transformations
+Features:
+- GDS file loading and validation
+- Structure selection and overlay generation
+- Canvas size adaptation based on SEM images
+- Real-time structure visualization
 - Export capabilities for structure overlays
-- Structure information display and management
+- Error handling with user-friendly messages
 """
 
 import os

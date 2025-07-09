@@ -1,3 +1,47 @@
+"""
+Image Viewer - Main Image Display Component
+
+This module provides the main image viewer component for displaying SEM images,
+GDS overlays, and handling user interactions including zoom, pan, and point selection.
+
+Main Class:
+- ImageViewer: Main image display widget with overlay support
+
+Key Methods:
+- set_sem_image(): Sets SEM image for display
+- load_image(): Loads image from file path
+- set_gds_overlay(): Sets GDS overlay image
+- set_alignment_result(): Sets alignment result data
+- set_preview_image(): Sets preview image for filtering
+- toggle_overlay(): Toggles overlay visibility
+- set_overlay_visible(): Sets overlay visibility state
+- reset_view(): Resets view to default zoom and pan
+- fit_to_window(): Fits image to window size
+- export_current_view(): Exports current view as image
+
+Signals Emitted:
+- view_changed(dict): View parameters changed
+- point_selected(int, int, str): Point selected with coordinates and type
+
+Dependencies:
+- Uses: numpy (image processing)
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: cv2 (image operations)
+- Called by: UI main window and image processing components
+- Coordinates with: Alignment and filtering workflows
+
+Features:
+- SEM image display with automatic cropping to 1024x666
+- GDS overlay support with transparency control
+- Zoom and pan capabilities with mouse wheel and drag
+- Point selection mode for hybrid alignment
+- Visual markers for selected points
+- Alignment result visualization
+- Preview image support for filtering
+- View state management and export capabilities
+- Coordinate conversion between image and screen space
+"""
+
 import numpy as np
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton
 from PySide6.QtCore import Qt, Signal, QPoint, QRect
@@ -439,8 +483,14 @@ class ImageViewer(QWidget):
     
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
+            # Left click for panning only
+            self._dragging = True
+            self._drag_start = event.position().toPoint()
+            self._drag_offset = self._pan_offset
+            self.setCursor(Qt.ClosedHandCursor)
+        elif event.button() == Qt.RightButton:
             if self._point_selection_mode:
-                # Handle point selection
+                # Handle point selection with right click
                 image_coords = self._screen_to_image_coords(event.position().toPoint())
                 
                 # Check if clicking near an existing point to remove it
@@ -455,12 +505,6 @@ class ImageViewer(QWidget):
                         if current_points < 3:
                             self.add_point(image_coords.x(), image_coords.y(), self._point_selection_type)
                             self.point_selected.emit(image_coords.x(), image_coords.y(), self._point_selection_type)
-            else:
-                # Normal panning mode
-                self._dragging = True
-                self._drag_start = event.position().toPoint()
-                self._drag_offset = self._pan_offset
-                self.setCursor(Qt.ClosedHandCursor)
         
         event.accept()
     
@@ -482,7 +526,7 @@ class ImageViewer(QWidget):
                 self.setCursor(Qt.CrossCursor)
             else:
                 self.setCursor(Qt.ArrowCursor)
-                self._emit_view_changed()
+            self._emit_view_changed()
         
         event.accept()
     

@@ -1,4 +1,4 @@
-# Moved from src/image_analysis/core/processors/filters/filter_canny.py
+
 
 import cv2
 import numpy as np

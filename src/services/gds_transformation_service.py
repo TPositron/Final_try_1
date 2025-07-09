@@ -1,3 +1,84 @@
+"""
+GDS Transformation Service - GDS Layout Transformation Operations
+
+This service handles transformation of GDS layout structures including translation,
+rotation, and scaling operations. It modifies polygon coordinates directly and
+creates new GDS files with applied transformations.
+
+Main Class:
+- GdsTransformationService: Service for transforming GDS structures
+
+Key Methods:
+- transform_structure(): Transforms GDS structure with specified parameters
+- _get_cell_polygons(): Extracts polygons from gdstk cell with API compatibility
+- save_transformed_gds(): Saves transformed cell to new GDS file
+- validate_transformation_parameters(): Validates transformation parameter ranges
+
+Dependencies:
+- Uses: gdstk (GDS file operations), numpy (array operations), math (trigonometry)
+- Uses: pathlib.Path (file operations)
+- Uses: utils/transformations (transformation utilities and validation)
+- Used by: services/file_service.py (aligned GDS saving)
+- Used by: UI components for GDS transformation
+
+Transformation Operations:
+- Translation: X/Y offset in pixels converted to GDS units
+- Scaling: Uniform scale factor applied to polygon coordinates
+- Rotation: Arbitrary angle rotation around structure center
+- Coordinate system conversion between UI pixels and GDS units
+- Center-based transformations for intuitive behavior
+
+GDS File Handling:
+- gdstk library integration for GDS file operations
+- Cell and polygon extraction with API compatibility
+- Structure name lookup with fallback to top-level cells
+- Layer and datatype preservation during transformation
+- New GDS file creation with transformed structures
+
+Polygon Processing:
+- Direct coordinate modification of polygon points
+- Preservation of layer and datatype information
+- Batch processing of all polygons in structure
+- Error handling for malformed polygon data
+- Memory-efficient processing for large structures
+
+Coordinate System:
+- GDS coordinate to pixel coordinate conversion
+- Y-axis flipping for proper orientation (GDS up vs UI down)
+- Center-based transformation calculations
+- Scale factor computation from bounds and canvas size
+- Precision handling for coordinate accuracy
+
+API Compatibility:
+- Multiple gdstk API version support
+- Fallback methods for polygon extraction
+- Mock polygon objects for compatibility
+- Graceful handling of missing methods or attributes
+- Error recovery for API differences
+
+Transformation Pipeline:
+1. Load GDS file and locate target structure
+2. Extract all polygons with layer information
+3. Calculate transformation parameters and center point
+4. Apply transformations: translate to origin, scale, rotate, translate back, offset
+5. Create new cell with transformed polygons
+6. Save to new GDS file with preserved metadata
+
+Error Handling:
+- File existence validation
+- Structure name verification with fallbacks
+- Polygon extraction error recovery
+- Transformation parameter validation
+- GDS file writing error handling
+
+Features:
+- Non-destructive: Creates new files, preserves originals
+- Precise: Maintains coordinate system accuracy
+- Flexible: Supports arbitrary transformation parameters
+- Compatible: Works with different gdstk API versions
+- Robust: Comprehensive error handling and validation
+"""
+
 import gdstk
 import numpy as np
 import math

@@ -1,7 +1,70 @@
 """
-Project structure validation utilities.
+Project Structure Validation - Directory and File Validation Utilities
 
-Simple validation that all required directories exist.
+This module provides validation utilities to ensure the SEM/GDS alignment tool
+project structure is complete and properly organized. It checks for required
+directories, configuration files, and provides automated setup capabilities.
+
+Main Functions:
+- get_required_directories(): Returns list of required project directories
+- validate_project_structure(): Validates existence of required directories
+- check_missing_directories(): Identifies missing required directories
+- create_missing_directories(): Creates missing directories automatically
+- validate_config_files(): Validates existence of required configuration files
+- run_full_validation(): Performs complete project structure validation
+- print_validation_report(): Prints detailed validation status report
+
+Dependencies:
+- Uses: pathlib.Path (file system operations), typing (type hints)
+- Uses: core/utils/file_utils.get_project_root (project root detection)
+- Used by: Application startup routines for structure validation
+- Used by: Setup and installation scripts
+
+Required Directory Structure:
+- Data/: Input data files
+  - Data/SEM/: SEM image files
+  - Data/GDS/: GDS layout files
+- Results/: Output files
+  - Results/Aligned/: Alignment results
+  - Results/SEM_Filters/: Filter processing results
+  - Results/Scoring/: Scoring and comparison results
+- config/: Configuration files
+- logs/: Application log files
+- src/: Source code
+  - src/core/: Core functionality modules
+  - src/services/: Service layer modules
+  - src/ui/: User interface modules
+
+Required Configuration Files:
+- config/config.json: Main application configuration
+- requirements.txt: Python package dependencies
+- README.md: Project documentation
+
+Features:
+- Comprehensive project structure validation
+- Automatic missing directory creation
+- Configuration file existence checking
+- Detailed validation reporting with status indicators
+- Error handling for directory creation failures
+- Summary statistics for validation results
+
+Validation Process:
+1. Check all required directories exist
+2. Validate configuration files are present
+3. Report missing components
+4. Optionally create missing directories
+5. Provide detailed status report
+
+Usage:
+- run_full_validation(): Quick validation check
+- print_validation_report(): Detailed status report
+- create_missing_directories(): Auto-fix missing directories
+- check_missing_directories(): List what needs to be created
+
+Return Values:
+- Boolean results for pass/fail validation
+- Dictionary mappings for detailed status
+- List of missing components for targeted fixes
 """
 
 from pathlib import Path

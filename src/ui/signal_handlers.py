@@ -1,6 +1,38 @@
 """
-Signal Handlers Module
-Handles all signal connections and event handlers for the main window.
+Signal Handlers - Centralized Signal Connection and Event Management
+
+This module handles all signal connections and event handlers for the main window,
+providing centralized signal management and event dispatching.
+
+Main Class:
+- SignalHandlers: Qt-based handler for signal connections and events
+
+Key Methods:
+- connect_all_signals(): Connects all application signals
+- disconnect_all_signals(): Disconnects all signals for cleanup
+- reconnect_specific_signals(): Reconnects signals for specific module
+- Various signal handler methods for different operations
+
+Dependencies:
+- Uses: PySide6.QtCore, PySide6.QtWidgets (Qt integration)
+- Called by: ui/main_window.py (signal management)
+- Coordinates with: All UI modules and services
+
+Signal Categories:
+- UI Signals: User interface interactions
+- File Operation Signals: File loading and saving events
+- GDS Operation Signals: GDS file and structure events
+- Image Processing Signals: Filter and processing events
+- Alignment Operation Signals: Alignment and transformation events
+- Scoring Operation Signals: Scoring calculation events
+- View Controller Signals: View switching and panel events
+
+Features:
+- Centralized signal management
+- Modular signal connection by category
+- Error handling for signal operations
+- Signal reconnection capabilities
+- Event dispatching and coordination
 """
 
 from PySide6.QtCore import QObject

@@ -1,6 +1,41 @@
 """
-View Controller Module
-Handles view management, panel switching, and UI state coordination.
+View Controller - View Management and UI State Coordination
+
+This module handles view management, panel switching, and UI state coordination
+for the main application interface.
+
+Main Class:
+- ViewController: Qt-based controller for view management
+
+Key Methods:
+- setup_view_toolbar(): Creates view selection toolbar
+- switch_view(): Switches to different view mode
+- update_view_availability(): Updates view button availability
+- switch_to_best_available_view(): Switches to best available view
+- refresh_current_view(): Refreshes current view content
+- initialize_view_system(): Initializes complete view system
+
+Signals Emitted:
+- view_changed(str, str): View changed from old to new
+- panel_updated(str, object): Panel updated with data
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore, PySide6.QtGui (Qt framework)
+- Uses: ui/view_manager.ViewManager, ViewMode (view management)
+- Called by: ui/main_window.py (view operations)
+- Coordinates with: UI panels and view components
+
+View Modes:
+- ALIGNMENT: Align SEM and GDS images
+- FILTERING: Apply image filters
+- SCORING: Calculate alignment scores
+
+Features:
+- View toolbar with exclusive button selection
+- Keyboard shortcuts for view switching
+- View availability checking based on application state
+- Dynamic view content setup and clearing
+- Error handling for view operations
 """
 
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QPushButton, QButtonGroup

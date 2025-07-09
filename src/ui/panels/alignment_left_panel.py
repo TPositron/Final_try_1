@@ -1,12 +1,67 @@
-
 """
-Alignment Left Panel with Manual/3-point switching tabs.
+Alignment Left Panel - Comprehensive Alignment Control Interface
 
-This panel provides controls for alignment operations with two modes:
-- Manual alignment with sliders/spinboxes
-- 3-point alignment with point selection interface
+This module provides a comprehensive alignment control panel with manual and 3-point
+alignment modes, featuring extensive error handling and validation.
 
-Enhanced with comprehensive error handling, input validation, and logging.
+Main Classes:
+- ManualAlignmentTab: Manual alignment controls with transform parameters
+- ThreePointAlignmentTab: 3-point alignment with point selection interface
+- AlignmentLeftPanel: Main panel with tabbed alignment modes
+
+Key Methods (ManualAlignmentTab):
+- setup_ui(): Creates manual alignment interface
+- _create_move_section(): Creates translation controls
+- _create_rotation_section(): Creates rotation controls
+- _create_zoom_section(): Creates zoom/scale controls
+- _create_transparency_section(): Creates transparency controls
+- adjust_value_safe(): Safely adjusts parameter values
+- set_parameters(): Sets alignment parameters with validation
+- reset_parameters(): Resets all parameters to defaults
+- emit_alignment_changed(): Emits parameter changes with validation
+
+Key Methods (ThreePointAlignmentTab):
+- add_point(): Adds point for 3-point alignment
+- calculate_transformation(): Calculates affine transformation
+- confirm_transformation(): Confirms calculated transformation
+- validate_points(): Validates point selection quality
+- clear_all_points(): Clears all selected points
+
+Key Methods (AlignmentLeftPanel):
+- set_images(): Sets current SEM and GDS images
+- set_gds_model(): Sets GDS model for operations
+- get_current_alignment_parameters(): Gets active tab parameters
+- save_aligned_gds_image(): Saves aligned GDS file
+- reset_all_alignments(): Resets all alignment data
+
+Signals Emitted:
+- alignment_changed(dict): Alignment parameters changed
+- reset_alignment(): Reset alignment requested
+- auto_alignment_requested(): Auto alignment requested
+- save_aligned_gds_requested(): Save aligned GDS requested
+- three_point_alignment_requested(list, list): 3-point alignment with points
+- transformation_confirmed(dict): Transformation confirmed
+- validation_error(str): Validation error occurred
+- parameter_warning(str): Parameter warning issued
+
+Dependencies:
+- Uses: logging, traceback, numpy (error handling and data processing)
+- Uses: typing (type hints)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: ui/base_panels.BaseViewPanel, ui/view_manager.ViewMode
+- Uses: services and models for GDS operations
+- Called by: UI main window and alignment workflow
+- Coordinates with: Image viewers, alignment services, and file operations
+
+Features:
+- Dual-mode alignment interface (manual and 3-point)
+- Comprehensive parameter validation and error handling
+- Real-time parameter adjustment with increment/decrement buttons
+- 3-point alignment with point validation and transformation calculation
+- Dark theme styling with consistent UI design
+- Extensive logging and debugging capabilities
+- GDS file saving with transformation application
+- Parameter rollback and recovery mechanisms
 """
 
 import logging

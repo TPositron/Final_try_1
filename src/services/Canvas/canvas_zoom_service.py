@@ -1,6 +1,42 @@
 """
-Canvas Zoom Service
-Handles zoom functionality for the image canvas in the alignment view.
+Canvas Zoom Service - Image Canvas Zoom and Scale Operations
+
+This service handles zoom functionality for image canvases in alignment views,
+providing smooth zoom operations with level management, limits, and fit-to-canvas
+capabilities.
+
+Main Class:
+- CanvasZoomService: Qt-based service for canvas zoom operations
+
+Key Methods:
+- set_zoom_level(): Sets zoom level directly with bounds checking
+- zoom_in(): Zooms in by one step increment
+- zoom_out(): Zooms out by one step increment
+- zoom_to_fit(): Zooms to fit image in canvas
+- zoom_actual_size(): Sets zoom to 100% (actual size)
+- get_zoom_level(): Returns current zoom level
+- get_zoom_percentage(): Returns zoom level as percentage
+- set_zoom_limits(): Sets minimum and maximum zoom limits
+- get_zoom_limits(): Returns current zoom limits
+
+Signals Emitted:
+- zoom_changed(float): Zoom level changed
+- zoom_reset(): Zoom reset to fit
+
+Dependencies:
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: typing (type hints for method signatures)
+- Used by: UI canvas components and image viewers
+- Used by: Alignment interfaces requiring zoom functionality
+
+Features:
+- Configurable zoom limits (default 0.1x to 10x)
+- Step-based zoom in/out operations
+- Fit-to-canvas automatic zoom calculation
+- Actual size (100%) zoom preset
+- Percentage-based zoom reporting
+- Signal-based zoom change notifications
+- Bounds checking and limit enforcement
 """
 
 from typing import Optional, Tuple

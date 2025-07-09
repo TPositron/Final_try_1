@@ -1,8 +1,43 @@
 """
-View Manager for handling view switching between Alignment, Filtering, and Scoring modes.
+View Manager - Application View Mode Management and State Coordination
 
-This class coordinates the main application views and manages the state transitions
-between different operational modes.
+This module handles view switching between Alignment, Filtering, and Scoring modes,
+coordinating main application views and managing state transitions between
+different operational modes.
+
+Main Classes:
+- ViewMode: Enumeration of available view modes
+- ViewManager: Qt-based manager for view switching and state coordination
+
+Key Methods:
+- switch_to_view(): Switches to specified view mode
+- get_view_data(): Gets data for specified view mode
+- update_view_data(): Updates data for specified view mode
+- set_view_data(): Sets specific data value for view mode
+- reset_view_data(): Resets view data to defaults
+- mark_view_initialized(): Marks view as initialized
+
+Signals Emitted:
+- view_changed(ViewMode, ViewMode): View changed from old to new
+- view_ready(ViewMode): View fully loaded and ready
+- view_data_updated(ViewMode, dict): View-specific data updated
+
+Dependencies:
+- Uses: enum.Enum (view mode enumeration)
+- Uses: PySide6.QtCore, PySide6.QtWidgets (Qt framework)
+- Called by: ui/view_controller.py (view management)
+- Used by: UI components requiring view state information
+
+View Modes:
+- ALIGNMENT: Manual and 3-point alignment operations
+- FILTERING: Image processing and enhancement
+- SCORING: Analysis and comparison metrics
+
+Features:
+- View-specific data storage and management
+- State tracking and initialization monitoring
+- Signal-based communication for view changes
+- Default data structures for each view mode
 """
 
 from enum import Enum

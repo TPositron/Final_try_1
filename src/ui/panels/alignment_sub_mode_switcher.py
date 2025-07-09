@@ -1,4 +1,44 @@
-"""Alignment sub-mode switcher panel with radio buttons for Manual/Hybrid/Automatic modes."""
+"""
+Alignment Sub-Mode Switcher - Alignment Mode Selection Interface
+
+This module provides a sub-mode switcher for alignment operations, allowing users
+to switch between manual, hybrid, and automatic alignment modes within the
+alignment panel interface.
+
+Main Class:
+- AlignmentSubModeSwitcher: Widget with radio buttons for alignment sub-mode selection
+
+Key Methods:
+- _setup_ui(): Initializes UI with radio buttons and status display
+- _on_sub_mode_selected(): Handles sub-mode selection from radio buttons
+- _update_status(): Updates status label based on current sub-mode
+- set_sub_mode(): Programmatically sets current sub-mode
+- get_current_sub_mode(): Gets currently selected sub-mode
+- set_sub_mode_enabled(): Enables or disables specific sub-modes
+- set_sub_mode_tooltip(): Sets tooltip for sub-mode buttons
+
+Signals Emitted:
+- sub_mode_changed(str): Sub-mode changed to new mode name
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: typing (type hints)
+- Called by: UI alignment panel components
+- Coordinates with: Alignment workflow and mode management
+
+Sub-Modes:
+- Manual: Manual alignment with transformation controls
+- Hybrid: 3-point alignment with manual refinement
+- Automatic: Fully automatic alignment using image features
+
+Features:
+- Radio button interface for exclusive sub-mode selection
+- Visual status indicator with color coding for each mode
+- Programmatic sub-mode control and state management
+- Tooltip support for sub-mode descriptions
+- Enable/disable functionality for individual sub-modes
+- Custom styling with hover effects and visual feedback
+"""
 
 from typing import Callable, Optional
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QRadioButton, QButtonGroup, 

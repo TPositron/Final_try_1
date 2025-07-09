@@ -1,54 +1,11 @@
 """
 Alignment Controller - Central Alignment Operation Coordinator
 
-This module serves as the primary controller for all alignment operations in the SEM/GDS
-alignment application. It coordinates between the UI, alignment services, and transformation
-services to provide comprehensive alignment functionality.
+This controller orchestrates all alignment operations between SEM and GDS images,
+coordinating UI components, alignment services, and transformation operations.
 
-Key Responsibilities:
-- Orchestrates automatic alignment workflows using feature detection
-- Manages manual 3-point alignment operations
-- Applies custom transformation matrices
-- Handles alignment state management and history
-- Provides alignment result validation and scoring
-
-Alignment Methods Supported:
-1. Automatic Alignment:
-   - Feature-based matching using ORB/SIFT algorithms
-   - Batch alignment search with parameter optimization
-   - Quality scoring and best result selection
-   - Progress reporting and error handling
-
-2. Manual 3-Point Alignment:
-   - User-selected point correspondences
-   - Affine transformation calculation
-   - Real-time transformation preview
-   - Point validation and adjustment
-
-3. Custom Transformation:
-   - Direct transformation matrix application
-   - Matrix validation and bounds checking
-   - Transformation history tracking
-
-Dependencies:
-- Uses: services/simple_alignment_service.py (core alignment algorithms)
-- Uses: services/transformation_service.py (transformation operations)
-- Uses: cv2, numpy (image processing and matrix operations)
-- Called by: ui/main_window.py (main application controller)
-- Coordinates with: ui/image_viewer.py (display updates)
-- Coordinates with: ui/panels/* (alignment panels)
-
-Signals Emitted:
-- alignment_completed: When alignment operations finish successfully
-- alignment_reset: When alignment is reset to original state
-- transformation_applied: When transformations are applied
-- alignment_progress: For progress reporting during operations
-
-State Management:
-- current_alignment_result: Stores active alignment data
-- current_transformation: Active transformation matrix
-- alignment_points: Manual alignment point pairs
-- alignment_history: Complete operation history
+Main Class:
+- AlignmentController: Qt-based controller for alignment operations
 
 Key Methods:
 - auto_align(): Performs automatic feature-based alignment
@@ -56,18 +13,33 @@ Key Methods:
 - apply_transformation(): Applies custom transformation matrices
 - reset_alignment(): Resets to original unaligned state
 - update_alignment_display(): Updates UI with alignment results
+- export_alignment_result(): Exports alignment data to file
+- load_alignment_result(): Loads alignment data from file
 
-Error Handling:
-- Validates prerequisites before operations
-- Provides user-friendly error messages
-- Handles service failures gracefully
-- Maintains application stability during errors
+Signals Emitted:
+- alignment_completed(object): Alignment operations completed
+- alignment_reset(): Alignment reset to original state
+- transformation_applied(object): Transformation applied
+- alignment_progress(str): Progress reporting
 
-Integration Points:
-- Image Viewer: Updates overlay displays
-- Alignment Panels: Receives user input and displays results
-- Scoring Calculator: Triggers score calculations after alignment
-- File Handler: Exports alignment results and overlays
+Dependencies:
+- Uses: services/simple_alignment_service.AlignmentService
+- Uses: services/transformation_service.TransformationService
+- Uses: cv2, numpy (image processing and matrix operations)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt integration)
+- Called by: ui/main_window.py (main application controller)
+- Coordinates with: UI panels and image viewers
+
+Alignment Methods:
+- Automatic: Feature-based matching with parameter optimization
+- Manual 3-Point: User-selected point correspondences
+- Custom Transformation: Direct matrix application
+
+State Management:
+- Current alignment result and transformation matrix
+- Manual alignment point pairs
+- Complete operation history
+- Validation and error handling
 """
 
 import cv2

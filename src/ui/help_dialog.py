@@ -1,3 +1,33 @@
+"""
+Help Dialog - Application Help and User Guide Display
+
+This module provides a help dialog that displays user guidance and instructions
+for using the SEM/GDS alignment application.
+
+Main Class:
+- HelpDialog: Qt dialog for displaying help content
+
+Key Features:
+- HTML-formatted help content display
+- Instructions for all major application features
+- User-friendly dialog interface
+- Integration with main application help menu
+
+Dependencies:
+- Uses: PySide6.QtWidgets (QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox)
+- Called by: ui/main_window.py (help menu action)
+
+Help Content:
+- SEM image loading instructions
+- GDS file loading instructions
+- Mode switcher usage
+- Filter panel operations
+- Alignment panel operations
+- Score panel usage
+- Processing pipeline instructions
+- Settings and export guidance
+"""
+
 from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox
 import os
 

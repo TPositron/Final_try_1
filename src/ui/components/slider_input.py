@@ -1,4 +1,35 @@
-"""Slider input component with numeric input and ±1/±10 buttons."""
+"""
+Slider Input Component - Enhanced Slider with Numeric Input and Increment Buttons
+
+This module provides a slider input component with numeric input and increment/decrement
+buttons for precise value control.
+
+Main Class:
+- SliderInput: Widget combining slider with numeric input and buttons
+
+Key Methods:
+- set_value(): Sets widget value
+- get_value(): Gets current widget value
+- set_range(): Sets value range
+- set_enabled(): Enables/disables widget
+- reset_to_default(): Resets to default value
+
+Signals Emitted:
+- value_changed(float): Value changed
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Called by: UI parameter input components
+- Coordinates with: Parameter adjustment workflows
+
+Features:
+- Combined slider and numeric input
+- Increment/decrement buttons (±1, ±10)
+- Support for integer and float values
+- Real-time value synchronization
+- Range validation and clamping
+- Customizable step size and decimals
+"""
 
 from typing import Optional, Callable, Union
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QVBoxLayout, QLabel, 

@@ -1,4 +1,56 @@
-"""File utilities for path resolution and results directory setup."""
+"""
+File Utilities - Path Resolution and Directory Management
+
+This module provides utility functions for file and directory operations
+used throughout the SEM/GDS alignment tool. It handles path resolution,
+directory creation, and file management operations with consistent
+project structure support.
+
+Main Functions:
+- ensure_directory(): Creates directories if they don't exist
+- get_project_root(): Returns the project root directory path
+- get_data_path(): Returns path to Data directory with optional subpath
+- get_results_path(): Returns path to Results directory with optional subpath
+- get_extracted_structures_path(): Returns path to Extracted_Structures directory
+- setup_results_directories(): Creates standard results directory structure
+- get_unique_filename(): Generates unique filenames by appending numbers
+- list_files_by_extension(): Lists files with specific extensions in directories
+
+Dependencies:
+- Uses: os (operating system interface), pathlib.Path (path operations)
+- Uses: typing (type hints for Union, Optional)
+- Used by: services/file_service.py (file operations)
+- Used by: core/models (data file paths)
+- Used by: ui/file_operations.py (file dialogs and operations)
+- Used by: All modules requiring consistent path resolution
+
+Directory Structure:
+- Data/: Input data files (SEM images, GDS files)
+- Results/: Output files organized by processing type
+  - Aligned/manual/: Manual alignment results
+  - Aligned/auto/: Automatic alignment results
+  - SEM_Filters/manual/: Manual filter results
+  - SEM_Filters/auto/: Automatic filter results
+  - Scoring/overlays/: Overlay images
+  - Scoring/charts/: Score visualization charts
+  - Scoring/reports/: Processing reports
+- Extracted_Structures/: Extracted GDS structure data
+
+Key Features:
+- Automatic directory creation with parent directory support
+- Consistent path resolution relative to project root
+- Cross-platform path handling using pathlib
+- Unique filename generation to prevent overwrites
+- File listing with extension filtering and recursive search
+- Standard results directory structure setup
+- Type-safe path operations with Union[str, Path] support
+
+Path Resolution:
+- Project root determined relative to this module's location
+- All paths resolved relative to project root for consistency
+- Support for both absolute and relative path operations
+- Automatic handling of path separators across platforms
+"""
 
 import os
 from pathlib import Path

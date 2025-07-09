@@ -1,3 +1,50 @@
+"""
+Automatic Processing Pipeline - Automated Image Processing Workflow
+
+This module implements the automatic processing pipeline that handles automated
+filter application, alignment, and scoring with minimal user intervention.
+It extends the base pipeline with automatic decision-making and fallback mechanisms.
+
+Main Class:
+- AutomaticProcessingPipeline: Automated workflow execution with progress tracking
+
+Key Methods:
+- _execute_automatic_mode(): Main entry point for automatic processing
+- _apply_automatic_filters_with_progress(): Applies filter sequence automatically
+- _perform_automatic_alignment_with_progress(): Performs alignment with fallback
+- _get_default_filter_params(): Provides default parameters for filters
+- _should_early_exit(): Determines if processing should stop early
+
+Dependencies:
+- Inherits from: pipeline_base.ProcessingPipelineBase (shared functionality)
+- Uses: numpy (array operations)
+- Called by: ui/workflow_controller.py (automatic mode selection)
+- Called by: services/workflow_service.py (pipeline orchestration)
+
+Data Flow:
+1. Receives input image and configuration parameters
+2. Applies automatic filter sequence with progress tracking
+3. Performs alignment using primary method with fallback options
+4. Evaluates results and triggers early exit if quality is insufficient
+5. Emits detailed progress signals for UI updates
+6. Returns processed results with confidence metrics
+
+Features:
+- Automatic filter parameter selection
+- Multi-method alignment with fallback mechanisms
+- Early exit logic based on quality thresholds
+- Detailed progress reporting and logging
+- Error handling with graceful degradation
+- Confidence-based decision making
+
+Automatic Workflow:
+1. Filter Sequence: Applies predefined filters (CLAHE, Total Variation, etc.)
+2. Alignment: Uses ORB+RANSAC with template matching fallback
+3. Quality Check: Evaluates confidence scores at each step
+4. Early Exit: Stops processing if quality thresholds not met
+5. Result Aggregation: Combines results from all successful steps
+"""
+
 from .pipeline_base import ProcessingPipelineBase
 import numpy as np
 

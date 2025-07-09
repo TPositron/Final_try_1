@@ -1,10 +1,9 @@
 """
-Transformations package for coordinate and geometric transformations.
+Transformations package - DEPRECATED
 
-This package is maintained for compatibility with existing imports.
-For new development, use src.utils.transformations for pure mathematical operations.
+This package has been replaced by UnifiedTransformationService.
+Files moved to archive/duplicate_code/
 """
 
-from .transform_service import TransformService
-
-__all__ = ['TransformService']
+# Empty - all transformation files moved to archive
+__all__ = []

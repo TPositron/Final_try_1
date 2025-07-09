@@ -1,6 +1,39 @@
 """
-GDS Operations Module
-Handles all GDS file operations, structure loading, and GDS-related functionality.
+GDS Operations - GDS File Operations and Structure Management
+
+This module handles all GDS file operations, structure loading, and GDS-related
+functionality for the SEM/GDS alignment application.
+
+Main Class:
+- GDSOperations: Qt-based handler for GDS operations
+
+Key Methods:
+- populate_structure_combo(): Populates structure selection combo box
+- load_gds_file(): Loads GDS file with file dialog
+- on_structure_selected(): Handles structure selection events
+- get_current_structure_info(): Returns current structure information
+- reset_structure_selection(): Resets structure selection
+- is_gds_loaded(): Checks if GDS file is loaded
+- is_structure_selected(): Checks if structure is selected
+
+Signals Emitted:
+- gds_loaded(str): GDS file loaded successfully
+- structure_loaded(str, object): Structure loaded and overlay generated
+
+Dependencies:
+- Uses: services/new_gds_service.NewGDSService (modern GDS processing)
+- Uses: core/simple_gds_loader.SimpleGDSLoader (fallback GDS loading)
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt integration)
+- Called by: ui/main_window.py (GDS operations)
+- Coordinates with: UI components for display updates
+
+Features:
+- GDS file loading with validation
+- Structure selection and overlay generation
+- Canvas size adaptation based on SEM images
+- Auto-loading of default GDS files
+- Error handling with user dialogs
+- State management for current GDS and structure
 """
 
 import os

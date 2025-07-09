@@ -1,5 +1,34 @@
 """
-Transform Move - Translation transformation functionality.
+Transform Move - Translation Transformation Operations
+
+This module provides translation (movement) transformation functionality
+for image alignment operations, including validation, matrix generation,
+and coordinate system conversion.
+
+Main Class:
+- TransformMove: Handles translation transformation operations
+
+Key Methods:
+- set_translation(): Sets translation values with validation
+- get_translation(): Returns current translation values
+- apply_translation(): Applies translation transformation to images
+- get_translation_matrix(): Returns 3x3 transformation matrix
+- reset_translation(): Resets translation to zero
+- convert_pixels_to_units(): Converts pixel translation to coordinate units
+- convert_units_to_pixels(): Converts coordinate translation to pixels
+
+Dependencies:
+- Uses: numpy (array operations), cv2 (OpenCV for image transformations)
+- Uses: logging (error reporting and debugging)
+- Used by: Transformation services and alignment operations
+- Used by: UI transformation controls
+
+Features:
+- Translation validation with configurable limits
+- 3x3 homogeneous transformation matrix generation
+- Image transformation with OpenCV warpAffine
+- Coordinate system conversion utilities
+- Error handling and logging
 """
 
 import numpy as np

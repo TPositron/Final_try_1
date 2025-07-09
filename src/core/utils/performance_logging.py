@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from contextlib import contextmanager
 
-from .logging_utils import get_logger
+from .simple_logging import get_logger
 
 
 @dataclass

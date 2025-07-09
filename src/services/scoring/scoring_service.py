@@ -1,4 +1,63 @@
-"""Scoring service that aggregates metrics and manages reports."""
+"""
+Scoring Service - Comprehensive Metrics Aggregation and Report Management
+
+This service aggregates multiple scoring metrics from specialized services,
+computes composite scores, and manages report generation and persistence
+for SEM/GDS alignment evaluation.
+
+Main Class:
+- ScoringService: Qt-based service for comprehensive scoring operations
+
+Key Methods:
+- compute_full_score(): Computes all scoring metrics for image pair
+- save_report(): Saves scoring results to JSON report files
+- load_report(): Loads previously saved scoring reports
+- get_last_result(): Returns most recent full scoring result
+- create_summary_report(): Creates summary from multiple results
+
+Signals Emitted:
+- scoring_completed(dict): Full scoring computation completed
+- report_saved(str): Report saved to specified path
+- scoring_error(str): Scoring operation failed with error
+
+Dependencies:
+- Uses: json, datetime, pathlib.Path (standard libraries)
+- Uses: numpy (array operations for statistics)
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: scoring/pixel_score_service.PixelScoreService (pixel-level metrics)
+- Uses: scoring/ssim_score_service.SSIMScoreService (SSIM metrics)
+- Uses: scoring/iou_score_service.IOUScoreService (IoU metrics)
+- Uses: core/utils (logging and path utilities)
+- Used by: UI scoring components and workflow services
+- Used by: Batch processing and analysis tools
+
+Metrics Aggregated:
+- Pixel Overlap: F1 score, precision, recall, dice coefficient
+- Pixel Differences: MAE, MSE, RMSE, PSNR
+- SSIM: Structural similarity with multi-scale variants
+- IoU: Intersection over Union with multi-threshold analysis
+- Local Statistics: Grid-based regional analysis
+
+Composite Scoring:
+- Weighted average of primary metrics
+- Configurable weights (default: IoU 40%, SSIM 30%, Pixel F1 30%)
+- Overall percentage score for user-friendly interpretation
+- Component score breakdown for detailed analysis
+
+Report Management:
+- JSON-based report persistence
+- Automatic filename generation with timestamps
+- Metadata inclusion (timestamps, image names, alignment mode)
+- Summary report generation from multiple results
+- Statistical analysis across result sets
+
+Configuration Options:
+- Selective metric computation (enable/disable individual metrics)
+- Threshold values for binary operations
+- Window sizes for SSIM calculations
+- Multi-scale and multi-threshold parameters
+- Local analysis grid sizes
+"""
 
 from typing import Dict, List, Optional, Any
 from pathlib import Path

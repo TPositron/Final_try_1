@@ -1,4 +1,42 @@
-"""Mode switcher panel with radio buttons for Manual/Auto/Score modes."""
+"""
+Mode Switcher - Application Mode Selection Interface
+
+This module provides a mode switching interface with radio buttons for selecting
+between different operational modes of the image analysis application.
+
+Main Class:
+- ModeSwitcher: Top bar widget with radio buttons for mode switching
+
+Key Methods:
+- _setup_ui(): Initializes UI with radio buttons and status display
+- _on_mode_selected(): Handles mode selection from radio buttons
+- _update_status(): Updates status label based on current mode
+- set_mode(): Programmatically sets current mode
+- get_current_mode(): Gets currently selected mode
+- set_mode_enabled(): Enables or disables specific modes
+- set_mode_tooltip(): Sets tooltip for mode buttons
+
+Signals Emitted:
+- mode_changed(str): Mode changed to new mode name
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: typing (type hints)
+- Called by: UI main window
+- Coordinates with: View management and application workflow
+
+Modes:
+- Manual: Manual alignment operations
+- Auto: Automatic alignment operations
+- Score: Scoring and analysis operations
+
+Features:
+- Radio button interface for exclusive mode selection
+- Visual status indicator with color coding
+- Programmatic mode control and state management
+- Tooltip support for mode descriptions
+- Enable/disable functionality for individual modes
+"""
 
 from typing import Callable, Optional
 from PySide6.QtWidgets import (QWidget, QHBoxLayout, QRadioButton, QButtonGroup, 

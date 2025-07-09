@@ -1,4 +1,56 @@
-"""SSIM score service for computing Structural Similarity metrics."""
+"""
+SSIM Score Service - Structural Similarity Index Metrics Computation
+
+This service provides comprehensive Structural Similarity Index (SSIM) metrics
+computation including standard SSIM, multi-scale SSIM, local statistics,
+and visualization generation for image quality assessment.
+
+Main Class:
+- SSIMScoreService: Qt-based service for SSIM metrics computation
+
+Key Methods:
+- compute_ssim(): Computes standard SSIM between two images
+- compute_multiscale_ssim(): Computes Multi-Scale SSIM (MS-SSIM)
+- create_ssim_heatmap(): Creates color-coded SSIM visualization
+- get_last_result(): Returns most recent SSIM computation result
+- compute_local_ssim_statistics(): Computes SSIM statistics for local regions
+
+Signals Emitted:
+- ssim_computed(dict): SSIM computation completed successfully
+- ssim_error(str): SSIM computation failed with error
+
+Dependencies:
+- Uses: numpy (array operations), cv2 (OpenCV image processing)
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: skimage.metrics.structural_similarity (SSIM computation)
+- Uses: core/utils.get_logger (logging functionality)
+- Used by: Scoring services and image quality assessment
+- Used by: UI components for metric display and visualization
+
+SSIM Metrics:
+- SSIM Score: Structural similarity index (-1 to 1, higher is better)
+- SSIM Map: Pixel-wise SSIM values across the image
+- MS-SSIM: Multi-scale SSIM with weighted combination
+- Local SSIM Statistics: Regional analysis with grid-based computation
+
+Visualization Features:
+- SSIM heatmap generation with configurable colormaps
+- Color-coded visualization of similarity patterns
+- Statistical analysis of SSIM distributions
+- Regional threshold analysis
+
+Multi-Scale Analysis:
+- Configurable scale factors (default: 1.0, 0.5, 0.25)
+- Weighted combination of scales
+- Automatic handling of minimum image sizes
+- Individual scale result tracking
+
+Local Statistics:
+- Grid-based regional SSIM computation
+- Statistical measures (mean, std, min, max, median)
+- Threshold-based region counting
+- Configurable grid sizes for analysis granularity
+"""
 
 from typing import Optional, Dict, Tuple
 from PySide6.QtCore import QObject, Signal

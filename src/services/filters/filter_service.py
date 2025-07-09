@@ -1,5 +1,52 @@
-"""Service for managing filters, presets, and auto-optimization."""
+"""
+Filter Service - Basic Filter Management
 
+This module provides a basic filter service for registering, applying, and managing
+image filters. It serves as a simpler alternative to the enhanced filter service,
+focusing on runtime filter registration and application with preset management.
+
+Dependencies:
+- PySide6.QtCore: For Qt signal/slot communication and QObject inheritance
+- numpy: For image array processing
+- typing: For type hints
+- core.utils.get_logger: For logging functionality
+
+Main Classes:
+- FilterService: Basic filter service inheriting from QObject
+
+Key Methods:
+- register_filter(): Register a new filter function with default parameters
+- apply_filter(): Apply a registered filter to an image
+- apply_filter_chain(): Apply a sequence of filters to an image
+- get_available_filters(): Get list of registered filter names
+- get_filter_parameters(): Get current parameters for a filter
+- set_filter_parameters(): Update parameters for a filter
+- reset_filter_parameters(): Reset filter parameters to defaults
+- save_preset(): Save a filter chain as a named preset
+- load_preset(): Load a previously saved filter preset
+- get_presets(): Get list of available preset names
+- auto_optimize_filters(): Auto-optimize filter parameters (placeholder)
+- get_filter_history(): Get history of applied filters
+- clear_history(): Clear the filter application history
+
+Signals:
+- filter_applied: Emitted when a filter is successfully applied
+- filter_error: Emitted when filter application fails
+- preset_loaded: Emitted when a preset is loaded
+
+Features:
+- Runtime filter registration system
+- Parameter management with current/default values
+- Filter chain processing with error propagation
+- Preset system for saving/loading filter combinations
+- Filter application history tracking
+- Signal-based communication for UI integration
+- Basic auto-optimization framework (placeholder)
+- Comprehensive error handling and logging
+
+Note: This is a simpler service compared to EnhancedFilterService, designed for
+cases where filters are registered at runtime rather than discovered from files.
+"""
 from typing import Dict, List, Optional, Any, Callable
 from PySide6.QtCore import QObject, Signal
 import numpy as np

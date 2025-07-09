@@ -1,10 +1,36 @@
 """
-Scoring Right Panel with GDS and SEM image displays.
+Scoring Right Panel - Image Display and Comparison Interface
 
-This panel provides:
-- GDS image display
-- SEM image display
-- Image comparison tools
+This module provides the right panel for the scoring view, featuring dual image
+displays for GDS and SEM images with comparison tools and visual analysis.
+
+Main Class:
+- ScoringRightPanel: Right panel for scoring view with image displays
+
+Key Methods:
+- init_panel(): Initializes panel layout with image viewers and controls
+- update_gds_image(): Updates GDS image display with new data
+- update_sem_image(): Updates SEM image display with new data
+- clear_images(): Clears both image displays
+
+Signals Emitted:
+- comparison_toggled(bool): Image comparison mode toggled
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: ui/base_panels.BaseViewPanel (base panel functionality)
+- Uses: ui/components/image_viewer.ImageViewer (image display)
+- Uses: ui/view_manager.ViewMode (view mode management)
+- Called by: UI scoring workflow and main window
+- Coordinates with: Scoring operations and image analysis
+
+Features:
+- Dual image viewer setup for GDS and SEM images
+- Grouped image displays with clear labeling
+- Toggle comparison mode for side-by-side analysis
+- Integrated image viewer controls and functionality
+- Consistent styling with application theme
+- Signal-based communication for comparison operations
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 

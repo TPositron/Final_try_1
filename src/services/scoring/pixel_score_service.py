@@ -1,4 +1,53 @@
-"""Pixel overlap scoring service for computing pixel-level matches."""
+"""
+Pixel Score Service - Pixel-Level Overlap and Difference Analysis
+
+This service provides comprehensive pixel-level analysis for image comparison,
+including overlap metrics, difference calculations, and visualization generation
+for SEM/GDS alignment evaluation.
+
+Main Class:
+- PixelScoreService: Qt-based service for pixel-level scoring operations
+
+Key Methods:
+- compute_pixel_overlap(): Computes pixel overlap between binary images
+- compute_pixel_difference(): Computes pixel-wise differences between images
+- create_difference_overlay(): Creates color-coded difference visualization
+- get_last_result(): Returns most recent scoring result
+- create_overlap_visualization(): Creates color-coded overlap visualization
+
+Signals Emitted:
+- score_computed(dict): Score computation completed successfully
+- score_error(str): Score computation failed with error
+
+Dependencies:
+- Uses: numpy (array operations), cv2 (OpenCV image processing)
+- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
+- Uses: core/utils.get_logger (logging functionality)
+- Used by: Scoring services and alignment evaluation
+- Used by: UI components for metric display and visualization
+
+Overlap Metrics:
+- Overlap Ratio: Intersection over Union (Jaccard index)
+- Dice Score: 2 * intersection / (area1 + area2)
+- Precision: True positives / predicted positives
+- Recall: True positives / actual positives
+- F1 Score: Harmonic mean of precision and recall
+- Coverage ratios for both images
+
+Difference Metrics:
+- Mean Absolute Error (MAE)
+- Mean Squared Error (MSE)
+- Root Mean Squared Error (RMSE)
+- Peak Signal-to-Noise Ratio (PSNR)
+- Normalized error metrics
+- Min/max difference values
+
+Visualization Features:
+- Color-coded difference overlays with configurable colormaps
+- Overlap visualization with distinct colors for different regions
+- Red: Image1 only, Blue: Image2 only, Green: Overlap
+- White background for non-structure areas
+"""
 
 from typing import Optional, Dict, Tuple
 from PySide6.QtCore import QObject, Signal

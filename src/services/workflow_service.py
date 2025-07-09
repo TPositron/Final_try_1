@@ -1,6 +1,107 @@
 """
-Simple Workflow Service
-Coordinates SEM and GDS loading with simple sequential processing and basic state management.
+Workflow Service - Coordinated SEM/GDS Processing Pipeline
+
+This service coordinates SEM and GDS loading with sequential processing,
+state management, and workflow orchestration. It provides a unified interface
+for managing the complete image analysis pipeline from file loading to alignment.
+
+Main Classes:
+- WorkflowState: Enumeration of workflow states (IDLE, PROCESSING, READY, ERROR)
+- WorkflowStep: Enumeration of workflow steps (LOAD_SEM, LOAD_GDS, etc.)
+- WorkflowService: Main service for workflow coordination
+
+Key Methods:
+- load_sem_and_gds(): Coordinates loading of both SEM and GDS files
+- process_workflow(): Processes sequence of workflow steps
+- get_workflow_status(): Returns current workflow status and progress
+- load_sem_image(): Loads SEM image file
+- load_gds_file(): Loads GDS file
+- generate_structure_images(): Generates structure images for alignment
+- select_structure(): Selects structure for alignment operations
+- get_structure_list(): Returns list of available structures
+- is_ready_for_alignment(): Checks if workflow is ready for alignment
+- get_current_data(): Returns current workflow data
+
+Dependencies:
+- Uses: pathlib.Path, time, enum (standard libraries)
+- Uses: services/file_loading_service.FileLoadingService (file operations)
+- Uses: services/gds_image_service.GDSImageService (GDS image generation)
+- Uses: services/file_service.FileManager (file management)
+- Uses: core/models.SemImage (SEM image data model)
+- Uses: core/models/structure_definitions.get_default_structures (structure metadata)
+- Used by: UI workflow controllers and main application
+- Used by: Automated processing pipelines
+
+Workflow States:
+- IDLE: No active processing, ready to start
+- PROCESSING: Currently executing workflow steps
+- READY: Processing complete, ready for next operations
+- ERROR: Error occurred during processing
+
+Workflow Steps:
+- LOAD_SEM: Load SEM image file
+- LOAD_GDS: Load GDS layout file
+- GENERATE_STRUCTURES: Generate structure images for alignment
+- FILTER_PROCESSING: Apply image filters (planned)
+- ALIGNMENT: Perform alignment operations (planned)
+- SCORING: Calculate alignment scores (planned)
+
+State Management:
+- Current workflow state tracking
+- Step-by-step progress monitoring
+- Operation history with timestamps
+- Error state handling and recovery
+- Elapsed time tracking
+
+Data Management:
+- Current SEM image storage
+- Current GDS data storage
+- Generated structure images storage
+- Workflow results accumulation
+- Structure definitions integration
+
+Coordination Features:
+- Sequential step processing with error handling
+- Automatic structure generation option
+- Service integration and orchestration
+- Status reporting and progress tracking
+- History logging for debugging
+
+Error Handling:
+- Comprehensive exception handling for all operations
+- Error state management with recovery
+- Detailed error logging with context
+- Graceful degradation on failures
+- History tracking for error analysis
+
+Status Reporting:
+- Current state and step information
+- Elapsed time calculation
+- Data availability status
+- Readiness checks for next operations
+- Progress metrics and statistics
+
+Integration:
+- File loading service integration
+- GDS image service coordination
+- File manager utilization
+- Structure definition management
+- Service orchestration and coordination
+
+Usage Pattern:
+1. Create WorkflowService instance
+2. Load SEM and GDS files using load_sem_and_gds()
+3. Generate structure images automatically or manually
+4. Check readiness for alignment operations
+5. Process additional workflow steps as needed
+6. Monitor status and handle errors appropriately
+
+Advantages:
+- Unified: Single interface for complete workflow
+- Coordinated: Proper service integration and orchestration
+- Robust: Comprehensive error handling and state management
+- Flexible: Configurable workflow steps and parameters
+- Traceable: Complete history and status reporting
 """
 
 from typing import Dict, List, Optional, Tuple, Any

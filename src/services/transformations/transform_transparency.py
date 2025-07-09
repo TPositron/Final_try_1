@@ -1,5 +1,38 @@
 """
-Transform Transparency - Transparency/opacity transformation functionality.
+Transform Transparency - Transparency and Opacity Operations
+
+This module provides transparency and opacity transformation functionality
+for image blending, overlay operations, and visual composition in alignment
+visualization.
+
+Main Class:
+- TransformTransparency: Handles transparency and opacity transformations
+
+Key Methods:
+- set_transparency(): Sets transparency percentage (0-100)
+- set_opacity(): Sets opacity value (0.0-1.0)
+- get_transparency(): Returns current transparency percentage
+- get_opacity(): Returns current opacity value
+- apply_transparency(): Blends two images with transparency
+- apply_overlay(): Applies overlay with transparency
+- create_color_overlay(): Creates colored overlay on image
+- reset_transparency(): Resets to 50% transparency
+- make_opaque(): Sets to fully opaque
+- make_transparent(): Sets to fully transparent
+
+Dependencies:
+- Uses: numpy (array operations), cv2 (OpenCV for image resizing)
+- Uses: logging (error reporting and debugging)
+- Used by: Transformation services and visualization components
+- Used by: UI overlay and blending operations
+
+Features:
+- Dual transparency/opacity representation
+- Image normalization for consistent blending
+- Alpha blending with configurable transparency
+- Color overlay generation
+- Validation with range checking
+- Error handling and logging
 """
 
 import numpy as np

@@ -1,8 +1,92 @@
 """
-Frame Extraction Service
+Frame Extraction Service - GDS Frame-Based Data Extraction
 
-Handles extraction of GDS data using the frame-based approach, without modifying the GDS data.
-All transformations are applied to the view frame (viewport) only.
+This service handles extraction of GDS layout data using a frame-based approach
+that applies transformations to the viewport rather than modifying the underlying
+GDS data. It provides bitmap generation and file export capabilities with
+transformation support.
+
+Main Class:
+- FrameExtractionService: Frame-based GDS data extraction service
+
+Key Methods:
+- extract_to_bitmap(): Extracts GDS structure as bitmap using frame transformations
+- extract_to_file(): Extracts bitmap and saves to file with format support
+- _get_structure_id(): Converts structure names to numeric IDs
+- _calculate_pixel_size(): Calculates pixel size from GDS bounds and output resolution
+- _apply_transformations(): Applies transformation parameters to model frame
+
+Dependencies:
+- Uses: logging, pathlib.Path (standard libraries)
+- Uses: numpy (array operations), PIL.Image (image saving)
+- Uses: core/models/simple_aligned_gds_model (AlignedGdsModel, create_aligned_model_for_structure)
+- Used by: services/file_service.py (aligned image saving)
+- Used by: UI components for GDS visualization
+
+Frame-Based Approach:
+- Transformations applied to viewport/frame only
+- Original GDS data remains unmodified
+- View frame defines extraction region and transformations
+- Non-destructive transformation pipeline
+- Preserves original coordinate system integrity
+
+Transformation Support:
+- Translation: X/Y offset in pixels converted to GDS units
+- Scaling: Uniform scale factor applied to frame
+- Rotation: 90-degree increments plus residual rotation
+- Coordinate system conversion between UI pixels and GDS units
+- Transformation parameter validation and bounds checking
+
+Structure ID Mapping:
+- Circpol_T2: ID 1
+- IP935Left_11: ID 2
+- IP935Left_14: ID 3
+- QC855GC_CROSS_Bottom: ID 4
+- QC935_46: ID 5
+- main: ID 0 (default)
+- Hash-based fallback for unknown structure names
+
+Bitmap Generation:
+- Configurable output resolution (default 1024x666)
+- Layer filtering support for selective rendering
+- Grayscale bitmap output with proper scaling
+- Memory-efficient processing for large structures
+- Error handling with fallback mechanisms
+
+File Export Features:
+- Multiple image format support via PIL
+- Automatic directory creation for output paths
+- Grayscale conversion with proper intensity scaling
+- File existence validation and error recovery
+- Detailed logging for debugging and monitoring
+
+Pixel Size Calculation:
+- Automatic calculation from GDS bounds and output resolution
+- Aspect ratio preservation with limiting dimension approach
+- Minimum pixel size validation for edge cases
+- Coordinate system scaling for proper visualization
+- Error handling with reasonable defaults
+
+Error Handling:
+- Comprehensive exception handling for all operations
+- Detailed logging with context information
+- Graceful fallbacks for missing or invalid data
+- Parameter validation with default value substitution
+- File operation error recovery
+
+Advantages over Legacy Approach:
+- Non-destructive: Original GDS data preserved
+- Efficient: No polygon modification required
+- Flexible: Easy to adjust view parameters
+- Accurate: Maintains coordinate system precision
+- Scalable: Handles large structures efficiently
+
+Usage Pattern:
+1. Create FrameExtractionService instance
+2. Define transformation parameters (translation, rotation, scale)
+3. Specify GDS bounds and output resolution
+4. Extract bitmap or save to file
+5. Service handles coordinate conversion and rendering
 """
 
 import logging

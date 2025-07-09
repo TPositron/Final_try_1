@@ -1,15 +1,45 @@
 """
-Unified Main Window - Image Analysis Tool
-Combines functionality from both main_window.py and modular_main_window_clean.py
+Main Window - Unified Image Analysis Application
 
-This is the primary main window that provides:
-1. Core SEM/GDS alignment functionality
-2. Advanced filtering capabilities  
-3. Sequential filtering workflow
-4. Comprehensive scoring system
-5. Hybrid alignment with 3-point selection
+This is the primary main window that combines all functionality for SEM/GDS
+image analysis, alignment, filtering, and scoring operations.
 
-Use this file as the main entry point for the application.
+Main Class:
+- MainWindow: Primary application window with tabbed interface
+
+Key Features:
+- Core SEM/GDS alignment functionality
+- Advanced filtering capabilities
+- Sequential filtering workflow
+- Comprehensive scoring system
+- Hybrid alignment with 3-point selection
+- File operations and management
+- Real-time image processing and preview
+
+Main Methods:
+- load_sem_file(): Loads SEM image files
+- load_gds_file(): Loads GDS files with structure selection
+- run_auto_alignment(): Executes automatic alignment
+- save_results(): Saves analysis results
+- Various signal handlers for UI interactions
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: cv2, numpy (image processing)
+- Uses: services/* (core processing services)
+- Uses: ui/components/* (UI components)
+- Uses: ui/managers/* (operation managers)
+- Uses: ui/panels/* (UI panels)
+
+UI Structure:
+- Left Panel: Tabbed interface (Alignment, Filtering, Scoring)
+- Center: Image viewer with overlay capabilities
+- Right Panel: File selector and histogram view
+- Menu Bar: File, View, Tools, Help menus
+- Status Bar: Operation status and progress
+
+Entry Point:
+- main(): Application entry point function
 """
 
 import sys
@@ -33,7 +63,7 @@ from src.ui.view_manager import ViewManager, ViewMode
 from src.ui.base_panels import ViewPanelManager
 from src.services.simple_file_service import FileService
 from src.services.simple_image_processing_service import ImageProcessingService
-from src.services.transformations.transform_service import TransformService
+from src.services.unified_transformation_service import UnifiedTransformationService
 
 # Import modular managers
 from src.ui.managers.file_operations_manager import FileOperationsManager
@@ -87,7 +117,7 @@ class MainWindow(QMainWindow):
         # Initialize core services
         self.file_service = FileService(self)
         self.image_processing_service = ImageProcessingService()
-        self.transform_service = TransformService(self)
+        self.transform_service = UnifiedTransformationService()
         
         # Store original image for filter reset
         self.original_sem_image = None
@@ -520,19 +550,50 @@ class MainWindow(QMainWindow):
         self.ready_status_label.setStyleSheet("color: #f39c12; font-weight: bold;")
         layout.addWidget(self.ready_status_label)
         
+        # Point selection mode buttons
+        mode_layout = QHBoxLayout()
+        
+        self.select_sem_btn = QPushButton("Select SEM Points")
+        self.select_sem_btn.setCheckable(True)
+        self.select_sem_btn.setChecked(True)
+        self.select_sem_btn.clicked.connect(self._set_sem_mode)
+        self.select_sem_btn.setStyleSheet("QPushButton:checked { background-color: #e74c3c; color: white; }")
+        mode_layout.addWidget(self.select_sem_btn)
+        
+        self.select_gds_btn = QPushButton("Select GDS Points")
+        self.select_gds_btn.setCheckable(True)
+        self.select_gds_btn.clicked.connect(self._set_gds_mode)
+        self.select_gds_btn.setStyleSheet("QPushButton:checked { background-color: #3498db; color: white; }")
+        mode_layout.addWidget(self.select_gds_btn)
+        
+        self.current_point_mode = "sem"  # "sem" or "gds"
+        layout.addLayout(mode_layout)
+        
         # Control buttons
         buttons_layout = QHBoxLayout()
         
-        self.clear_points_btn = QPushButton("Clear All Points")
+        self.clear_sem_btn = QPushButton("Clear SEM")
+        self.clear_sem_btn.clicked.connect(self._clear_sem_points)
+        buttons_layout.addWidget(self.clear_sem_btn)
+        
+        self.clear_gds_btn = QPushButton("Clear GDS")
+        self.clear_gds_btn.clicked.connect(self._clear_gds_points)
+        buttons_layout.addWidget(self.clear_gds_btn)
+        
+        self.clear_points_btn = QPushButton("Clear All")
         self.clear_points_btn.clicked.connect(self._clear_all_points)
         buttons_layout.addWidget(self.clear_points_btn)
         
+        layout.addLayout(buttons_layout)
+        
+        # Calculate button
+        calc_layout = QHBoxLayout()
         self.calculate_alignment_btn = QPushButton("Calculate Alignment")
         self.calculate_alignment_btn.setEnabled(False)
         self.calculate_alignment_btn.clicked.connect(self._calculate_alignment)
-        buttons_layout.addWidget(self.calculate_alignment_btn)
+        calc_layout.addWidget(self.calculate_alignment_btn)
         
-        layout.addLayout(buttons_layout)
+        layout.addLayout(calc_layout)
         layout.addStretch()
     
     def _setup_advanced_filtering_tab(self):
@@ -726,8 +787,9 @@ class MainWindow(QMainWindow):
             self.file_service.file_loaded.connect(self.on_file_loaded)
             self.file_service.loading_error.connect(self.on_loading_error)
             
-            # Transform service signals
-            self.transform_service.transform_applied.connect(self.update_gds_display)
+            # Transform service signals (skip if method doesn't exist)
+            if hasattr(self.transform_service, 'transform_applied'):
+                self.transform_service.transform_applied.connect(self.update_gds_display)
             
             logger.info("All signals connected successfully")
             
@@ -1039,17 +1101,57 @@ class MainWindow(QMainWindow):
     def _on_alignment_subtab_changed(self, index):
         """Handle alignment sub-tab change."""
         if index == 1:  # Hybrid tab
-            self.image_viewer.set_point_selection_mode(True, "both")
+            self.image_viewer.set_point_selection_mode(True, self.current_point_mode)
+            # Update button states to match current mode
+            self._update_point_mode_buttons()
         else:  # Manual tab
             self.image_viewer.set_point_selection_mode(False)
     
+    def _update_point_mode_buttons(self):
+        """Update point mode button states."""
+        if self.current_point_mode == "sem":
+            self.select_sem_btn.setChecked(True)
+            self.select_gds_btn.setChecked(False)
+        else:
+            self.select_sem_btn.setChecked(False)
+            self.select_gds_btn.setChecked(True)
+    
+    def _set_sem_mode(self):
+        """Set SEM point selection mode."""
+        self.current_point_mode = "sem"
+        self.select_sem_btn.setChecked(True)
+        self.select_gds_btn.setChecked(False)
+        # Update image viewer mode
+        self.image_viewer.set_point_selection_mode(True, "sem")
+    
+    def _set_gds_mode(self):
+        """Set GDS point selection mode."""
+        self.current_point_mode = "gds"
+        self.select_sem_btn.setChecked(False)
+        self.select_gds_btn.setChecked(True)
+        # Update image viewer mode
+        self.image_viewer.set_point_selection_mode(True, "gds")
+    
+    def _clear_sem_points(self):
+        """Clear only SEM points."""
+        self.sem_points = []
+        self.image_viewer.clear_points("sem")
+        self._update_hybrid_status()
+    
+    def _clear_gds_points(self):
+        """Clear only GDS points."""
+        self.gds_points = []
+        self.image_viewer.clear_points("gds")
+        self._update_hybrid_status()
+    
     def _on_point_selected(self, x, y, point_type):
-        """Handle point selection."""
+        """Handle point selection based on current mode."""
         try:
-            if point_type == "sem":
+            # Use current mode instead of point_type
+            if self.current_point_mode == "sem":
                 if len(self.sem_points) < 3:
                     self.sem_points.append((x, y))
-            elif point_type == "gds":
+            elif self.current_point_mode == "gds":
                 if len(self.gds_points) < 3:
                     self.gds_points.append((x, y))
             
@@ -1080,16 +1182,22 @@ class MainWindow(QMainWindow):
     
     def _clear_all_points(self):
         """Clear all selected points."""
-        self.sem_points = []
-        self.gds_points = []
-        self.image_viewer.clear_points("both")
-        self._update_hybrid_status()
+        self._clear_sem_points()
+        self._clear_gds_points()
     
     def _calculate_alignment(self):
         """Calculate alignment from selected points."""
         try:
             if len(self.sem_points) == 3 and len(self.gds_points) == 3:
-                self.alignment_operations_manager.manual_align_3_point(self.sem_points, self.gds_points)
+                # Calculate transformation parameters from 3 points
+                from src.utils.three_point_alignment import calculate_transformation_parameters, apply_transformation_to_manual_alignment
+                
+                transform_params = calculate_transformation_parameters(self.sem_points, self.gds_points)
+                logger.info(f"Calculated transformation: {transform_params}")
+                
+                # Apply to manual alignment system
+                apply_transformation_to_manual_alignment(self, transform_params)
+                
                 logger.info("3-point alignment calculation completed")
             else:
                 QMessageBox.warning(self, "Warning", "Need exactly 3 points on both SEM and GDS images")
@@ -1175,10 +1283,9 @@ class MainWindow(QMainWindow):
             new_bounds, rotation_angle = self._calculate_transformed_bounds(params, structure_id)
             print(f"DEBUG: Calculated bounds: {new_bounds}, rotation: {rotation_angle}")
             
-            # Generate new GDS image with transformed coordinates
-            gds_service = self.gds_operations_manager.new_gds_service
-            transformed_gds_image = gds_service.generate_structure_display(
-                structure_id, (1024, 666), custom_bounds=new_bounds
+            # Delegate to alignment operations manager
+            transformed_gds_image = self.alignment_operations_manager.generate_aligned_gds(
+                structure_id, params
             )
             print(f"DEBUG: Generated image shape: {transformed_gds_image.shape if transformed_gds_image is not None else 'None'}")
             print(f"DEBUG: Structure ID used: {structure_id}")
@@ -1187,14 +1294,8 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Save Error", "Failed to generate transformed GDS image")
                 return
             
-            # Apply rotation to the final image if needed
+            # Final image is already transformed by UnifiedTransformationService
             final_image = transformed_gds_image
-            if abs(rotation_angle) > 0.1:  # Only rotate if significant rotation
-                height, width = final_image.shape[:2]
-                center = (width // 2, height // 2)
-                rotation_matrix = cv2.getRotationMatrix2D(center, rotation_angle, 1.0)
-                final_image = cv2.warpAffine(final_image, rotation_matrix, (width, height),
-                                           borderMode=cv2.BORDER_CONSTANT, borderValue=0)
             
             # Save as PNG image
             png_filename = f"aligned_gds_{timestamp}.png"

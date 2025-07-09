@@ -1,6 +1,51 @@
 """
-Automatic Filter Panel
-Framework for automatic filtering with categorized filter options.
+Automatic Filter Panel - Categorized Automatic Filtering Interface
+
+This module provides an automatic filtering panel with categorized filter selection
+for contrast enhancement, denoising, binarisation, and edge detection operations.
+
+Main Class:
+- AutomaticFilterPanel: Panel for automatic filtering with categorized filter selection
+
+Key Methods:
+- setup_ui(): Initializes UI with filter categories and control buttons
+- _setup_contrast_section(): Creates contrast enhancement filter options
+- _setup_denoising_section(): Creates noise reduction filter options
+- _setup_binarisation_section(): Creates binarisation filter options
+- _setup_edge_detection_section(): Creates edge detection filter options
+- _setup_control_buttons(): Creates action buttons for filter execution
+- _setup_progress_section(): Creates progress tracking interface
+- _on_contrast_changed(): Handles contrast filter selection changes
+- _on_denoising_changed(): Handles denoising filter selection changes
+- _on_binarisation_changed(): Handles binarisation filter selection changes
+- _on_edge_detection_changed(): Handles edge detection filter selection changes
+- _on_run_automatic_filtering(): Handles automatic filtering execution
+- _on_reset_selections(): Resets all filter selections
+- get_selected_filters(): Returns currently selected filters
+
+Signals Emitted:
+- automatic_filtering_requested(dict): Automatic filtering requested with selections
+
+Dependencies:
+- Uses: PySide6.QtWidgets, PySide6.QtCore (Qt framework)
+- Uses: typing (type hints for Dict, Any, List)
+- Called by: UI filtering components and workflow
+- Coordinates with: Image processing services and filter operations
+
+Filter Categories:
+- Contrast Enhancement: CLAHE with various intensity levels
+- Noise Reduction: Non-Local Means and Total Variation denoising
+- Binarisation: Automatic and manual threshold methods
+- Edge Detection: Canny and Laplacian edge detection
+
+Features:
+- Categorized filter selection with dropdown menus
+- Pre-configured filter parameters for different intensity levels
+- Progress tracking and status display
+- Reset functionality for clearing selections
+- Dark theme styling with consistent UI design
+- Placeholder functionality for future automatic processing
+- Multi-category filter combination support
 """
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QGroupBox, 
