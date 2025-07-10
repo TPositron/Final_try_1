@@ -73,7 +73,6 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
                                QGroupBox, QGridLayout, QCheckBox, QComboBox, QMessageBox,
                                QScrollArea)
 from PySide6.QtCore import Qt, Signal, QTimer
-from pathlib import Path
 from PySide6.QtWidgets import QCheckBox
 from src.ui.base_panels import BaseViewPanel
 from src.ui.view_manager import ViewMode
@@ -2350,70 +2349,65 @@ class AlignmentLeftPanel(QWidget):  # Change from BaseViewPanel to QWidget
             logger.error(f"Error setting alignment ready state: {e}")
     
     def save_aligned_gds_image(self):
-        """Save aligned GDS image with proper naming and format."""
+        """Save aligned GDS file with transformed coordinates using existing services."""
         try:
             from pathlib import Path
             from datetime import datetime
-            import cv2
-            import numpy as np
+            from src.core.models.simple_aligned_gds_model import AlignedGdsModel
+            from src.services.gds_transformation_service import GdsTransformationService
             
             # Get current parameters
             params = self.manual_tab.get_parameters()
             logger.info(f"Saving GDS with parameters: {params}")
             
+            # Check if we have GDS data loaded
+            if not hasattr(self, '_current_gds_model') or self._current_gds_model is None:
+                self.manual_tab.validation_error.emit("No GDS file loaded. Please load a GDS file first.")
+                return
+            
+            # Create AlignedGdsModel with current transformations
+            aligned_model = self._current_gds_model
+            
+            # Set UI parameters on the aligned model
+            aligned_model.set_ui_parameters(
+                translation_x_pixels=params.get('x_offset', 0),
+                translation_y_pixels=params.get('y_offset', 0),
+                scale=params.get('scale', 1.0),
+                rotation_degrees=params.get('rotation', 0)
+            )
+            
             # Create output directory
             output_dir = Path("Results/Aligned/manual")
             output_dir.mkdir(parents=True, exist_ok=True)
             
-            # Get SEM and GDS names for proper filename
-            sem_name = "sem_image"
-            gds_name = "gds_structure"
-            
-            # Try to get actual names from parent window if available
-            if hasattr(self, 'parent') and self.parent():
-                parent_window = self.parent()
-                while parent_window and not hasattr(parent_window, 'current_sem_path'):
-                    parent_window = parent_window.parent()
-                
-                if parent_window:
-                    if hasattr(parent_window, 'current_sem_path') and parent_window.current_sem_path:
-                        sem_name = Path(parent_window.current_sem_path).stem
-                    
-                    if hasattr(parent_window, 'gds_operations_manager') and parent_window.gds_operations_manager.current_structure_name:
-                        structure_name = parent_window.gds_operations_manager.current_structure_name
-                        if structure_name.startswith("Structure "):
-                            structure_id = int(structure_name.replace("Structure ", ""))
-                            gds_name = f"structure_{structure_id}"
-                        else:
-                            gds_name = structure_name.lower().replace(" ", "_")
-            
-            # Generate filename with proper naming: sem_name_aligned_gds_name.png
-            png_filename = f"{sem_name}_aligned_{gds_name}.png"
-            png_path = output_dir / png_filename
-            
-            # Create a placeholder aligned image (black structures on white background)
-            # This would normally come from the actual aligned GDS generation
-            aligned_image = np.full((666, 1024, 3), 255, dtype=np.uint8)  # White background
-            
-            # Save the image
-            cv2.imwrite(str(png_path), aligned_image)
-            
-            # Save transformation parameters
-            params_filename = f"{sem_name}_aligned_{gds_name}_params.txt"
-            params_path = output_dir / params_filename
+            # Generate filename with timestamp
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"aligned_manual_{timestamp}.gds"
+            output_path = output_dir / filename
             
-            with open(params_path, 'w') as f:
-                f.write(f"Alignment Parameters - {timestamp}\n")
-                f.write(f"SEM Image: {sem_name}\n")
-                f.write(f"GDS Structure: {gds_name}\n")
-                f.write(f"Translation X: {params.get('x_offset', 0)} pixels\n")
-                f.write(f"Translation Y: {params.get('y_offset', 0)} pixels\n")
-                f.write(f"Rotation: {params.get('rotation', 0)} degrees\n")
-                f.write(f"Scale: {params.get('scale', 1.0)}\n")
-                f.write(f"Method: Manual alignment\n")
+            # Use GdsTransformationService to create new GDS file
+            transformation_service = GdsTransformationService()
             
-            logger.info(f"Aligned GDS image saved: {png_path}")
+            # Get transformation parameters in the format expected by the service
+            transform_params = {
+                'x_offset': params.get('x_offset', 0),
+                'y_offset': params.get('y_offset', 0),
+                'rotation': params.get('rotation', 0),
+                'scale': params.get('scale', 1.0)
+            }
+            
+            # Transform the structure
+            transformed_cell = transformation_service.transform_structure(
+                original_gds_path=str(aligned_model.initial_model.gds_path),
+                structure_name=aligned_model.initial_model.cell.name,
+                transformation_params=transform_params,
+                gds_bounds=tuple(aligned_model.original_frame)
+            )
+            
+            # Save the transformed GDS file
+            transformation_service.save_transformed_gds(transformed_cell, str(output_path))
+            
+            logger.info(f"Aligned GDS file saved: {output_path}")
             
             # Update button state to show success
             self.manual_tab.save_aligned_gds_btn.setText("Saved!")

@@ -107,7 +107,7 @@ import sys
 from typing import Dict, List, Tuple, Optional, Any
 from pathlib import Path
 
-from src.core.models.simple_initial_gds_model import InitialGdsModel
+# Removed old InitialGdsModel import - using new approach with gds_display_generator
 from src.core.models.structure_definitions import StructureDefinition, StructureDefinitionManager
 
 
@@ -123,13 +123,14 @@ class GDSImageService:
     
     def __init__(self):
         """Initialize the GDS image generation service."""
-        self.current_gds_model: Optional[InitialGdsModel] = None
+        # Removed old GDS model - using new approach with gds_display_generator
         self.structure_manager = StructureDefinitionManager()
         self._image_cache = {}  # (structure_name, output_dimensions) -> np.ndarray
+        self._gds_loaded = False
 
     def load_gds_file(self, gds_path: str) -> bool:
         """
-        Load GDS file for image generation.
+        Load GDS file for image generation (simplified approach).
         
         Args:
             gds_path: Path to GDS file
@@ -138,9 +139,15 @@ class GDSImageService:
             True if loaded successfully, False otherwise
         """
         try:
-            self.current_gds_model = InitialGdsModel(gds_path)
-            self._image_cache.clear()  # Clear cache when loading a new GDS file
-            return True
+            # Using new approach - just validate file exists
+            from pathlib import Path
+            if Path(gds_path).exists():
+                self._gds_loaded = True
+                self._image_cache.clear()  # Clear cache when loading a new GDS file
+                return True
+            else:
+                print(f"GDS file not found: {gds_path}")
+                return False
         except Exception as e:
             print(f"Error loading GDS file: {e}")
             return False
@@ -149,7 +156,7 @@ class GDSImageService:
                              structure_name: str,
                              output_dimensions: Optional[Tuple[int, int]] = None) -> Optional[np.ndarray]:
         """
-        Generate binary image from GDS structure, using cache if available.
+        Generate binary image from GDS structure using new approach.
         
         Args:
             structure_name: Name of the structure to render
@@ -158,10 +165,9 @@ class GDSImageService:
         Returns:
             Binary image array or None if failed
         """
-        if not self.current_gds_model:
+        if not self._gds_loaded:
             raise ValueError("No GDS file loaded. Call load_gds_file() first.")
         
-        # FIX 1: Handle None dimensions properly
         if output_dimensions is None:
             output_dimensions = (self.DEFAULT_WIDTH, self.DEFAULT_HEIGHT)
         
@@ -169,18 +175,22 @@ class GDSImageService:
         if cache_key in self._image_cache:
             return self._image_cache[cache_key]
         
-        # Get structure definition
-        structure = self.structure_manager.get_structure(structure_name)
-        if not structure:
-            raise ValueError(f"Structure '{structure_name}' not found in definitions")
-        
-        # Generate binary image for the structure
+        # Use new approach with gds_display_generator
         try:
-            binary_image = self.current_gds_model.generate_structure_bitmap(
-                bounds=structure.bounds,
-                layers=structure.layers,
-                resolution=output_dimensions
-            )
+            from src.core.gds_display_generator import generate_gds_display, get_structure_definitions
+            
+            # Map structure name to number
+            structures = get_structure_definitions()
+            structure_num = None
+            for num, info in structures.items():
+                if info['name'] == structure_name:
+                    structure_num = num
+                    break
+            
+            if structure_num is None:
+                raise ValueError(f"Structure '{structure_name}' not found")
+            
+            binary_image, _ = generate_gds_display(structure_num, output_dimensions)
             if binary_image is not None:
                 self._image_cache[cache_key] = binary_image
             return binary_image
@@ -240,7 +250,7 @@ class GDSImageService:
             True if saved successfully, False otherwise
         """
         try:
-            if not self.current_gds_model:
+            if not self._gds_loaded:
                 print("No GDS file loaded. Call load_gds_file() first.")
                 return False
             
@@ -566,17 +576,26 @@ class GDSImageService:
         
         info = structure.to_dict()
         
-        # Add GDS-specific information if available
-        if self.current_gds_model:
+        # Add GDS-specific information using new approach
+        if self._gds_loaded:
             try:
-                # FIX 12: Remove call to non-existent method and use available methods
-                # Instead of extract_structure_from_definition, use available methods
-                polygons = self.current_gds_model.get_polygons(structure.layers)
-                info.update({
-                    'polygon_count': len(polygons),
-                    'gds_bounds': self.current_gds_model.bounds,
-                    'available_layers': self.current_gds_model.get_layers()
-                })
+                from src.core.gds_display_generator import get_structure_definitions
+                structures = get_structure_definitions()
+                
+                # Find structure number by name
+                structure_num = None
+                for num, struct_info in structures.items():
+                    if struct_info['name'] == structure_name:
+                        structure_num = num
+                        break
+                
+                if structure_num:
+                    struct_info = structures[structure_num]
+                    info.update({
+                        'structure_number': structure_num,
+                        'gds_bounds': struct_info['bounds'],
+                        'available_layers': struct_info['layers']
+                    })
             except Exception as e:
                 print(f"Error extracting GDS info for {structure_name}: {e}")
         
@@ -593,26 +612,31 @@ class GDSImageService:
     
     def is_gds_loaded(self) -> bool:
         """Check if a GDS file is currently loaded."""
-        return self.current_gds_model is not None
+        return self._gds_loaded
     
     def get_gds_info(self) -> Optional[Dict[str, Any]]:
         """
-        Get information about the loaded GDS file.
+        Get information about the loaded GDS file using new approach.
         
         Returns:
             Dictionary with GDS information or None if not loaded
         """
-        if not self.current_gds_model:
+        if not self._gds_loaded:
             return None
         
-        # FIX 13: Use correct attribute name (unit instead of unit_size)
-        return {
-            'path': str(self.current_gds_model.gds_path),
-            'bounds': self.current_gds_model.bounds,
-            'unit': self.current_gds_model.unit,  # Fixed: use 'unit' not 'unit_size'
-            'available_layers': self.current_gds_model.get_layers(),
-            'cell_name': self.current_gds_model.cell.name if self.current_gds_model.cell else None
-        }
+        try:
+            from src.core.gds_display_generator import get_project_gds_path, get_structure_definitions
+            gds_path = get_project_gds_path()
+            structures = get_structure_definitions()
+            
+            return {
+                'path': gds_path,
+                'available_structures': list(structures.keys()),
+                'structure_names': [info['name'] for info in structures.values()]
+            }
+        except Exception as e:
+            print(f"Error getting GDS info: {e}")
+            return None
 
 
 if __name__ == "__main__":

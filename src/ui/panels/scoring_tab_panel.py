@@ -44,6 +44,12 @@ from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, QLabel,
 from PySide6.QtCore import Signal, Qt
 import cv2
 import os
+import numpy as np
+from pathlib import Path
+from datetime import datetime
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.figure import Figure
 
 
 class ScoringTabPanel(QWidget):
@@ -114,11 +120,44 @@ class ScoringTabPanel(QWidget):
         
         self.results_display = QTextEdit()
         self.results_display.setReadOnly(True)
-        self.results_display.setMaximumHeight(200)
+        self.results_display.setMaximumHeight(150)
         self.results_display.setPlainText("No scores calculated yet.")
         results_layout.addWidget(self.results_display)
         
         layout.addWidget(results_group)
+        
+        # Chart display
+        chart_group = QGroupBox("Alignment Chart")
+        chart_layout = QVBoxLayout(chart_group)
+        
+        self.figure = Figure(figsize=(6, 4))
+        self.canvas = FigureCanvas(self.figure)
+        self.canvas.setMaximumHeight(200)
+        chart_layout.addWidget(self.canvas)
+        
+        layout.addWidget(chart_group)
+        
+        # Save buttons
+        save_group = QGroupBox("Save Results")
+        save_layout = QVBoxLayout(save_group)
+        
+        save_buttons_layout = QHBoxLayout()
+        
+        self.save_overlay_btn = QPushButton("Save Overlay Image")
+        self.save_overlay_btn.clicked.connect(self._save_overlay_image)
+        save_buttons_layout.addWidget(self.save_overlay_btn)
+        
+        self.save_chart_btn = QPushButton("Save Chart")
+        self.save_chart_btn.clicked.connect(self._save_chart)
+        save_buttons_layout.addWidget(self.save_chart_btn)
+        
+        save_layout.addLayout(save_buttons_layout)
+        
+        self.save_all_btn = QPushButton("Save All Results")
+        self.save_all_btn.clicked.connect(self._save_all_results)
+        save_layout.addWidget(self.save_all_btn)
+        
+        layout.addWidget(save_group)
         layout.addStretch()
     
     def setup_styling(self):
@@ -166,6 +205,10 @@ class ScoringTabPanel(QWidget):
                 background-color: #3c3c3c;
                 font-family: monospace;
             }
+            QPushButton:disabled {
+                background-color: #666666;
+                color: #999999;
+            }
         """)
     
     def _on_method_changed(self, method):
@@ -211,11 +254,15 @@ class ScoringTabPanel(QWidget):
                     if image_type == "sem":
                         main_window.image_viewer.set_sem_image(image)
                         main_window.current_sem_image = image
+                        # Store original for scoring
+                        self.original_sem_image = image
                     elif image_type == "gds":
-                        # Convert to white background, black structure
-                        processed_image = self._process_gds_image(image)
-                        main_window.image_viewer.set_gds_overlay(processed_image)
-                        main_window.current_gds_overlay = processed_image
+                        # Store original GDS image
+                        self.original_gds_image = image
+                        # Display with original colors (transparent background, black structures)
+                        rgba_display = self._create_display_overlay(image)
+                        main_window.image_viewer.set_gds_overlay(rgba_display)
+                        main_window.current_gds_overlay = rgba_display
                         main_window.image_viewer.set_overlay_visible(True)
         except Exception as e:
             print(f"Error loading {image_type} image: {e}")
@@ -232,73 +279,116 @@ class ScoringTabPanel(QWidget):
                 main_window.image_viewer.set_overlay_visible(False)
                 self.show_gds_btn.setText("Show GDS")
     
-    def _process_gds_image(self, image):
-        """Convert GDS image to white background, black structure."""
-        import numpy as np
+    def _create_display_overlay(self, image):
+        """Create display overlay with transparent background and black structures."""
         if len(image.shape) == 3:
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
         else:
             gray = image.copy()
         
-        # Invert: make background white (255) and structure black (0)
-        inverted = cv2.bitwise_not(gray)
+        # Create RGBA image with alpha channel
+        rgba_image = np.zeros((gray.shape[0], gray.shape[1], 4), dtype=np.uint8)
         
-        # Convert back to 3-channel for overlay
-        return cv2.cvtColor(inverted, cv2.COLOR_GRAY2BGR)
+        # Black pixels are structures, make them visible
+        structure_mask = gray < 127
+        rgba_image[structure_mask] = [0, 0, 0, 255]  # Black opaque structures
+        # Background remains transparent
+        
+        return rgba_image
+    
+    def _process_gds_for_scoring(self, image):
+        """Convert GDS image to white background, black structure for scoring calculation."""
+        if len(image.shape) == 3:
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = image.copy()
+        
+        # Create binary image: white background (255), black structures (0)
+        binary_image = np.full(gray.shape, 255, dtype=np.uint8)
+        structure_mask = gray < 127
+        binary_image[structure_mask] = 0
+        
+        return binary_image
     
     def _calculate_binary_match(self):
-        """Calculate binary pixel matching score."""
+        """Calculate binary pixel matching score with color overlay."""
         try:
-            main_window = self.window()
-            if hasattr(main_window, 'current_sem_image') and hasattr(main_window, 'current_gds_overlay'):
-                sem_img = main_window.current_sem_image
-                gds_img = main_window.current_gds_overlay
-                
-                if sem_img is not None and gds_img is not None:
-                    # Convert to grayscale if needed
-                    if len(sem_img.shape) == 3:
-                        sem_gray = cv2.cvtColor(sem_img, cv2.COLOR_BGR2GRAY)
-                    else:
-                        sem_gray = sem_img
-                    
-                    if len(gds_img.shape) == 3:
-                        gds_gray = cv2.cvtColor(gds_img, cv2.COLOR_BGR2GRAY)
-                    else:
-                        gds_gray = gds_img
-                    
-                    # Resize to same dimensions if needed
-                    if sem_gray.shape != gds_gray.shape:
-                        gds_gray = cv2.resize(gds_gray, (sem_gray.shape[1], sem_gray.shape[0]))
-                    
-                    # Convert to binary (threshold at 127)
-                    _, sem_binary = cv2.threshold(sem_gray, 127, 255, cv2.THRESH_BINARY)
-                    _, gds_binary = cv2.threshold(gds_gray, 127, 255, cv2.THRESH_BINARY)
-                    
-                    # Calculate matching pixels
-                    total_pixels = sem_binary.size
-                    matching_pixels = (sem_binary == gds_binary).sum()
-                    match_percentage = (matching_pixels / total_pixels) * 100
-                    
-                    # Calculate overlap metrics
-                    sem_white = (sem_binary == 255).sum()
-                    gds_white = (gds_binary == 255).sum()
-                    overlap_white = ((sem_binary == 255) & (gds_binary == 255)).sum()
-                    
-                    results = {
-                        "Overall Match": f"{match_percentage:.2f}%",
-                        "Matching Pixels": f"{matching_pixels:,} / {total_pixels:,}",
-                        "SEM White Pixels": f"{sem_white:,}",
-                        "GDS White Pixels": f"{gds_white:,}",
-                        "Overlapping White": f"{overlap_white:,}",
-                        "Precision": f"{(overlap_white/gds_white*100):.2f}%" if gds_white > 0 else "N/A",
-                        "Recall": f"{(overlap_white/sem_white*100):.2f}%" if sem_white > 0 else "N/A"
-                    }
-                    
-                    self.display_results(results)
+            if not hasattr(self, 'original_sem_image') or not hasattr(self, 'original_gds_image'):
+                self.results_display.setPlainText("Please load both SEM and GDS images first.")
+                return
+            
+            sem_img = self.original_sem_image
+            gds_img = self.original_gds_image
+            
+            if sem_img is not None and gds_img is not None:
+                # Convert to grayscale if needed
+                if len(sem_img.shape) == 3:
+                    sem_gray = cv2.cvtColor(sem_img, cv2.COLOR_BGR2GRAY)
                 else:
-                    self.results_display.setPlainText("Please load both SEM and GDS images first.")
+                    sem_gray = sem_img
+                
+                # Process GDS for scoring calculation (white background, black structures)
+                gds_binary_img = self._process_gds_for_scoring(gds_img)
+                
+                # Resize to same dimensions if needed
+                if sem_gray.shape != gds_binary_img.shape:
+                    gds_binary_img = cv2.resize(gds_binary_img, (sem_gray.shape[1], sem_gray.shape[0]))
+                
+                # Convert SEM to binary (threshold at 127)
+                _, sem_binary = cv2.threshold(sem_gray, 127, 255, cv2.THRESH_BINARY_INV)  # Black = structure
+                _, gds_binary = cv2.threshold(gds_binary_img, 127, 255, cv2.THRESH_BINARY_INV)  # Black = structure
+                
+                # Create color overlay image
+                overlay_img = np.zeros((sem_binary.shape[0], sem_binary.shape[1], 3), dtype=np.uint8)
+                overlay_img.fill(255)  # White background
+                
+                # Color coding:
+                # Black: Both SEM and GDS have structures (match)
+                # Red: SEM has structure, GDS doesn't (SEM only)
+                # Blue: GDS has structure, SEM doesn't (GDS only)
+                both_structure = (sem_binary == 255) & (gds_binary == 255)
+                sem_only = (sem_binary == 255) & (gds_binary == 0)
+                gds_only = (sem_binary == 0) & (gds_binary == 255)
+                
+                overlay_img[both_structure] = [0, 0, 0]      # Black - match
+                overlay_img[sem_only] = [0, 0, 255]          # Red - SEM only
+                overlay_img[gds_only] = [255, 0, 0]          # Blue - GDS only
+                
+                # Store overlay for saving
+                self.current_overlay = overlay_img
+                
+                # Calculate metrics
+                total_pixels = sem_binary.size
+                both_count = both_structure.sum()
+                sem_only_count = sem_only.sum()
+                gds_only_count = gds_only.sum()
+                
+                # Store metrics for chart
+                self.current_metrics = {
+                    'aligned': both_count,
+                    'sem_only': sem_only_count,
+                    'gds_only': gds_only_count,
+                    'total': total_pixels
+                }
+                
+                results = {
+                    "Aligned (Black)": f"{both_count:,} ({both_count/total_pixels*100:.2f}%)",
+                    "SEM Only (Red)": f"{sem_only_count:,} ({sem_only_count/total_pixels*100:.2f}%)",
+                    "GDS Only (Blue)": f"{gds_only_count:,} ({gds_only_count/total_pixels*100:.2f}%)",
+                    "Total Pixels": f"{total_pixels:,}",
+                    "Match Score": f"{both_count/total_pixels*100:.2f}%"
+                }
+                
+                self.display_results(results)
+                self._update_chart()
+                
+                # Update main window display with color overlay
+                main_window = self.window()
+                if hasattr(main_window, 'image_viewer'):
+                    main_window.image_viewer.set_sem_image(overlay_img)
+                
             else:
-                self.results_display.setPlainText("No images available for comparison.")
+                self.results_display.setPlainText("Please load both SEM and GDS images first.")
         except Exception as e:
             self.results_display.setPlainText(f"Error calculating binary match: {e}")
             print(f"Error in binary match calculation: {e}")
@@ -318,3 +408,134 @@ class ScoringTabPanel(QWidget):
                 result_text += f"{key}: {value}\n"
         
         self.results_display.setPlainText(result_text)
+    
+    def _update_chart(self):
+        """Update the alignment chart."""
+        if not hasattr(self, 'current_metrics'):
+            return
+        
+        self.figure.clear()
+        ax = self.figure.add_subplot(111)
+        
+        metrics = self.current_metrics
+        labels = ['Aligned\n(Black)', 'SEM Only\n(Red)', 'GDS Only\n(Blue)']
+        sizes = [metrics['aligned'], metrics['sem_only'], metrics['gds_only']]
+        colors = ['black', 'red', 'blue']
+        
+        # Create pie chart
+        wedges, texts, autotexts = ax.pie(sizes, labels=labels, colors=colors, autopct='%1.1f%%', startangle=90)
+        ax.set_title('Pixel Alignment Analysis')
+        
+        # Style the text
+        for text in texts:
+            text.set_color('white')
+            text.set_fontsize(8)
+        for autotext in autotexts:
+            autotext.set_color('white')
+            autotext.set_fontsize(8)
+            autotext.set_weight('bold')
+        
+        self.figure.patch.set_facecolor('#2b2b2b')
+        ax.set_facecolor('#2b2b2b')
+        
+        self.canvas.draw()
+    
+    def _save_overlay_image(self):
+        """Save the color overlay image."""
+        if not hasattr(self, 'current_overlay'):
+            self.results_display.setPlainText("No overlay image to save. Calculate scores first.")
+            return
+        
+        try:
+            # Get SEM image name for folder structure
+            main_window = self.window()
+            sem_name = "sem_image"
+            if hasattr(main_window, 'current_sem_path') and main_window.current_sem_path:
+                sem_name = Path(main_window.current_sem_path).stem
+            
+            # Create output directory
+            output_dir = Path("Results/Scoring") / sem_name
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save overlay image
+            overlay_path = output_dir / "sem_gds.png"
+            cv2.imwrite(str(overlay_path), self.current_overlay)
+            
+            self.results_display.append(f"\nOverlay saved: {overlay_path}")
+            
+        except Exception as e:
+            self.results_display.append(f"\nError saving overlay: {e}")
+    
+    def _save_chart(self):
+        """Save the alignment chart."""
+        if not hasattr(self, 'current_metrics'):
+            self.results_display.setPlainText("No chart to save. Calculate scores first.")
+            return
+        
+        try:
+            # Get SEM image name for folder structure
+            main_window = self.window()
+            sem_name = "sem_image"
+            if hasattr(main_window, 'current_sem_path') and main_window.current_sem_path:
+                sem_name = Path(main_window.current_sem_path).stem
+            
+            # Create output directory
+            output_dir = Path("Results/Scoring") / sem_name
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save chart
+            chart_path = output_dir / "chart.png"
+            self.figure.savefig(str(chart_path), facecolor='#2b2b2b', dpi=150, bbox_inches='tight')
+            
+            self.results_display.append(f"\nChart saved: {chart_path}")
+            
+        except Exception as e:
+            self.results_display.append(f"\nError saving chart: {e}")
+    
+    def _save_all_results(self):
+        """Save all results (overlay, chart, and scores)."""
+        if not hasattr(self, 'current_overlay') or not hasattr(self, 'current_metrics'):
+            self.results_display.setPlainText("No results to save. Calculate scores first.")
+            return
+        
+        try:
+            # Get SEM image name for folder structure
+            main_window = self.window()
+            sem_name = "sem_image"
+            if hasattr(main_window, 'current_sem_path') and main_window.current_sem_path:
+                sem_name = Path(main_window.current_sem_path).stem
+            
+            # Create output directory
+            output_dir = Path("Results/Scoring") / sem_name
+            output_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Save overlay image
+            overlay_path = output_dir / "sem_gds.png"
+            cv2.imwrite(str(overlay_path), self.current_overlay)
+            
+            # Save chart
+            chart_path = output_dir / "chart.png"
+            self.figure.savefig(str(chart_path), facecolor='#2b2b2b', dpi=150, bbox_inches='tight')
+            
+            # Save scores as text
+            score_path = output_dir / "score.txt"
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            with open(score_path, 'w') as f:
+                f.write(f"Scoring Results - {timestamp}\n")
+                f.write(f"SEM Image: {sem_name}\n")
+                f.write(f"Method: {self.current_method}\n\n")
+                
+                metrics = self.current_metrics
+                total = metrics['total']
+                f.write(f"Pixel Analysis:\n")
+                f.write(f"- Aligned (Black): {metrics['aligned']:,} ({metrics['aligned']/total*100:.2f}%)\n")
+                f.write(f"- SEM Only (Red): {metrics['sem_only']:,} ({metrics['sem_only']/total*100:.2f}%)\n")
+                f.write(f"- GDS Only (Blue): {metrics['gds_only']:,} ({metrics['gds_only']/total*100:.2f}%)\n")
+                f.write(f"- Total Pixels: {total:,}\n\n")
+                f.write(f"Match Score: {metrics['aligned']/total*100:.2f}%\n")
+            
+            self.results_display.append(f"\nAll results saved to: {output_dir}")
+            
+        except Exception as e:
+            self.results_display.append(f"\nError saving results: {e}")

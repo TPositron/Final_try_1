@@ -91,8 +91,27 @@ from src.ui.panels.sequential_filtering_panels import (
     ProcessingStage
 )
 
-# Import core models
-from src.core.models.structure_definitions import get_default_structures
+# UPDATED IMPORTS: Use the new simplified GDS files
+from src.core.gds_display_generator import (
+    get_structure_info, 
+    generate_gds_display, 
+    get_all_structures_info,
+    list_available_structures,
+    get_structure_definitions
+)
+from src.core.gds_aligned_generator import (
+    generate_aligned_gds, 
+    generate_transformed_gds,
+    calculate_new_bounds,
+    extract_and_render_gds
+)
+
+# Import core models (update if structure_definitions was using old files)
+try:
+    from src.core.models.structure_definitions import get_default_structures
+except ImportError:
+    # Fallback to gds_display_generator if structure_definitions doesn't exist
+    from src.core.gds_display_generator import get_structure_definitions as get_default_structures
 
 import logging
 logger = logging.getLogger(__name__)
@@ -277,23 +296,14 @@ class MainWindow(QMainWindow):
             return overlay
     
     def _calculate_transformed_bounds(self, params, structure_id):
-        """Calculate new GDS bounds based on alignment parameters."""
+        """Calculate new GDS bounds based on alignment parameters using the new simplified approach."""
         try:
-            # Get original bounds for the structure
-            gds_service = self.gds_operations_manager.new_gds_service
-            structures_info = gds_service.get_all_structures_info()
-            
-            if structure_id not in structures_info:
+            # Get structure info using the new simplified function
+            struct_info = get_structure_info(structure_id)
+            if not struct_info:
                 raise ValueError(f"Structure {structure_id} not found")
             
-            original_bounds = structures_info[structure_id]['bounds']
-            
-            # Calculate pixel to coordinate ratio
-            bounds_width = original_bounds[2] - original_bounds[0]
-            bounds_height = original_bounds[3] - original_bounds[1]
-            
-            pixel_to_coord_x = bounds_width / 1024
-            pixel_to_coord_y = bounds_height / 666
+            original_bounds = struct_info['bounds']
             
             # Get transformation parameters
             x_offset_pixels = params.get('x_offset', 0)
@@ -301,38 +311,16 @@ class MainWindow(QMainWindow):
             scale = params.get('scale', 1.0)
             rotation = params.get('rotation', 0)
             
-            # Convert pixel offsets to coordinate offsets
-            x_offset_coord = x_offset_pixels * pixel_to_coord_x
-            y_offset_coord = -y_offset_pixels * pixel_to_coord_y  # Flip Y for GDS coordinates
+            # Use the new bounds calculation function
+            zoom_percentage = scale * 100  # Convert scale to percentage
+            new_bounds = calculate_new_bounds(
+                original_bounds, 
+                zoom_percentage, 
+                x_offset_pixels, 
+                y_offset_pixels, 
+                struct_info
+            )
             
-            # Calculate center of original bounds
-            center_x = (original_bounds[0] + original_bounds[2]) / 2
-            center_y = (original_bounds[1] + original_bounds[3]) / 2
-            
-            # Apply transformations in order: move, scale, rotation
-            # 1. Move center
-            new_center_x = center_x + x_offset_coord
-            new_center_y = center_y + y_offset_coord
-            
-           # 2. Scale from new center (direct scaling, not inverse)
-            scaled_width = bounds_width * scale  # Direct scale for bounds
-            scaled_height = bounds_height * scale
-
-            # 3. Calculate scaled bounds centered at new position
-            scaled_bounds = [
-                new_center_x - scaled_width/2,   # min_x
-                new_center_y - scaled_height/2,  # min_y
-                new_center_x + scaled_width/2,   # max_x
-                new_center_y + scaled_height/2   # max_y
-            ]
-
-            # 4. Apply translation to all bounds (move the entire extraction window)
-            new_bounds = [
-                scaled_bounds[0] + x_offset_coord,  # min_x
-                scaled_bounds[1] + y_offset_coord,  # min_y
-                scaled_bounds[2] + x_offset_coord,  # max_x
-                scaled_bounds[3] + y_offset_coord   # max_y
-            ]
             print(f"DEBUG: Original bounds: {original_bounds}")
             print(f"DEBUG: Params: x={x_offset_pixels}, y={y_offset_pixels}, scale={scale}, rot={rotation}")
             print(f"DEBUG: New bounds: {new_bounds}")
@@ -343,7 +331,12 @@ class MainWindow(QMainWindow):
             logger.error(f"Error calculating transformed bounds: {e}")
             import traceback
             traceback.print_exc()
-            return structures_info[structure_id]['bounds'], 0 if structure_id in structures_info else ([0, 0, 1000, 1000], 0)
+            # Fallback to original bounds
+            try:
+                struct_info = get_structure_info(structure_id)
+                return struct_info['bounds'] if struct_info else ([0, 0, 1000, 1000], 0), 0
+            except:
+                return ([0, 0, 1000, 1000], 0)
     
     def _reset_save_button(self):
         """Reset the save button to original state."""
@@ -1294,7 +1287,9 @@ class MainWindow(QMainWindow):
         if self.current_sem_image is not None:
             self.image_viewer.set_sem_image(self.current_sem_image)
         if self.current_gds_overlay is not None:
-            self.image_viewer.set_gds_overlay(self.current_gds_overlay)
+            # For scoring, process GDS to have white background and black structures
+            processed_gds = self._process_gds_for_scoring(self.current_gds_overlay)
+            self.image_viewer.set_gds_overlay(processed_gds)
             self.image_viewer.set_overlay_visible(True)
             print(f"Scoring display: GDS overlay visible={self.image_viewer.get_overlay_visible()}")
         
@@ -1487,7 +1482,7 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Reset Error", f"Failed to reset transformation: {e}")
     
     def _on_generate_aligned_gds_clicked(self):
-        """Handle save aligned GDS button click - generate GDS with coordinate transformation."""
+        """Handle save aligned GDS button click - generate GDS with coordinate transformation using the new simplified functions."""
         try:
             from pathlib import Path
             from datetime import datetime
@@ -1499,28 +1494,31 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Save Error", "No alignment parameters available")
                 return
             
-            # Check if we have GDS service
-            if not hasattr(self, 'gds_operations_manager') or not self.gds_operations_manager.new_gds_service:
-                QMessageBox.warning(self, "Save Error", "No GDS service available")
-                return
-            
             # Create output directory
             output_dir = Path("Results/Aligned/manual")
             output_dir.mkdir(parents=True, exist_ok=True)
             
-            # Generate filename with timestamp
+            # Generate filename with SEM and GDS names
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             
-            # Get current structure ID from GDS operations manager
+            # Get SEM image name
+            sem_name = "sem_image"
+            if hasattr(self, 'current_sem_path') and self.current_sem_path:
+                sem_name = Path(self.current_sem_path).stem
+            
+            # Get GDS structure name
+            gds_name = "gds_structure"
             if hasattr(self, 'gds_operations_manager') and self.gds_operations_manager.current_structure_name:
-                # Extract structure number from name like "Structure 2"
                 structure_name = self.gds_operations_manager.current_structure_name
                 if structure_name.startswith("Structure "):
                     structure_id = int(structure_name.replace("Structure ", ""))
+                    gds_name = f"structure_{structure_id}"
                 else:
+                    gds_name = structure_name.lower().replace(" ", "_")
                     structure_id = 1
             else:
                 structure_id = getattr(self, 'current_structure_id', 1)
+                gds_name = f"structure_{structure_id}"
             
             print(f"DEBUG: Using structure ID: {structure_id}")
             
@@ -1528,10 +1526,24 @@ class MainWindow(QMainWindow):
             new_bounds, rotation_angle = self._calculate_transformed_bounds(params, structure_id)
             print(f"DEBUG: Calculated bounds: {new_bounds}, rotation: {rotation_angle}")
             
-            # Delegate to alignment operations manager
-            transformed_gds_image = self.alignment_operations_manager.generate_aligned_gds(
-                structure_id, params
+            # Use the new simplified function to generate aligned GDS
+            transform_params = {
+                'rotation': rotation_angle,
+                'zoom': params.get('scale', 1.0) * 100,  # Convert to percentage
+                'move_x': params.get('x_offset', 0),
+                'move_y': params.get('y_offset', 0)
+            }
+            
+            # Generate transformed GDS image using the new function
+            transformed_gds_image = generate_transformed_gds(
+                structure_id, 
+                transform_params['rotation'],
+                transform_params['zoom'],
+                transform_params['move_x'],
+                transform_params['move_y'],
+                (1024, 666)
             )
+            
             print(f"DEBUG: Generated image shape: {transformed_gds_image.shape if transformed_gds_image is not None else 'None'}")
             print(f"DEBUG: Structure ID used: {structure_id}")
             
@@ -1539,34 +1551,38 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Save Error", "Failed to generate transformed GDS image")
                 return
             
-            # Convert to black structures on transparent background for saving
+            # Convert to black structures on white background for saving
             if len(transformed_gds_image.shape) == 3:
                 gray = cv2.cvtColor(transformed_gds_image, cv2.COLOR_BGR2GRAY)
             else:
                 gray = transformed_gds_image.copy()
             
-            # Create RGBA image with black structures and transparent background
-            rgba_image = np.zeros((gray.shape[0], gray.shape[1], 4), dtype=np.uint8)
-            structure_mask = gray >= 127
-            rgba_image[structure_mask] = [0, 0, 0, 255]  # Black opaque structures
+            # Create RGB image with black structures and white background
+            rgb_image = np.full((gray.shape[0], gray.shape[1], 3), 255, dtype=np.uint8)  # White background
+            structure_mask = gray < 127  # Black pixels are structures
+            rgb_image[structure_mask] = [0, 0, 0]  # Black structures
+            
+            # Save as PNG with proper naming: sem_name_aligned_gds_name.png
+            png_filename = f"{sem_name}_aligned_{gds_name}.png"
+            png_path = output_dir / png_filename
+            cv2.imwrite(str(png_path), rgb_image)
+            
+            # Display the aligned GDS in the UI with black structures on transparent background
+            rgba_display = np.zeros((gray.shape[0], gray.shape[1], 4), dtype=np.uint8)
+            rgba_display[structure_mask] = [0, 0, 0, 255]  # Black opaque structures
             # Background remains transparent (alpha = 0)
             
-            # Save as PNG with alpha channel
-            png_filename = f"aligned_gds_{timestamp}.png"
-            png_path = output_dir / png_filename
-            cv2.imwrite(str(png_path), rgba_image)
-            
-            # Display the aligned GDS in the UI with alpha transparency
-            processed_final = self.theme_manager.process_gds_overlay(transformed_gds_image)
-            self.current_gds_overlay = processed_final
-            self.image_viewer.set_gds_overlay(processed_final)
+            self.current_gds_overlay = rgba_display
+            self.image_viewer.set_gds_overlay(rgba_display)
             self.image_viewer.set_overlay_visible(True)
             
             # Save transformation parameters
-            params_filename = f"alignment_params_{timestamp}.txt"
+            params_filename = f"{sem_name}_aligned_{gds_name}_params.txt"
             params_path = output_dir / params_filename
             with open(params_path, 'w') as f:
                 f.write(f"Alignment Parameters - {timestamp}\n")
+                f.write(f"SEM Image: {sem_name}\n")
+                f.write(f"GDS Structure: {gds_name}\n")
                 f.write(f"Translation X: {params.get('x_offset', 0)} pixels\n")
                 f.write(f"Translation Y: {params.get('y_offset', 0)} pixels\n")
                 f.write(f"Rotation: {params.get('rotation', 0)} degrees\n")
@@ -2005,8 +2021,32 @@ class MainWindow(QMainWindow):
             print(f"Error saving image: {e}")
     
     def _process_gds_for_scoring(self, image):
-        """Convert GDS image with alpha transparency background."""
-        return self.theme_manager.process_gds_overlay(image)
+        """Convert GDS image to white background, black structures for scoring."""
+        try:
+            import numpy as np
+            import cv2
+            
+            if len(image.shape) == 4:  # RGBA
+                # Extract alpha channel to identify structures
+                alpha = image[:, :, 3]
+                # Create binary image: white background, black structures
+                binary_image = np.full((image.shape[0], image.shape[1]), 255, dtype=np.uint8)
+                binary_image[alpha > 0] = 0  # Black where there are structures
+                return cv2.cvtColor(binary_image, cv2.COLOR_GRAY2BGR)
+            elif len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = image.copy()
+            
+            # Ensure white background, black structures
+            # If image has black background, invert it
+            if np.mean(gray) < 127:
+                gray = cv2.bitwise_not(gray)
+            
+            return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+        except Exception as e:
+            print(f"Error processing GDS for scoring: {e}")
+            return image
     
     def _refresh_gds_overlay(self):
         """Refresh GDS overlay with current colors."""
@@ -2270,6 +2310,26 @@ class MainWindow(QMainWindow):
                                    f"An unexpected error occurred:\n\n{exc_value}")
         except Exception as e:
             print(f"Critical error in error handler: {e}")
+    
+    def closeEvent(self, event):
+        """Handle window close event."""
+        try:
+            reply = QMessageBox.question(
+                self, "Confirm Exit",
+                "Are you sure you want to exit?",
+                QMessageBox.Yes | QMessageBox.No,
+                QMessageBox.No
+            )
+            
+            if reply == QMessageBox.Yes:
+                logger.info("Application closing")
+                event.accept()
+            else:
+                event.ignore()
+                
+        except Exception as e:
+            logger.error(f"Error during close: {e}")
+            event.accept()
 
 
 class ColorPaletteDialog(QDialog):
@@ -2447,26 +2507,6 @@ class TextColorDialog(QDialog):
     
     def get_selected_color(self):
         return self.selected_color
-    
-    def closeEvent(self, event):
-        """Handle window close event."""
-        try:
-            reply = QMessageBox.question(
-                self, "Confirm Exit",
-                "Are you sure you want to exit?",
-                QMessageBox.Yes | QMessageBox.No,
-                QMessageBox.No
-            )
-            
-            if reply == QMessageBox.Yes:
-                logger.info("Application closing")
-                event.accept()
-            else:
-                event.ignore()
-                
-        except Exception as e:
-            logger.error(f"Error during close: {e}")
-            event.accept()
 
 
 def main():
@@ -2474,6 +2514,13 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Image Analysis Tool - Unified")
     app.setOrganizationName("Image Analysis")
+    
+    # Create necessary directories
+    from pathlib import Path
+    Path("Results/Scoring").mkdir(parents=True, exist_ok=True)
+    Path("Results/Aligned/manual").mkdir(parents=True, exist_ok=True)
+    Path("Results/SEM_Filters/manual").mkdir(parents=True, exist_ok=True)
+    Path("Results/SEM_Filters/auto").mkdir(parents=True, exist_ok=True)
     
     window = MainWindow()
     window.show()

@@ -397,64 +397,55 @@ class FileService(QObject):
             if file_path.stat().st_size == 0:
                 raise ValueError(f"GDS file is empty: {file_path}")
             
-            # Import extraction utilities
+            # Use new GDS display generator approach
             try:
-                from src.core.models.simple_initial_gds_model import InitialGdsModel
-                from src.core.models.simple_gds_extraction import (
-                    get_structure_info, extract_frame, PREDEFINED_STRUCTURES
-                )
+                from src.core.gds_display_generator import get_structure_info, STRUCTURE_BOUNDS
             except ImportError as e:
-                logger.error(f"Failed to import GDS models: {e}")
+                logger.error(f"Failed to import GDS display generator: {e}")
                 raise ImportError(f"GDS processing modules not available: {e}")
             
-            self.loading_progress.emit("Initializing GDS model...")
+            self.loading_progress.emit("Processing GDS file...")
             
-            # Create InitialGdsModel
-            gds_model = InitialGdsModel(str(file_path))
-            
+            # Use new approach - just store basic file info
             result_data = {
                 'file_path': str(file_path),
-                'gds_model': gds_model,
                 'metadata': {
-                    'unit': gds_model.unit,
-                    'precision': gds_model.precision,
-                    'cell_name': gds_model.cell.name if gds_model.cell else None,
-                    'available_layers': gds_model.get_layers(),
-                    'bounds': gds_model.bounds
+                    'format': file_path.suffix.lower(),
+                    'file_size': file_path.stat().st_size,
+                    'available_structures': list(STRUCTURE_BOUNDS.keys())
                 }
             }
             
-            # If structure_id is specified, extract that specific structure
+            # If structure_id is specified, get structure info using new approach
             if structure_id is not None:
-                self.loading_progress.emit(f"Extracting structure {structure_id}...")
+                self.loading_progress.emit(f"Getting structure {structure_id} info...")
                 
-                if structure_id in PREDEFINED_STRUCTURES:
-                    structure_info = get_structure_info(gds_model, structure_id)
-                    structure_bounds = PREDEFINED_STRUCTURES[structure_id]['bounds']
-                    structure_layers = layers or PREDEFINED_STRUCTURES[structure_id]['layers']
-                    
-                    # Extract the frame for this structure
-                    extracted_frame = extract_frame(gds_model, structure_bounds, structure_layers)
+                if structure_id in STRUCTURE_BOUNDS:
+                    structure_info = get_structure_info(structure_id)
+                    structure_bounds = STRUCTURE_BOUNDS[structure_id]
                     
                     result_data['extracted_structure'] = {
                         'structure_id': structure_id,
                         'structure_info': structure_info,
-                        'frame_data': extracted_frame
+                        'bounds': structure_bounds
                     }
                     
-                    self.loading_progress.emit(f"Structure {structure_id} extracted successfully")
+                    self.loading_progress.emit(f"Structure {structure_id} info retrieved successfully")
                 else:
                     raise ValueError(f"Unknown structure ID: {structure_id}")
             
-            # Create binary images from extracted data if structure was extracted
+            # Generate binary image using new approach if structure was specified
             if 'extracted_structure' in result_data:
-                self.loading_progress.emit("Creating binary images...")
+                self.loading_progress.emit("Generating structure image...")
                 
-                binary_image = self._create_binary_image_from_polygons(
-                    result_data['extracted_structure']['frame_data']['polygons'],
-                    result_data['extracted_structure']['frame_data']['bounds']
-                )
-                result_data['extracted_structure']['binary_image'] = binary_image
+                try:
+                    from src.core.gds_display_generator import generate_gds_display
+                    binary_image, _ = generate_gds_display(structure_id, target_size=(1024, 666))
+                    result_data['extracted_structure']['binary_image'] = binary_image
+                except Exception as e:
+                    logger.warning(f"Failed to generate structure image: {e}")
+                    # Create empty image as fallback
+                    result_data['extracted_structure']['binary_image'] = np.zeros((666, 1024), dtype=np.uint8)
             
             logger.info(f"GDS file loaded successfully: {file_path}")
             
@@ -476,69 +467,7 @@ class FileService(QObject):
             self.loading_error.emit(error_msg)
             return None
     
-    # Helper method to create binary images from polygons
-    def _create_binary_image_from_polygons(self, polygons: List[np.ndarray], 
-                                          bounds: Tuple[float, float, float, float],
-                                          image_size: Tuple[int, int] = (1024, 666)) -> np.ndarray:
-        """
-        Create binary image from polygon data.
-        
-        Args:
-            polygons: List of polygon coordinate arrays
-            bounds: (xmin, ymin, xmax, ymax) bounds of the region
-            image_size: (width, height) of output image
-            
-        Returns:
-            Binary numpy array representing the polygons
-        """
-        try:
-            import cv2
-            
-            width, height = image_size
-            binary_image = np.zeros((height, width), dtype=np.uint8)
-            
-            if not polygons:
-                logger.warning("No polygons provided for binary image creation")
-                return binary_image
-            
-            xmin, ymin, xmax, ymax = bounds
-            
-            # Ensure bounds are valid
-            if xmin >= xmax or ymin >= ymax:
-                logger.warning(f"Invalid bounds for binary image: {bounds}")
-                return binary_image
-            
-            x_scale = width / (xmax - xmin)
-            y_scale = height / (ymax - ymin)
-            
-            logger.debug(f"Creating binary image: bounds={bounds}, scale=({x_scale:.2f}, {y_scale:.2f})")
-            
-            for i, polygon in enumerate(polygons):
-                if len(polygon) < 3:  # Need at least 3 points for a polygon
-                    continue
-                
-                # Transform polygon coordinates to image coordinates
-                transformed_points = []
-                for x, y in polygon:
-                    img_x = int((x - xmin) * x_scale)
-                    img_y = int((y - ymin) * y_scale)
-                    # Clamp to image bounds
-                    img_x = max(0, min(width - 1, img_x))
-                    img_y = max(0, min(height - 1, img_y))
-                    transformed_points.append([img_x, img_y])
-                
-                if len(transformed_points) >= 3:
-                    # Fill polygon - fix cv2.fillPoly arguments
-                    points_array = np.array(transformed_points, dtype=np.int32)
-                    cv2.fillPoly(binary_image, [points_array], (255,))  # Color as tuple
-            
-            logger.debug(f"Binary image created: shape={binary_image.shape}, non-zero pixels={np.count_nonzero(binary_image)}")
-            return binary_image
-            
-        except Exception as e:
-            logger.error(f"Failed to create binary image: {e}")
-            # Return empty image on error
-            return np.zeros((image_size[1], image_size[0]), dtype=np.uint8)
+
     
     # Step 74: Implement file saving with basic file organization
     def save_alignment_result(self, data: Dict[str, Any], mode: str = "manual") -> Optional[Path]:
@@ -931,10 +860,13 @@ class FileService(QObject):
             Dictionary mapping structure IDs to structure info
         """
         try:
-            from src.core.models.simple_gds_extraction import PREDEFINED_STRUCTURES
-            return PREDEFINED_STRUCTURES.copy()
+            from src.core.gds_display_generator import STRUCTURE_BOUNDS, get_structure_info
+            structures = {}
+            for structure_id in STRUCTURE_BOUNDS.keys():
+                structures[structure_id] = get_structure_info(structure_id)
+            return structures
         except ImportError:
-            logger.warning("PREDEFINED_STRUCTURES not available")
+            logger.warning("STRUCTURE_BOUNDS not available")
             return {}
 
     def get_sem_image_cropped(self, file_path: Path) -> Optional[np.ndarray]:
@@ -967,80 +899,49 @@ class FileService(QObject):
             return result['sem_image']
         return None
 
-    def save_aligned_gds(self, aligned_model, output_path: str) -> bool:
+    def save_aligned_gds(self, structure_num: int, transform_params: Dict[str, float], output_path: str) -> bool:
         """
-        Create a new GDS file with transformed coordinates that match the SEM image alignment.
-        
-        Process:
-        1. Takes initial bounds from the selected GDS structure
-        2. Applies transformation data (rotation, zoom, movement) 
-        3. Calculates new coordinates using transformations
-        4. Creates a new GDS file with the transformed coordinates
+        Save aligned GDS image using new bounds-based approach.
         
         Args:
-            aligned_model: AlignedGdsModel instance with transformations
-            output_path: Path where to save the new GDS file
+            structure_num: Structure number (1-5)
+            transform_params: Dictionary with rotation, zoom, move_x, move_y
+            output_path: Path where to save the aligned image
             
         Returns:
             True if saved successfully, False otherwise
         """
         try:
-            try:
-                from .gds_transformation_service import GdsTransformationService
-                import gdstk
-            except ImportError as e:
-                logger.error(f"Required modules not available for GDS transformation: {e}")
-                self.error_occurred.emit(f"GDS transformation modules not available: {e}")
-                return False
+            from src.core.gds_aligned_generator import generate_aligned_gds
+            from PIL import Image
             
-            # Get the original GDS file path and structure info
-            initial_model = aligned_model.initial_model
-            original_gds_path = str(initial_model.gds_path)
+            logger.info(f"Saving aligned GDS for structure {structure_num}")
+            logger.info(f"Transform params: {transform_params}")
             
-            # Get the actual structure name from the cell
-            structure_name = initial_model.cell.name
-            
-            # Get the feature bounds that define the structure area
-            feature_bounds = tuple(aligned_model.original_frame)
-            
-            # Get transformation parameters from the aligned model
-            ui_params = aligned_model.get_ui_parameters()
-            transformation_params = {
-                'x_offset': ui_params.get('translation_x_pixels', 0.0),
-                'y_offset': ui_params.get('translation_y_pixels', 0.0),
-                'rotation': ui_params.get('rotation_degrees', 0.0),
-                'scale': ui_params.get('scale', 1.0)
-            }
-            
-            logger.info(f"Creating aligned GDS for structure: {structure_name}")
-            logger.info(f"Feature bounds: {feature_bounds}")
-            logger.info(f"Transformation params: {transformation_params}")
-            
-            # Use the transformation service to create the new GDS
-            transformation_service = GdsTransformationService()
-            transformed_cell = transformation_service.transform_structure(
-                original_gds_path=original_gds_path,
-                structure_name=structure_name,
-                transformation_params=transformation_params,
-                gds_bounds=feature_bounds,
-                canvas_size=(1024, 666)
+            # Generate aligned GDS image using new approach
+            aligned_image, bounds = generate_aligned_gds(
+                structure_num=structure_num,
+                transform_params=transform_params,
+                target_size=(1024, 666)
             )
             
-            # Create a new library with the transformed cell using gdstk
-            new_library = gdstk.Library()
-            new_library.add(transformed_cell)
-            
-            # Ensure output path has .gds extension
+            # Ensure output directory exists
             output_path_obj = Path(output_path)
-            if output_path_obj.suffix.lower() != '.gds':
-                output_path = str(output_path_obj) + '.gds'
+            output_path_obj.parent.mkdir(parents=True, exist_ok=True)
             
-            # Write the new GDS file using gdstk
-            new_library.write_gds(output_path)
+            # Save as PNG image (since we're working with image data now)
+            if not output_path.lower().endswith(('.png', '.jpg', '.jpeg')):
+                output_path = str(output_path_obj.with_suffix('.png'))
             
-            logger.info(f"Successfully saved aligned GDS to: {output_path}")
-            self.file_saved.emit("GDS", str(output_path))
-            return True
+            # Convert to PIL Image and save
+            img = Image.fromarray(aligned_image)
+            img.save(output_path)
+            
+            logger.info(f"Successfully saved aligned GDS image to: {output_path}")
+            self.file_saved.emit("GDS_ALIGNED", str(output_path))
+            
+            # Return both success status and the aligned image for display/scoring
+            return aligned_image
             
         except Exception as e:
             error_msg = f"Failed to save aligned GDS: {e}"
@@ -1052,9 +953,9 @@ class FileService(QObject):
         """Get the last loaded GDS data."""
         return self._last_loaded_gds_data
 
-    def test_initial_gds_loading(self, structure_id: int = 1) -> bool:
+    def test_gds_display_generation(self, structure_id: int = 1) -> bool:
         """
-        Test the initial GDS loading workflow for debugging.
+        Test the GDS display generation workflow for debugging.
         
         Args:
             structure_id: Structure ID to test (1-5)
@@ -1063,35 +964,16 @@ class FileService(QObject):
             True if successful, False otherwise
         """
         try:
-            # Test with the default GDS file
-            gds_path = self.gds_dir / "Institute_Project_GDS1.gds"
+            from src.core.gds_display_generator import generate_gds_display
             
-            if not gds_path.exists():
-                logger.error(f"Test failed: GDS file not found at {gds_path}")
+            logger.info(f"Testing GDS display generation: structure {structure_id}")
+            
+            # Generate GDS display using new approach
+            binary_image, bounds = generate_gds_display(structure_id, target_size=(1024, 666))
+            
+            if binary_image is None:
+                logger.error("Test failed: No binary image returned")
                 return False
-            
-            logger.info(f"Testing initial GDS loading: structure {structure_id}")
-            
-            # Load GDS file with structure extraction
-            result = self.load_gds_file(gds_path, structure_id=structure_id)
-            
-            if not result:
-                logger.error("Test failed: No result returned from load_gds_file")
-                return False
-            
-            # Check if structure was extracted
-            if 'extracted_structure' not in result:
-                logger.error("Test failed: No extracted_structure in result")
-                return False
-            
-            structure_data = result['extracted_structure']
-            
-            # Check if binary image was created
-            if 'binary_image' not in structure_data:
-                logger.error("Test failed: No binary_image in extracted_structure")
-                return False
-            
-            binary_image = structure_data['binary_image']
             
             # Validate binary image
             if binary_image.shape != (666, 1024):
@@ -1105,6 +987,7 @@ class FileService(QObject):
             # Check if image has content
             non_zero_pixels = np.count_nonzero(binary_image)
             logger.info(f"Test success: Binary image created with {non_zero_pixels} non-zero pixels")
+            logger.info(f"Bounds: {bounds}")
             
             if non_zero_pixels == 0:
                 logger.warning("Test warning: Binary image is empty (no polygons found)")

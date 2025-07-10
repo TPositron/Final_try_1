@@ -16,132 +16,34 @@ Dependencies:
 ───── C:\Users\tarik\Desktop\Image_analysis\src\core\gds_aligned_generator.py ─────
 GDS Aligned Generator - Core GDS Transformation Engine
 
-This module is the core transformation engine that generates aligned GDS images by applying
-transformation parameters (rotation, zoom, movement) to GDS structures. It provides the
-low-level functionality for the alignment system.
+This module generates aligned GDS images using a new bounds-based approach that separates
+90-degree rotations (coordinate-level) from fine rotations (image-level) for optimal
+quality and performance.
 
 Key Functions:
 - generate_aligned_gds(): Main function that applies transformations to GDS structures
-- generate_transformed_gds_image(): Core transformation logic with coherent parameter application
-- generate_base_gds_image(): Legacy compatibility function for basic transformations
-- apply_zoom_transform(): Applies zoom transformations around image center
-- apply_move_transform(): Applies translation transformations
-- rotate_polygon(): Rotates individual polygons around specified center points
+- generate_transformed_gds_image(): New bounds-based transformation logic
+- _extract_and_render_gds(): Extracts GDS data from calculated bounds
+- _apply_fine_rotation(): Applies non-90° rotations to final image
 
-Transformation Order (Critical):
-1. Movement (translation)
-2. Rotation (90-degree increments)
-3. Zoom (scaling)
+New Transformation Approach:
+1. Calculate new bounds (includes 90° rotations, translation, zoom)
+2. Extract GDS data from new bounds only
+3. Render to image
+4. Apply fine rotation (non-90° angles) to final image
 
 Dependencies:
 - Uses: gdspy (GDS file reading), numpy, cv2 (image processing)
-- Uses: gds_display_generator (structure info and bounds)
+- Uses: gds_display_generator (bounds calculation and structure info)
 - Called by: services/transformation_service.py
 - Called by: services/manual_alignment_service.py
 - Called by: services/auto_alignment_service.py
-- Called by: ui/alignment_controller.py (indirectly)
 
-Data Flow:
-1. Receives structure number and transformation parameters
-2. Loads GDS file and extracts polygons for specified structure
-3. Applies transformations in correct order to polygon coordinates
-4. Renders transformed polygons to bitmap image
-5. Returns aligned image for display/analysis
-
-Critical Notes:
-- Maintains exact UI behavior compatibility
-- Handles rotation expansion for proper bounds calculation
-- Uses coherent transformation application (not incremental)
-- Supports both legacy and modern parameter formats
-
-───── C:\Users\tarik\Desktop\Image_analysis\src\core\gds_display_generator.py ─────
-GDS Display Generator - Core GDS Visualization Engine
-
-This module provides the fundamental GDS visualization capabilities for the application.
-It handles loading GDS files, extracting specific structures, and generating display images
-that can be overlaid on SEM images for alignment purposes.
-
-Key Functions:
-- generate_display_gds(): Main function to generate structure display images
-- get_structure_info(): Retrieves metadata for predefined structures
-- get_gds_path(): Returns the default GDS file path
-- list_available_structures(): Lists all available structure IDs
-- generate_display_gds_with_bounds(): Generates displays with custom bounds
-- get_all_structures_info(): Returns complete structure metadata
-
-Predefined Structures (Hard-coded):
-1. Circpol_T2 - Layer 14
-2. IP935Left_11 - Layers 1,2
-3. IP935Left_14 - Layer 1
-4. QC855GC_CROSS_Bottom - Layers 1,2
-5. QC935_46 - Layer 1
-
-Dependencies:
-- Uses: gdspy (GDS file reading), numpy, cv2 (image processing)
-- Called by: gds_aligned_generator.py (for structure info)
-- Called by: services/new_gds_service.py
-- Called by: services/gds_image_service.py
-- Called by: ui/gds_manager.py (indirectly)
-
-Data Flow:
-1. Loads GDS file using gdspy
-2. Extracts polygons for specified layers within structure bounds
-3. Transforms polygon coordinates to image pixel coordinates
-4. Renders polygons to binary image using cv2.fillPoly
-5. Returns image for display or further processing
-
-Critical Notes:
-- Uses hard-coded structure definitions for consistency
-- Applies Y-axis flipping for proper image coordinate system
-- Generates binary images (0=structure, 255=background)
-- Maintains aspect ratio and centering for proper alignment
-
-───── C:\Users\tarik\Desktop\Image_analysis\src\core\simple_gds_loader.py ─────
-Simple GDS Loader - Streamlined GDS File Processing
-
-This module provides a simplified, object-oriented interface for loading and processing
-GDS files. It focuses on ease of use and reliability, providing a clean API for
-structure extraction and image generation.
-
-Key Features:
-- Object-oriented GDS file handling
-- Predefined structure definitions for consistency
-- Automatic image generation with proper scaling
-- Error handling and fallback mechanisms
-- Support for both grayscale and colored output
-
-Main Class:
-- SimpleGDSLoader: Main class for GDS file operations
-
-Key Methods:
-- generate_structure_image(): Creates images for specific structures
-- generate_full_cell_image(): Creates images of entire GDS cells
-- get_structure_info(): Retrieves structure metadata
-- list_structures(): Lists available structures
-
-Predefined Structures:
-Same as gds_display_generator.py for consistency:
-1. Circpol_T2, 2. IP935Left_11, 3. IP935Left_14, 4. QC855GC_CROSS_Bottom, 5. QC935_46
-
-Dependencies:
-- Uses: gdspy (GDS reading), numpy, cv2 (image processing)
-- Called by: services/file_service.py
-- Called by: ui/file_operations.py
-- Called by: ui/gds_manager.py
-
-Data Flow:
-1. Loads GDS file and validates structure
-2. Extracts polygons using gdspy API
-3. Filters polygons by layer and bounds
-4. Transforms coordinates to image space
-5. Renders to binary or colored images
-6. Returns processed images for display
-
-Advantages over direct gdspy usage:
-- Simplified API with error handling
-- Consistent structure definitions
-- Automatic scaling and centering
-- Support for different output formats
+Advantages:
+- Clean 90° rotations (coordinate-level, no quality loss)
+- Simple fine rotations (image-level)
+- Single GDS extraction per transformation
+- Consistent and predictable results
 
 ───── C:\Users\tarik\Desktop\Image_analysis\src\core\__init__.py ─────
 Core package for SEM/GDS alignment tool.
@@ -241,14 +143,6 @@ This module provides utilities for:
 - Structure validation
 - Cropping logic for frame extraction
 
-───── C:\Users\tarik\Desktop\Image_analysis\src\core\models\simple_initial_gds_model.py ─────
-Initial GDS model for loading and processing GDS files using gdstk.
-
-This module provides the InitialGdsModel class for:
-- Loading GDS files with proper error handling
-- Extracting basic information (layers, cells, bounds)
-- Basic polygon data extraction
-
 ───── C:\Users\tarik\Desktop\Image_analysis\src\core\models\simple_models.py ─────
 Core data models for the SEM/GDS Alignment Tool.
 
@@ -275,18 +169,6 @@ Basic data structures for representing:
 Classes:
     SemImage: Basic SEM image class with numpy array storage
     InitialGdsModel: Basic GDS file loader using gdstk
-
-───── C:\Users\tarik\Desktop\Image_analysis\src\core\pipeline\automatic_pipeline_separate.py ─────
-Step 16: Completely separate Automatic Processing Pipeline.
-No shared state with manual pipeline.
-Each pipeline has its own progress tracking.
-User explicitly chooses which pipeline to use.
-
-───── C:\Users\tarik\Desktop\Image_analysis\src\core\pipeline\manual_pipeline_separate.py ─────
-Step 16: Completely separate Manual Processing Pipeline.
-No shared state with automatic pipeline.
-Each pipeline has its own progress tracking.
-User explicitly chooses which pipeline to use.
 
 ───── C:\Users\tarik\Desktop\Image_analysis\src\core\pipeline\pipeline_automatic.py ─────
 Automatic Processing Pipeline - Automated Image Processing Workflow
@@ -574,44 +456,6 @@ Configuration initialization module for SEM/GDS Alignment Tool.
 This module provides functions to initialize and validate the configuration
 system during application startup.
 
-───── C:\Users\tarik\Desktop\Image_analysis\src\core\utils\config_manager.py ─────
-Configuration Manager - Application Configuration and Settings Management
-
-This script provides comprehensive configuration management for the SEM/GDS alignment tool.
-It handles JSON-based configuration files, user overrides, session state management, and
-environment variable integration for flexible deployment and customization.
-
-Main Classes:
-- Config: Simple configuration manager for basic JSON operations
-
-Key Methods:
-- load(): Loads configuration from JSON file with fallback to defaults
-- save(): Saves current configuration to JSON file
-- get(): Gets configuration value using dot notation (e.g., 'ui.window.width')
-- set(): Sets configuration value using dot notation
-- _get_defaults(): Returns default configuration values
-
-Global Functions:
-- load_config(): Loads configuration using global instance
-- get_config(): Gets configuration value using global instance
-- set_config(): Sets configuration value using global instance
-- save_config(): Saves configuration using global instance
-
-Dependencies:
-- json: Configuration file parsing and serialization
-- os: Environment variable access and file system operations
-- pathlib.Path: Cross-platform path handling
-- typing: Type hints for Dict, Any, Optional
-
-Features:
-- JSON-based configuration with hierarchical structure
-- Dot notation for nested configuration access (e.g., 'window.width')
-- Default configuration values with automatic fallback
-- Graceful error handling with fallback to defaults
-- Global configuration instance for application-wide access
-- Directory creation for configuration files
-- Simple and lightweight configuration management
-
 ───── C:\Users\tarik\Desktop\Image_analysis\src\core\utils\error_handling.py ─────
 Error Handling Utilities - Comprehensive Error Management and Recovery
 
@@ -697,16 +541,6 @@ Path Resolution:
 - All paths resolved relative to project root for consistency
 - Support for both absolute and relative path operations
 - Automatic handling of path separators across platforms
-
-───── C:\Users\tarik\Desktop\Image_analysis\src\core\utils\logging_utils.py ─────
-Advanced logging utilities for the SEM/GDS image analysis application.
-
-This module provides comprehensive logging capabilities including:
-- Configurable log levels and rotation
-- Module-specific logging
-- Performance monitoring
-- Log archiving and cleanup
-- Context managers for operation tracking
 
 ───── C:\Users\tarik\Desktop\Image_analysis\src\core\utils\performance_logging.py ─────
 Performance logging module for the SEM/GDS alignment tool.
@@ -1011,7 +845,7 @@ State Management:
 
 Dependencies:
 - Uses: PySide6.QtCore (QObject, Signal)
-- Uses: src.core.utils.logging_utils (logging integration)
+- Uses: src.core.utils.simple_logging (logging integration)
 - Inherited by: All service classes in the services package
 
 Usage Pattern:
@@ -1170,103 +1004,6 @@ State Management:
 - Current file tracking for SEM, GDS, and aligned models
 - Loading status reporting
 - Memory cleanup and file clearing operations
-
-───── C:\Users\tarik\Desktop\Image_analysis\src\services\file_service.py ─────
-File Service - Comprehensive File Management and Data Operations
-
-This service provides comprehensive file management capabilities for the SEM/GDS
-alignment tool including loading, saving, and processing of various file formats.
-It handles SEM images, GDS files, alignment results, and provides fallback
-mechanisms for different model interfaces.
-
-Main Class:
-- FileManager: Central file management service with directory structure management
-
-Key Methods:
-- load_sem_images(): Loads SEM images with automatic cropping and fallback mechanisms
-- load_gds_files(): Loads GDS files with multiple interface fallbacks
-- load_gds_file(): Loads single GDS file with error handling
-- generate_structure_data(): Generates structure data for alignment operations
-- save_file(): Generic file saving with format detection (JSON, CSV, images)
-- load_file(): Generic file loading with format detection
-- save_alignment_results(): Saves alignment results with organized directory structure
-- save_scoring_results(): Saves scoring results with charts and reports
-- save_aligned_gds(): Saves transformed GDS files with applied transformations
-- save_aligned_image(): Saves aligned GDS as image using frame extraction
-- get_available_sem_files(): Lists available SEM files in data directory
-- get_available_gds_files(): Lists available GDS files in data directory
-- cleanup_temp_files(): Cleans up temporary files and directories
-
-Global Functions:
-- create_file_manager(): Factory function for FileManager instances
-
-Dependencies:
-- Uses: os, json, csv, logging, tempfile, pathlib.Path (standard libraries)
-- Uses: imageio, numpy (image processing)
-- Uses: core/models (SemImage, GDSModel data models)
-- Uses: services/gds_image_service.GDSImageService (GDS image operations)
-- Uses: core/models/structure_definitions.get_default_structures (structure metadata)
-- Uses: services/gds_transformation_service (GDS transformations)
-- Uses: services/frame_extraction_service (image extraction)
-- Used by: UI components for file operations
-- Used by: Workflow services for automated processing
-
-Directory Structure Management:
-- Data/SEM/: SEM image files (.tif, .tiff)
-- Data/GDS/: GDS layout files (.gds)
-- Results/: Output files organized by type
-- Results/Aligned/: Alignment results
-- Results/Scoring/: Scoring results with charts and reports
-- Extracted_Structures/: Extracted structure data
-- Automatic directory creation and validation
-
-Supported File Formats:
-- Images: PNG, JPG, TIFF, TIF (via imageio)
-- Data: JSON, CSV (structured data)
-- GDS: .gds layout files (via gdspy/gdstk)
-- SEM: .tif, .tiff image files with automatic processing
-
-Fallback Mechanisms:
-- Multiple loading methods for SemImage (from_file, load, manual)
-- Multiple loading methods for GDSModel (from_file, load, constructor)
-- Graceful degradation when methods are missing
-- Error handling with detailed logging
-
-Structure Data Generation:
-- Integration with structure manager for metadata
-- Multiple extraction methods with fallbacks
-- Temporary file handling for image generation
-- Coordinate and bounds extraction
-- Binary image generation for alignment
-
-Alignment and Scoring Results:
-- Organized directory structure for results
-- JSON metadata with image files
-- Chart and report generation
-- Transformation parameter preservation
-- Batch processing capabilities
-
-GDS Transformation Support:
-- Aligned GDS file generation with applied transformations
-- Integration with transformation services
-- Coordinate system conversion
-- Structure preservation with modifications
-- Image extraction from transformed GDS
-
-Error Handling:
-- Comprehensive exception handling for all operations
-- Detailed logging with operation context
-- Graceful fallbacks for missing methods
-- File existence validation
-- Directory creation with error recovery
-
-Features:
-- Automatic SEM image cropping to 1024x666 pixels
-- Multi-format file support with automatic detection
-- Batch processing for multiple files
-- Temporary file management and cleanup
-- Structured result organization
-- Fallback mechanisms for API compatibility
 
 ───── C:\Users\tarik\Desktop\Image_analysis\src\services\frame_extraction_service.py ─────
 Frame Extraction Service - GDS Frame-Based Data Extraction
@@ -2384,6 +2121,23 @@ Advanced Features:
 - Overlay generation with color customization
 - Comprehensive state reporting
 
+───── C:\Users\tarik\Desktop\Image_analysis\src\services\unified_transformation_service.py ─────
+Unified Transformation Service - Single Source of Truth for All Transformations
+
+This service provides the single transformation engine used by:
+- Manual alignment (UI controls)
+- Hybrid alignment (3-point calculation)
+- Automatic alignment (algorithm-based)
+
+Key Methods:
+- apply_transformations(): Apply move, zoom, rotate to GDS model
+- calculate_aligned_coordinates(): Calculate new GDS coordinates
+- generate_aligned_image(): Create final aligned GDS image
+
+Dependencies:
+- Used by: manual_alignment_service.py, hybrid_alignment_service.py, auto_alignment_service.py
+- Uses: gds_aligned_generator.py, simple_aligned_gds_model.py
+
 ───── C:\Users\tarik\Desktop\Image_analysis\src\services\workflow_service.py ─────
 Workflow Service - Coordinated SEM/GDS Processing Pipeline
 
@@ -3250,102 +3004,6 @@ Visualization:
 - Transformed GDS visualization
 - Result saving to image files
 
-───── C:\Users\tarik\Desktop\Image_analysis\src\services\transformations\auto_alignment_service.py ─────
-Auto Alignment Service Module
-
-This module provides automatic alignment functionality for GDS/SEM image pairs using various 
-computer vision algorithms. It handles the complete auto-alignment workflow including feature 
-detection, matching, transformation computation, and result application.
-
-The service supports multiple alignment methods (ORB, SIFT, SURF) and provides both synchronous 
-and asynchronous alignment operations with progress tracking. It integrates with Qt's threading 
-system for non-blocking UI operations.
-
-Dependencies:
-    - typing: Type hints (Dict, Optional, Any, Callable)
-    - PySide6.QtCore: Qt framework (QObject, Signal, QThread, QRunnable, QThreadPool)
-    - numpy: Numerical operations and array handling
-    - src.core.models: Data models (AlignedGdsModel, SemImage)
-
-Classes:
-    AutoAlignmentWorkerQt: Qt-compatible worker thread for alignment operations
-        - __init__(): Initializes worker with image data and method
-        - run(): Executes the alignment algorithm in separate thread
-
-    AutoAlignmentService: Main service class for automatic alignment operations
-        - initialize(): Sets up service with GDS model and SEM image
-        - set_sem_image(): Updates the current SEM image for alignment
-        - set_alignment_method(): Sets the alignment algorithm method
-        - get_available_methods(): Returns list of supported alignment methods
-        - start_auto_alignment(): Begins automatic alignment process
-        - stop_auto_alignment(): Stops current alignment operation
-        - apply_alignment_result(): Applies computed transformation to model
-        - get_current_transform(): Returns current transformation parameters
-        - reset_transforms(): Resets all transformations to defaults
-        - get_current_state(): Returns complete service state information
-        - set_canvas_size(): Updates rendering canvas dimensions
-        - _on_alignment_progress(): Handles progress updates from worker
-        - _on_alignment_completed(): Handles successful alignment completion
-        - _on_alignment_failed(): Handles alignment failure
-        - _cleanup_worker(): Cleans up worker thread resources
-        - _extract_transforms_from_matrix(): Extracts transform parameters from matrix
-        - _apply_transforms_to_model(): Applies transforms to GDS model
-        - _render_and_emit(): Renders aligned result and emits bitmap
-        - _emit_state_change(): Emits state change notifications
-
-Signals:
-    - alignment_started: Emitted when auto alignment begins
-    - alignment_progress: Emitted with progress percentage and status
-    - alignment_completed: Emitted when alignment completes with results
-    - auto_alignment_completed: Emitted when auto alignment process finishes
-    - alignment_failed: Emitted when alignment fails with error message
-    - transform_updated: Emitted when transforms are applied
-    - bitmap_rendered: Emitted when new bitmap is rendered
-    - state_changed: Emitted when alignment state changes
-
-Supported Alignment Methods:
-    - ORB (Oriented FAST and Rotated BRIEF): Feature-based matching
-    - SIFT (Scale-Invariant Feature Transform): Scale-invariant feature detection
-    - SURF (Speeded Up Robust Features): Fast feature detection and description
-
-Transform Parameters:
-    - translate_x, translate_y: Translation offsets in pixels
-    - rotation: Rotation angle in degrees
-    - scale: Uniform scaling factor
-    - transparency: Overlay transparency (0.0 to 1.0)
-
-───── C:\Users\tarik\Desktop\Image_analysis\src\services\transformations\transform_move.py ─────
-Transform Move - Translation Transformation Operations
-
-This module provides translation (movement) transformation functionality
-for image alignment operations, including validation, matrix generation,
-and coordinate system conversion.
-
-Main Class:
-- TransformMove: Handles translation transformation operations
-
-Key Methods:
-- set_translation(): Sets translation values with validation
-- get_translation(): Returns current translation values
-- apply_translation(): Applies translation transformation to images
-- get_translation_matrix(): Returns 3x3 transformation matrix
-- reset_translation(): Resets translation to zero
-- convert_pixels_to_units(): Converts pixel translation to coordinate units
-- convert_units_to_pixels(): Converts coordinate translation to pixels
-
-Dependencies:
-- Uses: numpy (array operations), cv2 (OpenCV for image transformations)
-- Uses: logging (error reporting and debugging)
-- Used by: Transformation services and alignment operations
-- Used by: UI transformation controls
-
-Features:
-- Translation validation with configurable limits
-- 3x3 homogeneous transformation matrix generation
-- Image transformation with OpenCV warpAffine
-- Coordinate system conversion utilities
-- Error handling and logging
-
 ───── C:\Users\tarik\Desktop\Image_analysis\src\services\transformations\transform_rotate.py ─────
 Transform Rotate - Rotation Transformation Operations
 
@@ -3381,54 +3039,6 @@ Features:
 - Image rotation with configurable center point
 - Residual rotation calculation for fine adjustments
 - Angle normalization and component separation
-
-───── C:\Users\tarik\Desktop\Image_analysis\src\services\transformations\transform_service.py ─────
-Transform Service - Transformation Operations Coordination
-
-This service coordinates transformation operations between UI components and
-core transformation utilities, providing a Qt-based interface with signal
-emission and state management.
-
-Main Class:
-- TransformService: Qt-based service for transformation coordination
-
-Key Methods:
-- apply_translation(): Applies translation transformation with validation
-- apply_rotation(): Applies rotation transformation with validation
-- apply_scale(): Applies scale transformation with validation
-- get_transformation_matrix(): Returns current 3x3 transformation matrix
-- reset_transforms(): Resets all transformations to identity
-- get_current_transforms(): Returns current transformation parameters
-- convert_pixels_to_gds(): Converts pixel coordinates to GDS units
-- convert_gds_to_pixels(): Converts GDS coordinates to pixel units
-- apply_transform_from_dict(): Applies transformations from parameter dictionary
-
-Signals Emitted:
-- transform_applied(dict): Transformation successfully applied
-- transform_updated(str, float): Individual transformation parameter updated
-- transform_error(str): Transformation operation failed
-
-Dependencies:
-- Uses: PySide6.QtCore (QObject, Signal for Qt integration)
-- Uses: logging (error reporting and debugging)
-- Uses: utils/transformations (core transformation utilities)
-- Used by: UI transformation controls and alignment interfaces
-- Used by: Workflow services requiring transformation operations
-
-Features:
-- Parameter validation using transformation utilities
-- State management with current transformation tracking
-- History tracking for transformation operations
-- Signal-based communication with UI components
-- Coordinate system conversion utilities
-- Error handling with user-friendly messages
-
-Transformation State:
-- Translation X/Y in pixels
-- Rotation angle in degrees
-- Scale factor (positive values)
-- Transformation matrix generation
-- History tracking for undo operations
 
 ───── C:\Users\tarik\Desktop\Image_analysis\src\services\transformations\transform_transparency.py ─────
 Transform Transparency - Transparency and Opacity Operations
@@ -3466,47 +3076,11 @@ Features:
 - Validation with range checking
 - Error handling and logging
 
-───── C:\Users\tarik\Desktop\Image_analysis\src\services\transformations\transform_zoom.py ─────
-Transform Zoom - Scaling Transformation Operations
-
-This module provides scaling (zoom) transformation functionality for image
-resizing operations, including validation, matrix generation, and fit-to-bounds
-calculations.
-
-Main Class:
-- TransformZoom: Handles scaling transformation operations
-
-Key Methods:
-- set_scale(): Sets scaling factor with optional center point
-- get_scale(): Returns current scaling factor
-- apply_zoom(): Applies zoom transformation to images
-- get_zoom_matrix(): Returns 3x3 transformation matrix with center
-- get_zoom_matrix_simple(): Returns simple scaling matrix around origin
-- reset_zoom(): Resets scaling to 1.0 (no scaling)
-- zoom_in(): Zooms in by specified factor
-- zoom_out(): Zooms out by specified factor
-- fit_to_bounds(): Calculates scale to fit image within bounds
-
-Dependencies:
-- Uses: numpy (array operations), cv2 (OpenCV for image transformations)
-- Uses: logging (error reporting and debugging)
-- Used by: Transformation services and zoom operations
-- Used by: UI zoom controls and fit-to-window functionality
-
-Features:
-- Scale validation with configurable limits
-- Configurable scaling center point
-- 3x3 homogeneous transformation matrix generation
-- Image scaling with OpenCV warpAffine
-- Zoom in/out operations with default factors
-- Fit-to-bounds calculation for window sizing
-- Error handling and logging
-
 ───── C:\Users\tarik\Desktop\Image_analysis\src\services\transformations\__init__.py ─────
-Transformations package for coordinate and geometric transformations.
+Transformations package - DEPRECATED
 
-This package is maintained for compatibility with existing imports.
-For new development, use src.utils.transformations for pure mathematical operations.
+This package has been replaced by UnifiedTransformationService.
+Files moved to archive/duplicate_code/
 
 ───── C:\Users\tarik\Desktop\Image_analysis\src\ui\alignment_controller.py ─────
 Alignment Controller - Central Alignment Operation Coordinator
@@ -5555,6 +5129,12 @@ Qt Style Sheets (QSS). The styling includes:
 
 ───── C:\Users\tarik\Desktop\Image_analysis\src\ui\styles\__init__.py ─────
 UI styles package for consistent theming.
+
+───── C:\Users\tarik\Desktop\Image_analysis\src\utils\three_point_alignment.py ─────
+Three Point Alignment Calculator
+
+Calculates transformation parameters (move, rotate, zoom) from 3 corresponding points.
+Decomposes affine transformation into individual parameters for manual alignment system.
 
 ───── C:\Users\tarik\Desktop\Image_analysis\src\utils\transformations.py ─────
 Transformation Utilities - Mathematical Transformation Functions

@@ -31,7 +31,8 @@ Signals Emitted:
 Dependencies:
 - Uses: PySide6.QtCore (QObject, Signal for Qt integration)
 - Uses: numpy (array operations), logging (error reporting)
-- Uses: core/models (AlignedGdsModel, SemImage data models)
+- Uses: core/models (SemImage data model)
+- Uses: core/gds_aligned_generator (aligned GDS generation)
 - Used by: ui/alignment_controller.py (manual alignment UI)
 - Used by: ui/alignment_controls.py (transformation controls)
 
@@ -50,11 +51,10 @@ Real-Time Features:
 - Responsive parameter adjustment
 
 Model Integration:
-- Direct API calls to AlignedGdsModel for transformations
-- Frame-based rendering approach for non-destructive operations
-- Coordinate system conversion between UI pixels and GDS units
-- Proper API mapping for different transformation types
-- Error handling for model operations
+- Direct calls to gds_aligned_generator for transformations
+- Bounds-based rendering approach for non-destructive operations
+- Simple parameter mapping to generator functions
+- Error handling for generation operations
 
 State Management:
 - Current transformation parameter tracking
@@ -65,7 +65,7 @@ State Management:
 
 Canvas and Rendering:
 - Configurable canvas size (default 1024x666)
-- Frame-based bitmap generation
+- Bounds-based bitmap generation using new generators
 - Transparency support for overlay composition
 - Error handling for rendering operations
 - Signal emission for UI updates
@@ -95,7 +95,7 @@ Workflow:
 Advantages:
 - Real-time: Immediate visual feedback
 - Interactive: Direct user control over all parameters
-- Non-destructive: Frame-based transformations preserve original data
+- Non-destructive: Bounds-based transformations preserve original data
 - Responsive: Optimized for smooth UI interaction
 - Flexible: Supports arbitrary transformation combinations
 """
@@ -105,7 +105,9 @@ from PySide6.QtCore import QObject, Signal
 import numpy as np
 import logging
 
-from src.core.models import AlignedGdsModel, SemImage
+from src.core.models import SemImage
+from src.core.gds_display_generator import get_structure_info
+from src.core.gds_aligned_generator import generate_aligned_gds
 
 
 logger = logging.getLogger(__name__)
@@ -122,7 +124,7 @@ class ManualAlignmentService(QObject):
     
     def __init__(self):
         super().__init__()
-        self._aligned_gds_model: Optional[AlignedGdsModel] = None
+        self._structure_num: Optional[int] = None
         self._current_sem_image: Optional[SemImage] = None
         self._current_transform = {
             'translate_x': 0.0,
@@ -133,15 +135,12 @@ class ManualAlignmentService(QObject):
         }
         self._canvas_size = (1024, 666)  # Default canvas size
         
-    def initialize(self, aligned_gds_model: AlignedGdsModel, sem_image: Optional[SemImage] = None):
-        """Initialize the service with required models."""
-        self._aligned_gds_model = aligned_gds_model
+    def initialize(self, structure_num: int, sem_image: Optional[SemImage] = None):
+        """Initialize the service with structure number and SEM image."""
+        self._structure_num = structure_num
         self._current_sem_image = sem_image
         
-        # Reset transforms on the model
-        self._aligned_gds_model.reset_transforms()
-        
-        # Initialize current transform to match model
+        # Initialize current transform to default values
         self._current_transform = {
             'translate_x': 0.0,
             'translate_y': 0.0,
@@ -169,9 +168,7 @@ class ManualAlignmentService(QObject):
         # Update local state
         self._current_transform[parameter_name] = value
         
-        # Update the model using appropriate method
-        if parameter_name != 'transparency' and self._aligned_gds_model:
-            self._apply_transform_to_model(parameter_name, value)
+        # Transform will be applied during rendering
         
         # Emit transform update
         self.transform_updated.emit(self._current_transform.copy())
@@ -189,11 +186,7 @@ class ManualAlignmentService(QObject):
         # Update local state
         self._current_transform.update(transforms)
         
-        # Update the model (batch update for efficiency)
-        if self._aligned_gds_model:
-            for param_name, value in transforms.items():
-                if param_name != 'transparency':  # Skip UI-only parameter
-                    self._apply_transform_to_model(param_name, value)
+        # Transforms will be applied during rendering
         
         # Emit transform update
         self.transform_updated.emit(self._current_transform.copy())
@@ -211,11 +204,7 @@ class ManualAlignmentService(QObject):
             'transparency': 0.5
         }
         
-        # Reset model using unified service
-        if self._aligned_gds_model:
-            from .unified_transformation_service import UnifiedTransformationService
-            unified_service = UnifiedTransformationService()
-            unified_service.apply_transformations(self._aligned_gds_model, 0.0, 0.0, 100.0, 0.0)
+        # Reset transforms to default values
             
         # Update local state
         self._current_transform = default_transforms.copy()
@@ -235,7 +224,7 @@ class ManualAlignmentService(QObject):
         """Get the current alignment state."""
         return {
             'transform': self._current_transform.copy(),
-            'has_gds_model': self._aligned_gds_model is not None,
+            'has_structure': self._structure_num is not None,
             'has_sem_image': self._current_sem_image is not None,
             'canvas_size': self._canvas_size
         }
@@ -245,27 +234,6 @@ class ManualAlignmentService(QObject):
         self._canvas_size = (width, height)
         self._render_and_emit()
         
-    def _apply_transform_to_model(self, parameter_name: str, value: float):
-        """Apply a single transform parameter to the model using unified method."""
-        if not self._aligned_gds_model:
-            return
-            
-        # Apply transformations using unified method
-        self._apply_unified_transform(
-            translate_x=self._current_transform.get('translate_x', 0.0),
-            translate_y=self._current_transform.get('translate_y', 0.0),
-            rotation=self._current_transform.get('rotation', 0.0),
-            scale=self._current_transform.get('scale', 1.0)
-        )
-    
-    def _apply_unified_transform(self, translate_x: float, translate_y: float, rotation: float, scale: float):
-        """Unified transformation method for manual, hybrid, and automatic alignment."""
-        from .unified_transformation_service import UnifiedTransformationService
-        
-        # Use unified service for all transformations
-        unified_service = UnifiedTransformationService()
-        unified_service.apply_transformations(self._aligned_gds_model, translate_x, translate_y, scale * 100.0, rotation)
-    
     def apply_transform_parameters(self, translate_x: float, translate_y: float, rotation: float, scale: float):
         """Public method for hybrid/automatic alignment to apply calculated transformations."""
         # Update local state
@@ -276,30 +244,34 @@ class ManualAlignmentService(QObject):
             'scale': scale
         })
         
-        # Apply to model
-        self._apply_unified_transform(translate_x, translate_y, rotation, scale)
-        
         # Emit updates
         self.transform_updated.emit(self._current_transform.copy())
         self._render_and_emit()
 
     def _render_and_emit(self):
         """Render the current alignment and emit the bitmap."""
-        if not self._aligned_gds_model:
+        if self._structure_num is None:
             return
             
         try:
-            # Generate bitmap from the aligned GDS model using frame-based approach
-            bitmap = self._aligned_gds_model.to_bitmap(
-                resolution=self._canvas_size
-            )
+            # Use new approach with gds_aligned_generator
+            transform_params = {
+                'rotation': self._current_transform['rotation'],
+                'zoom': self._current_transform['scale'] * 100,  # Convert to percentage
+                'move_x': self._current_transform['translate_x'],
+                'move_y': self._current_transform['translate_y']
+            }
             
-            # Apply transparency if needed (this could be done in post-processing)
-            # The bitmap will be overlaid on the SEM image with the specified transparency
+            bitmap, _ = generate_aligned_gds(
+                structure_num=self._structure_num,
+                transform_params=transform_params,
+                target_size=self._canvas_size
+            )
             
             self.bitmap_rendered.emit(bitmap)
             
         except Exception as e:
+            logger.error(f"Render error: {str(e)}")
             self._emit_state_change(f"Render error: {str(e)}")
             
     def _emit_state_change(self, message: str):

@@ -58,7 +58,7 @@ class ThemeManager:
         self.ui_button_color = color
     
     def process_gds_overlay(self, image):
-        """Process GDS overlay with transparent background and colored structures."""
+        """Process GDS overlay with transparent background and black structures."""
         try:
             import numpy as np
             import cv2
@@ -72,9 +72,9 @@ class ThemeManager:
             rgba_image = np.zeros((gray.shape[0], gray.shape[1], 4), dtype=np.uint8)
             
             # GDS generator creates: white background (255), black structures (0)
-            # Set structure color where pixels are structures (black/dark pixels)
+            # Set black structures with transparent background
             structure_mask = gray < 127  # Black pixels are structures
-            rgba_image[structure_mask] = [*self.gds_structure_color, 255]  # Opaque colored structures
+            rgba_image[structure_mask] = [0, 0, 0, 255]  # Black opaque structures
             # Background (white pixels) remains transparent (alpha = 0)
             
             return rgba_image

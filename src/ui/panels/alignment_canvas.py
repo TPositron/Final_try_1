@@ -274,9 +274,9 @@ class AlignmentCanvas(QGraphicsView):
         rgba_array = np.zeros((height, width, 4), dtype=np.uint8)
         
         # Binary image: 0 = black structure, 255 = white background
-        # Make white areas transparent, keep black areas visible with color
+        # Make black areas (structures) visible with color, white areas transparent
         structure_mask = binary_image == 0  # Black pixels (structure)
-        rgba_array[structure_mask] = [r, g, b, 128]  # Colored overlay with transparency
+        rgba_array[structure_mask] = [0, 0, 0, 255]  # Black opaque structures for display
         rgba_array[~structure_mask] = [0, 0, 0, 0]  # Transparent for white areas
         
         bytes_per_line = width * 4

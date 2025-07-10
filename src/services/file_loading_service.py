@@ -1,9 +1,8 @@
 """
 File Loading Service - SEM and GDS File Loading Operations
 
-This service handles loading SEM images and GDS layout files into their respective
-data models with automatic processing, cropping, and error handling. It provides
-fallback mechanisms for different model interfaces and batch loading capabilities.
+This service handles loading SEM images and provides GDS structure information
+using the new simplified approach with gds_display_generator and gds_aligned_generator.
 
 Main Functions:
 - get_predefined_structure_info(): Returns metadata for predefined GDS structures
@@ -13,26 +12,21 @@ Main Class:
 
 Key Methods:
 - load_sem_image(): Loads SEM images with automatic 1024x666 cropping
-- load_gds(): Loads GDS files with structure-specific bounds and layers
 - get_current_sem(): Returns currently loaded SEM image
-- get_current_gds(): Returns currently loaded GDS model
 - clear_all(): Clears all loaded files from memory
 - get_loading_status(): Returns status of loaded files
 - load_multiple_sem_images(): Batch loading of multiple SEM files
 
 Signals Emitted:
 - sem_loaded(object): SEM image successfully loaded
-- gds_loaded(object): GDS model successfully loaded
-- aligned_gds_loaded(object): AlignedGdsModel successfully loaded
 - loading_error(str): Error message when loading fails
 
 Dependencies:
 - Uses: pathlib.Path, cv2 (OpenCV), numpy (image processing)
 - Uses: PySide6.QtCore (QObject, Signal for Qt integration)
-- Uses: core/models (InitialGdsModel, AlignedGdsModel, SemImage)
+- Uses: core/models (SemImage)
+- Uses: core/gds_display_generator (GDS structure information)
 - Uses: core/utils.get_logger (logging functionality)
-- Used by: ui/file_operations.py (file loading UI)
-- Used by: services/workflow_service.py (automated workflows)
 
 Predefined GDS Structures:
 1. Circpol_T2: bounds (688.55, 5736.55, 760.55, 5807.1), layer 14
@@ -40,36 +34,6 @@ Predefined GDS Structures:
 3. IP935Left_14: bounds (980.959, 6025.959, 1001.770, 6044.979), layer 1
 4. QC855GC_CROSS_Bottom: bounds (3730.00, 4700.99, 3756.00, 4760.00), layers 1,2
 5. QC935_46: bounds (7195.558, 5046.99, 7203.99, 5055.33964), layer 1
-
-SEM Image Processing:
-- Automatic cropping to 1024x666 pixels (removes bottom portion)
-- Support for .tif, .tiff, .png formats
-- Fallback loading mechanisms for different SemImage interfaces
-- Grayscale conversion and resizing when necessary
-- Center-horizontal, top-vertical cropping strategy
-
-GDS Loading Features:
-- Structure-specific bounds and layer filtering
-- Integration with InitialGdsModel and AlignedGdsModel
-- Predefined structure metadata lookup
-- Feature-focused model creation
-- Alignment parameter support (planned)
-
-Error Handling:
-- Comprehensive exception handling for file operations
-- Fallback mechanisms for missing model methods
-- Detailed error logging and signal emission
-- Graceful degradation when loading fails
-
-Batch Operations:
-- Multiple SEM image loading with individual error handling
-- Progress tracking and success/failure reporting
-- Memory-efficient processing of file lists
-
-State Management:
-- Current file tracking for SEM, GDS, and aligned models
-- Loading status reporting
-- Memory cleanup and file clearing operations
 """
 
 from pathlib import Path
@@ -78,7 +42,8 @@ from PySide6.QtCore import QObject, Signal
 import cv2
 import numpy as np
 
-from src.core.models import InitialGdsModel, AlignedGdsModel, SemImage
+from src.core.models import SemImage
+from src.core.gds_display_generator import get_structure_info
 from src.core.utils import get_logger
 
 
@@ -97,20 +62,16 @@ def get_predefined_structure_info(structure_num: int) -> Optional[Dict]:
 
 
 class FileLoadingService(QObject):
-    """Service for loading SEM and GDS files into data models."""
+    """Service for loading SEM files and providing GDS structure information."""
     
     # Signals
     sem_loaded = Signal(object)  # Emitted when SEM image is loaded
-    gds_loaded = Signal(object)  # Emitted when GDS model is loaded
-    aligned_gds_loaded = Signal(object)  # Emitted when AlignedGdsModel is loaded
     loading_error = Signal(str)  # Emitted when loading fails
     
     def __init__(self):
         super().__init__()
         self.logger = get_logger(__name__)
         self._current_sem = None
-        self._current_gds = None
-        self._current_aligned_gds = None
     
     def load_sem_image(self, file_path: Path) -> Optional[SemImage]:
         """
@@ -185,52 +146,21 @@ class FileLoadingService(QObject):
             self.loading_error.emit(error_msg)
             return None
     
-    def load_gds(self, structure_num: int, file_path: Path, alignment_params: Optional[Dict[str, Any]] = None) -> Optional[AlignedGdsModel]:
+    def get_gds_structure_info(self, structure_num: int) -> Optional[Dict]:
         """
-        Load a GDS file and prepare the model.
+        Get information about a GDS structure using the new approach.
 
         Args:
-            structure_num: The structure number to load.
-            file_path: Path to the GDS file.
-            alignment_params: Optional alignment parameters.
+            structure_num: The structure number (1-5).
 
         Returns:
-            AlignedGdsModel object if successful, None otherwise.
+            Structure information dictionary or None if not found.
         """
         try:
-            self.logger.info(f"Loading GDS structure {structure_num} from file: {file_path}")
-
-            # Get predefined info for the selected structure
-            structure_info = get_predefined_structure_info(structure_num)
-            if not structure_info:
-                raise ValueError(f"No predefined info for structure number {structure_num}")
-
-            feature_bounds = structure_info['bounds']
-            required_layers = structure_info['layers']
-
-            # Create InitialGdsModel
-            initial_model = InitialGdsModel(str(file_path))
-            
-            # Create AlignedGdsModel focused on the specific feature
-            aligned_model = AlignedGdsModel(
-                initial_model,
-                feature_bounds=feature_bounds,
-                required_layers=required_layers
-            )
-
-            # TODO: Apply alignment_params if provided
-            if alignment_params:
-                self.logger.warning("Alignment parameters are not yet implemented.")
-                # aligned_model.apply_loaded_alignment(alignment_params)
-
-            self._current_gds = aligned_model
-            self.gds_loaded.emit(aligned_model)
-
-            self.logger.info(f"Successfully loaded and prepared GDS structure {structure_num}")
-            return aligned_model
-
+            self.logger.info(f"Getting GDS structure info for structure {structure_num}")
+            return get_structure_info(structure_num)
         except Exception as e:
-            error_msg = f"Failed to load GDS structure {structure_num} from file {file_path}: {e}"
+            error_msg = f"Failed to get GDS structure info for {structure_num}: {e}"
             self.logger.error(error_msg)
             self.loading_error.emit(error_msg)
             return None
@@ -239,31 +169,17 @@ class FileLoadingService(QObject):
         """Get the currently loaded SEM image."""
         return self._current_sem
     
-    def get_current_gds(self) -> Optional[AlignedGdsModel]:
-        """Get the currently loaded GDS model."""
-        return self._current_gds
-    
-    def get_current_aligned_gds(self) -> Optional[AlignedGdsModel]:
-        """Get the currently loaded AlignedGdsModel."""
-        return self._current_aligned_gds
+
     
     def clear_sem(self) -> None:
         """Clear the currently loaded SEM image."""
         self._current_sem = None
     
-    def clear_gds(self) -> None:
-        """Clear the currently loaded GDS model."""
-        self._current_gds = None
-    
-    def clear_aligned_gds(self) -> None:
-        """Clear the currently loaded AlignedGdsModel."""
-        self._current_aligned_gds = None
+
     
     def clear_all(self) -> None:
         """Clear all loaded files."""
         self.clear_sem()
-        self.clear_gds()
-        self.clear_aligned_gds()
     
     def get_loading_status(self) -> Dict[str, bool]:
         """
@@ -273,10 +189,7 @@ class FileLoadingService(QObject):
             Dictionary indicating what files are loaded
         """
         return {
-            'sem_loaded': self._current_sem is not None,
-            'gds_loaded': self._current_gds is not None,
-            'aligned_gds_loaded': self._current_aligned_gds is not None,
-            'all_loaded': self._current_sem is not None and self._current_gds is not None and self._current_aligned_gds is not None
+            'sem_loaded': self._current_sem is not None
         }
     
     def load_multiple_sem_images(self, file_paths: list[Path]) -> Dict[str, Optional[SemImage]]:

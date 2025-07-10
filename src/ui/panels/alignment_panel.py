@@ -629,18 +629,18 @@ class AlignmentPanel(QWidget):
         self._update_controls()
         self._update_image_display()
     
-    def set_gds_model(self, aligned_gds_model):
-        """Set the current AlignedGdsModel for automatic alignment operations."""
+    def set_structure_number(self, structure_num: int):
+        """Set the current structure number for alignment operations."""
         try:
-            self._current_gds_model = aligned_gds_model
+            self.current_structure_id = structure_num
             
             # Update generate button state
             self._update_generate_button_state()
             
-            logger.debug(f"GDS model set for auto alignment: {'loaded' if aligned_gds_model is not None else 'None'}")
+            logger.debug(f"Structure number set: {structure_num}")
             
         except Exception as e:
-            logger.error(f"Error setting GDS model: {e}")
+            logger.error(f"Error setting structure number: {e}")
     
     def set_auto_alignment_params(self, params: Dict[str, float]):
         """Set parameters from automatic alignment process."""
@@ -698,62 +698,59 @@ class AlignmentPanel(QWidget):
             self.structure_list.addItem(item)
     
     def _generate_aligned_gds(self):
-        """Generate aligned GDS file using automatic alignment parameters."""
+        """Generate aligned GDS file using new bounds-based approach."""
         try:
             from pathlib import Path
             from datetime import datetime
-            from src.services.gds_transformation_service import GdsTransformationService
+            from src.services.simple_file_service import FileService
             
             self.status_label.setText("Generating aligned GDS...")
             
-            # Check if we have GDS model and auto alignment parameters
-            if not hasattr(self, '_current_gds_model') or self._current_gds_model is None:
-                raise ValueError("No GDS model loaded for automatic alignment")
+            # Check if we have structure selection
+            if self.current_structure_id is None:
+                raise ValueError("No structure selected for alignment")
             
-            if not hasattr(self, '_auto_alignment_params') or self._auto_alignment_params is None:
-                # Use current transform params as fallback
-                self._auto_alignment_params = self.transform_params.copy()
-                logger.warning("Using current transform params instead of auto alignment results")
+            # Use current transform params or auto alignment params
+            if hasattr(self, '_auto_alignment_params') and self._auto_alignment_params:
+                params = self._auto_alignment_params
+            else:
+                params = self.transform_params
             
-            # Processing...
-            
-            # Create output directory
-            output_dir = Path("Results/Aligned/auto")
-            output_dir.mkdir(parents=True, exist_ok=True)
-            
-            # Generate filename with timestamp
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"aligned_auto_{timestamp}.gds"
-            output_path = output_dir / filename
-            
-            # Finalizing...
-            
-            # Use GdsTransformationService to create new GDS file
-            transformation_service = GdsTransformationService()
-            
-            # Get transformation parameters from auto alignment
+            # Convert to new format
             transform_params = {
-                'x_offset': self._auto_alignment_params.get('translate_x', 0),
-                'y_offset': self._auto_alignment_params.get('translate_y', 0),
-                'rotation': self._auto_alignment_params.get('rotation', 0),
-                'scale': self._auto_alignment_params.get('scale', 1.0)
+                'move_x': params.get('translate_x', 0),
+                'move_y': params.get('translate_y', 0),
+                'rotation': params.get('rotation', 0),
+                'zoom': params.get('scale', 1.0) * 100  # Convert to percentage
             }
             
-            # Transform the structure
-            transformed_cell = transformation_service.transform_structure(
-                original_gds_path=str(self._current_gds_model.initial_model.gds_path),
-                structure_name=self._current_gds_model.initial_model.cell.name,
-                transformation_params=transform_params,
-                gds_bounds=tuple(self._current_gds_model.original_frame)
+            # Create output path with SEM image name
+            output_dir = Path("Results/Aligned/manual")
+            output_dir.mkdir(parents=True, exist_ok=True)
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            
+            # Get SEM image name if available
+            sem_name = "unknown"
+            if hasattr(self, 'current_sem_file_path') and self.current_sem_file_path:
+                sem_name = Path(self.current_sem_file_path).stem
+            
+            filename = f"{sem_name}_Aligned.png"
+            output_path = output_dir / filename
+            
+            # Use new approach to save aligned GDS
+            file_service = FileService()
+            success = file_service.save_aligned_gds(
+                structure_num=self.current_structure_id,
+                transform_params=transform_params,
+                output_path=str(output_path)
             )
             
-            # Save the transformed GDS file
-            transformation_service.save_transformed_gds(transformed_cell, str(output_path))
-            
-            self.status_label.setText("Aligned GDS generated successfully")
-            
-            QMessageBox.information(self, "Success", f"Aligned GDS file generated successfully!\nSaved to: {output_path}")
-            logger.info(f"Auto-aligned GDS generated: {output_path}")
+            if success:
+                self.status_label.setText("Aligned GDS generated successfully")
+                QMessageBox.information(self, "Success", f"Aligned GDS generated!\nSaved to: {output_path}")
+                logger.info(f"Aligned GDS generated: {output_path}")
+            else:
+                raise Exception("Failed to generate aligned GDS")
             
         except Exception as e:
             logger.error(f"Error generating aligned GDS: {e}")
@@ -761,26 +758,18 @@ class AlignmentPanel(QWidget):
             QMessageBox.critical(self, "Error", f"Failed to generate aligned GDS: {e}")
     
     def _update_generate_button_state(self):
-        """Update generate button state based on structure selection and GDS model."""
+        """Update generate button state based on structure selection."""
         structure_selected = self.current_structure_id is not None
-        has_gds_model = hasattr(self, '_current_gds_model') and self._current_gds_model is not None
         
-        # Enable generate button if we have structure and GDS model
-        self.generate_button.setEnabled(structure_selected and has_gds_model)
+        # Enable generate button if we have structure selected
+        self.generate_button.setEnabled(structure_selected)
         
-        if structure_selected and has_gds_model:
-            self.generate_button.setToolTip("Generate aligned GDS file using automatic alignment")
-            logger.debug("Generate button enabled - ready for auto alignment")
+        if structure_selected:
+            self.generate_button.setToolTip("Generate aligned GDS file")
+            logger.debug("Generate button enabled - ready for alignment")
         else:
-            missing = []
-            if not structure_selected:
-                missing.append("GDS structure")
-            if not has_gds_model:
-                missing.append("GDS model")
-            
-            tooltip_text = f"Missing: {', '.join(missing)}"
-            self.generate_button.setToolTip(tooltip_text)
-            logger.debug(f"Generate button disabled - {tooltip_text}")
+            self.generate_button.setToolTip("Select a GDS structure first")
+            logger.debug("Generate button disabled - no structure selected")
     
     def _connect_view_controls(self):
         """Connect view control button signals."""
@@ -832,8 +821,7 @@ class AlignmentPanel(QWidget):
         self.current_gds_path = None
         self.current_structure_id = None
         
-        # Reset GDS model and auto alignment params
-        self._current_gds_model = None
+        # Reset auto alignment params
         self._auto_alignment_params = None
         
         # Reset generate button

@@ -123,14 +123,14 @@ import os
 from typing import Dict, List, Tuple, Optional, Any
 from pathlib import Path
 
-from ..core.gds_display_generator import (
-    generate_display_gds, 
+from src.core.gds_display_generator import (
+    generate_gds_display, 
     get_structure_info, 
-    get_gds_path,
+    get_project_gds_path,
     list_available_structures,
     get_all_structures_info
 )
-from ..core.gds_aligned_generator import (
+from src.core.gds_aligned_generator import (
     generate_aligned_gds,
     generate_transformed_gds
 )
@@ -144,7 +144,7 @@ class NewGDSService:
     
     def __init__(self):
         """Initialize the new GDS service."""
-        self.gds_path = get_gds_path()
+        self.gds_path = get_project_gds_path()
         self._structure_cache = {}
         self._display_cache = {}
         
@@ -223,7 +223,7 @@ class NewGDSService:
             if custom_bounds is not None:
                 image = self._generate_with_custom_bounds(structure_num, target_size, custom_bounds)
             else:
-                image = generate_display_gds(structure_num, target_size)
+                image, _ = generate_gds_display(structure_num, target_size)
             
             # Cache the result only for default bounds
             if custom_bounds is None and image is not None:
@@ -416,15 +416,16 @@ class NewGDSService:
         """
         try:
             # Use the existing display generator with custom bounds
-            from ..core.gds_display_generator import generate_display_gds_with_bounds
+            from src.core.gds_display_generator import generate_display_gds_with_bounds
             
             # Try to use existing function with bounds
             try:
                 return generate_display_gds_with_bounds(structure_num, target_size, custom_bounds)
             except:
                 # Fallback: generate normal image and crop/scale
-                from ..core.gds_display_generator import generate_display_gds
-                return generate_display_gds(structure_num, target_size)
+                from src.core.gds_display_generator import generate_gds_display
+                image, _ = generate_gds_display(structure_num, target_size)
+                return image
             
         except Exception as e:
             print(f"Error generating structure with custom bounds: {e}")

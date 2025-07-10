@@ -13,13 +13,12 @@ Key Methods:
 
 Dependencies:
 - Used by: manual_alignment_service.py, hybrid_alignment_service.py, auto_alignment_service.py
-- Uses: gds_aligned_generator.py, simple_aligned_gds_model.py
+- Uses: gds_aligned_generator.py
 """
 
 from typing import Dict, Tuple
 import numpy as np
 from src.core.gds_aligned_generator import generate_aligned_gds
-from src.core.models.simple_aligned_gds_model import AlignedGdsModel
 
 class UnifiedTransformationService:
     """Single transformation service for all alignment methods."""
@@ -32,9 +31,9 @@ class UnifiedTransformationService:
             'rotation': 0.0
         }
     
-    def apply_transformations(self, model: AlignedGdsModel, move_x: float, move_y: float, 
+    def apply_transformations(self, structure_num: int, move_x: float, move_y: float, 
                             zoom: float, rotation: float):
-        """Apply transformations using draft version formulas."""
+        """Apply transformations using new bounds-based approach."""
         # Store parameters
         self.current_params = {
             'move_x': move_x,
@@ -43,15 +42,7 @@ class UnifiedTransformationService:
             'rotation': rotation
         }
         
-        # Calculate pixel scale from original GDS-to-image conversion
-        frame_width = model.current_frame[2] - model.current_frame[0]
-        frame_height = model.current_frame[3] - model.current_frame[1]
-        pixel_scale = min(frame_width / 1024, frame_height / 666)
-        
-        # Store parameters directly for image-level transformations
-        model._pixel_translation = (move_x, move_y)
-        model.frame_scale = zoom / 100.0
-        model.set_residual_rotation(rotation)
+        # Parameters are stored for use in generate_aligned_image
     
     def generate_aligned_image(self, structure_num: int) -> np.ndarray:
         """Generate aligned GDS image using new bounds-based approach."""
@@ -67,24 +58,7 @@ class UnifiedTransformationService:
         aligned_image, bounds = generate_aligned_gds(structure_num, transform_params, (1024, 666))
         return aligned_image
     
-    def _apply_zoom_transform(self, image: np.ndarray, zoom_percent: float) -> np.ndarray:
-        """Apply zoom using draft version formula."""
-        import cv2
-        h, w = image.shape[:2]
-        scale = zoom_percent / 100.0
-        center_x, center_y = w // 2, h // 2
-        M = cv2.getRotationMatrix2D((center_x, center_y), 0, scale)
-        return cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_LINEAR,
-                             borderMode=cv2.BORDER_CONSTANT, borderValue=255)
-    
-    def _apply_move_transform(self, image: np.ndarray, dx: float, dy: float) -> np.ndarray:
-        """Apply move using draft version formula."""
-        import cv2
-        import numpy as np
-        h, w = image.shape[:2]
-        M = np.float32([[1, 0, dx], [0, 1, dy]])
-        return cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_NEAREST,
-                             borderMode=cv2.BORDER_CONSTANT, borderValue=255)
+
     
     def get_current_parameters(self) -> Dict[str, float]:
         """Get current transformation parameters."""

@@ -1,11 +1,4 @@
-"""
-Initial GDS model for loading and processing GDS files using gdstk.
 
-This module provides the InitialGdsModel class for:
-- Loading GDS files with proper error handling
-- Extracting basic information (layers, cells, bounds)
-- Basic polygon data extraction
-"""
 
 import gdstk
 import numpy as np
@@ -21,27 +14,13 @@ logger = logging.getLogger(__name__)
 
 
 class InitialGdsModel:
-    """
-    Basic GDS file loader and processor using gdstk.
-    
-    Provides core functionality for loading GDS files and extracting
-    basic information like layers, cells, and polygon data.
-    """
+   
     
     DEFAULT_DPI = 300  # Static DPI value for pixel conversion
     METERS_TO_PIXELS = DEFAULT_DPI / 0.0254  # Convert meters to pixels
     
     def __init__(self, gds_path: str):
-        """
-        Initialize with path to GDS file.
-        
-        Args:
-            gds_path: Path to the GDS file to load
-            
-        Raises:
-            FileNotFoundError: If GDS file doesn't exist
-            ValueError: If GDS file cannot be loaded or is invalid
-        """
+      
         self.gds_path = Path(gds_path)
         self.library = None
         self.cell = None
@@ -216,15 +195,7 @@ class InitialGdsModel:
         return sorted(list(layers))
     
     def get_polygons(self, layers: Optional[List[int]] = None) -> List[np.ndarray]:
-        """
-        Retrieve polygons for specified layers.
-        
-        Args:
-            layers: List of layer numbers to extract. If None, get all layers.
-            
-        Returns:
-            List of polygon arrays, each as numpy array of (x, y) coordinates
-        """
+       
         if not self.cell:
             return []
         
@@ -247,12 +218,7 @@ class InitialGdsModel:
         return polygons
     
     def get_cell_info(self) -> Dict[str, Any]:
-        """
-        Get information about the main cell.
-        
-        Returns:
-            Dictionary with cell information
-        """
+      
         if not self.cell:
             return {}
         
@@ -282,21 +248,11 @@ class InitialGdsModel:
             }
     
     def get_metadata(self) -> Dict[str, Any]:
-        """
-        Get metadata about the loaded GDS file.
-        
-        Returns:
-            Dictionary with file and library metadata
-        """
+      
         return self._metadata.copy()
     
     def is_valid(self) -> bool:
-        """
-        Check if the GDS model is valid and loaded properly.
-        
-        Returns:
-            True if the model is valid, False otherwise
-        """
+       
         return (
             self.library is not None and 
             self.cell is not None and 
@@ -304,29 +260,15 @@ class InitialGdsModel:
         )
     
     def get_scaling_factor(self) -> float:
-        """
-        Get scaling factor to convert GDS units to pixels.
-        
-        Returns:
-            Scaling factor for unit conversion
-        """
+     
         if not self.unit:
             return self.METERS_TO_PIXELS
         
-        # Convert GDS units (typically meters) to pixels
-        # FIX 8: Ensure return type is float, not numpy float
+   
         return float(self.unit * self.METERS_TO_PIXELS)
     
     def scale_coordinates(self, coordinates: np.ndarray) -> np.ndarray:
-        """
-        Apply fixed scaling to convert coordinates to pixels.
-        
-        Args:
-            coordinates: Array of (x, y) coordinates
-            
-        Returns:
-            Scaled coordinates in pixels
-        """
+      
         if len(coordinates) == 0:
             return coordinates
             
@@ -334,12 +276,7 @@ class InitialGdsModel:
         return coordinates * scaling_factor
     
     def get_scaled_bounds(self) -> Tuple[float, float, float, float]:
-        """
-        Get bounds converted to pixel coordinates.
-        
-        Returns:
-            Scaled bounds (xmin, ymin, xmax, ymax) in pixels
-        """
+      
         if not self.bounds:
             return (0.0, 0.0, 0.0, 0.0)
             
@@ -353,30 +290,13 @@ class InitialGdsModel:
         )
     
     def get_scaled_polygons(self, layers: Optional[List[int]] = None) -> List[np.ndarray]:
-        """
-        Get polygons with coordinates scaled to pixels.
-        
-        Args:
-            layers: List of layer numbers to extract. If None, get all layers.
-            
-        Returns:
-            List of polygon arrays with scaled coordinates
-        """
+      
         polygons = self.get_polygons(layers)
         return [self.scale_coordinates(poly) for poly in polygons]
     
     @staticmethod
     def simplify_polygon_rdp(polygon: np.ndarray, epsilon: float = 1.0) -> np.ndarray:
-        """
-        Simplify polygon using Ramer-Douglas-Peucker algorithm.
         
-        Args:
-            polygon: Array of (x, y) coordinates
-            epsilon: Distance threshold for simplification
-            
-        Returns:
-            Simplified polygon with reduced complexity
-        """
         if len(polygon) <= 2:
             return polygon
             
@@ -441,26 +361,13 @@ class InitialGdsModel:
         return simplified
     
     def get_simplified_polygons(self, layers: Optional[List[int]] = None, epsilon: float = 1.0) -> List[np.ndarray]:
-        """
-        Get simplified polygons with reduced complexity.
         
-        Args:
-            layers: List of layer numbers to extract. If None, get all layers.
-            epsilon: Simplification threshold (larger = more simplification)
-            
-        Returns:
-            List of simplified polygon arrays
-        """
+        
         polygons = self.get_polygons(layers)
         return [self.simplify_polygon_rdp(poly, epsilon) for poly in polygons if len(poly) > 0]
     
     def enumerate_structures(self) -> Dict[int, Dict[str, Any]]:
-        """
-        Enumerate all top-level structures with assigned indices.
-        
-        Returns:
-            Dictionary mapping structure index to structure info
-        """
+      
         structures = {}
         
         if not self.cell:
@@ -495,38 +402,17 @@ class InitialGdsModel:
         return structures
     
     def get_structure_by_index(self, index: int) -> Optional[Dict[str, Any]]:
-        """
-        Access structure by its assigned index.
         
-        Args:
-            index: Structure index
-            
-        Returns:
-            Structure information dictionary or None if not found
-        """
         structures = self.enumerate_structures()
         return structures.get(index)
     
     def get_structure_count(self) -> int:
-        """
-        Get total number of enumerated structures.
         
-        Returns:
-            Number of structures
-        """
         return len(self.enumerate_structures())
     
     @staticmethod
     def _calculate_polygon_area(polygon: np.ndarray) -> float:
-        """
-        Calculate area of polygon using shoelace formula.
         
-        Args:
-            polygon: Array of (x, y) coordinates
-            
-        Returns:
-            Polygon area
-        """
         if len(polygon) < 3:
             return 0.0
         
@@ -535,7 +421,7 @@ class InitialGdsModel:
         return float(0.5 * abs(sum(x[i] * y[i + 1] - x[i + 1] * y[i] for i in range(-1, len(x) - 1))))
     
     def __str__(self) -> str:
-        """String representation of the GDS model."""
+        
         if not self.is_valid():
             return f"InitialGdsModel(invalid, path={self.gds_path})"
         
@@ -550,19 +436,11 @@ class InitialGdsModel:
         )
     
     def __repr__(self) -> str:
-        """Detailed representation of the GDS model."""
+        
         return self.__str__()
     
     def serialize_to_json(self, include_polygons: bool = False) -> Dict[str, Any]:
-        """
-        Serialize structure data to JSON format.
         
-        Args:
-            include_polygons: Whether to include polygon coordinate data
-            
-        Returns:
-            JSON-serializable dictionary with layer and metadata info
-        """
         # Get basic metadata
         data = {
             'metadata': self.get_metadata(),
@@ -612,13 +490,7 @@ class InitialGdsModel:
         return data
     
     def save_to_json(self, filepath: str, include_polygons: bool = False) -> None:
-        """
-        Save structure data to JSON file.
         
-        Args:
-            filepath: Output JSON file path
-            include_polygons: Whether to include polygon coordinate data
-        """
         data = self.serialize_to_json(include_polygons)
         
         output_path = Path(filepath)
@@ -631,15 +503,7 @@ class InitialGdsModel:
     
     @classmethod
     def load_from_json(cls, filepath: str) -> Dict[str, Any]:
-        """
-        Load structure data from JSON file.
         
-        Args:
-            filepath: JSON file path
-            
-        Returns:
-            Loaded structure data dictionary
-        """
         with open(filepath, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
@@ -647,15 +511,7 @@ class InitialGdsModel:
     
     @staticmethod
     def validate_gds_format(filepath: str) -> Dict[str, Any]:
-        """
-        Perform minimal GDS file format validation.
         
-        Args:
-            filepath: Path to GDS file
-            
-        Returns:
-            Validation result dictionary
-        """
         result = {
             'is_valid': False,
             'file_exists': False,
@@ -710,12 +566,7 @@ class InitialGdsModel:
         return result
     
     def validate_loaded_data(self) -> Dict[str, Any]:
-        """
-        Validate the currently loaded GDS data.
         
-        Returns:
-            Validation result for loaded data
-        """
         result = {
             'is_valid': True,
             'has_library': self.library is not None,
@@ -752,17 +603,7 @@ class InitialGdsModel:
                                   bounds: Tuple[float, float, float, float],
                                   layers: List[int],
                                   resolution: Tuple[int, int] = (1024, 666)) -> Optional[np.ndarray]:
-        """
-        Generate a binary bitmap image of the structure within specified bounds.
         
-        Args:
-            bounds: (min_x, min_y, max_x, max_y) boundaries in GDS units
-            layers: List of layer numbers to include
-            resolution: Output image resolution (width, height)
-            
-        Returns:
-            Binary numpy array (0s and 1s) or None if failed
-        """
         try:
             import cv2
             
@@ -852,31 +693,11 @@ class InitialGdsModel:
 # Convenience functions for easy usage
 
 def load_gds_file(gds_path: str) -> InitialGdsModel:
-    """
-    Load a GDS file and return an InitialGdsModel instance.
     
-    Args:
-        gds_path: Path to the GDS file
-        
-    Returns:
-        InitialGdsModel instance
-        
-    Raises:
-        FileNotFoundError: If file doesn't exist
-        ValueError: If file cannot be loaded
-    """
     return InitialGdsModel(gds_path)
 
 
 def validate_gds_file(gds_path: str) -> bool:
-    """
-    Check if a GDS file can be loaded successfully.
-    
-    Args:
-        gds_path: Path to the GDS file
-        
-    Returns:
-        True if file can be loaded, False otherwise
-    """
+   
     validation_result = InitialGdsModel.validate_gds_format(gds_path)
     return validation_result['is_valid']
