@@ -77,6 +77,10 @@ class ImageViewer(QWidget):
         self._overlay_visible = True
         self._overlay_alpha = 0.7
         
+        # GDS overlay color settings (default: black structure on transparent background)
+        self._gds_background_color = (0, 0, 0, 0)  # Transparent background (RGBA)
+        self._gds_structure_color = (0, 0, 0, 255)  # Black structure (RGBA)
+        
         # Point selection state
         self._point_selection_mode = False
         self._point_selection_type = "sem"  # "sem" or "gds"
@@ -192,6 +196,26 @@ class ImageViewer(QWidget):
         """Get overlay transparency."""
         return self._overlay_alpha
     
+    def set_gds_colors(self, background_color, structure_color):
+        """Set GDS overlay colors.
+        
+        Args:
+            background_color: (R, G, B, A) tuple for background
+            structure_color: (R, G, B, A) tuple for structure
+        """
+        self._gds_background_color = background_color
+        self._gds_structure_color = structure_color
+        self._invalidate_cache()
+        self.update()
+    
+    def get_gds_colors(self):
+        """Get current GDS overlay colors.
+        
+        Returns:
+            Tuple of (background_color, structure_color) as RGBA tuples
+        """
+        return self._gds_background_color, self._gds_structure_color
+    
     def reset_view(self):
         self._zoom_factor = 1.0
         self._pan_offset = QPoint(0, 0)
@@ -201,7 +225,7 @@ class ImageViewer(QWidget):
     
     def set_zoom_factor(self, zoom_factor):
         """Set the zoom factor for the canvas."""
-        new_zoom = max(0.1, min(10.0, zoom_factor))
+        new_zoom = max(0.01, min(100.0, zoom_factor))
         if new_zoom != self._zoom_factor:
             self._zoom_factor = new_zoom
             self._update_image_rect()
@@ -319,15 +343,22 @@ class ImageViewer(QWidget):
             # Grayscale overlay - convert to colored overlay with transparency
             h, w = overlay_8bit.shape
             
-            # Create RGBA overlay (red/cyan colored)
+            # Create RGBA overlay with configurable colors
             rgba_overlay = np.zeros((h, w, 4), dtype=np.uint8)
             
-            # Where overlay has content (non-zero), make it colored and semi-transparent
-            mask = overlay_8bit > 0
-            rgba_overlay[mask, 0] = 255  # Red channel
-            rgba_overlay[mask, 1] = 255  # Green channel (makes it yellow/cyan)
-            rgba_overlay[mask, 2] = 0    # Blue channel
-            rgba_overlay[mask, 3] = int(self._overlay_alpha * 255)  # Alpha channel
+            # Set background color (for areas where overlay is 0)
+            background_mask = overlay_8bit == 0
+            rgba_overlay[background_mask, 0] = self._gds_background_color[0]  # Red
+            rgba_overlay[background_mask, 1] = self._gds_background_color[1]  # Green
+            rgba_overlay[background_mask, 2] = self._gds_background_color[2]  # Blue
+            rgba_overlay[background_mask, 3] = self._gds_background_color[3]  # Alpha
+            
+            # Set structure color (for areas where overlay has content)
+            structure_mask = overlay_8bit > 0
+            rgba_overlay[structure_mask, 0] = self._gds_structure_color[0]  # Red
+            rgba_overlay[structure_mask, 1] = self._gds_structure_color[1]  # Green
+            rgba_overlay[structure_mask, 2] = self._gds_structure_color[2]  # Blue
+            rgba_overlay[structure_mask, 3] = int(self._gds_structure_color[3] * self._overlay_alpha)  # Alpha with transparency
             
             bytes_per_line = w * 4
             overlay_qimage = QImage(rgba_overlay.data, w, h, bytes_per_line, QImage.Format_RGBA8888)
@@ -338,6 +369,12 @@ class ImageViewer(QWidget):
             h, w, c = overlay_8bit.shape
             bytes_per_line = w * c
             overlay_qimage = QImage(overlay_8bit.data, w, h, bytes_per_line, QImage.Format_RGB888)
+            overlay_pixmap = QPixmap.fromImage(overlay_qimage)
+        elif len(overlay_8bit.shape) == 3 and overlay_8bit.shape[2] == 4:
+            # RGBA overlay with alpha channel
+            h, w, c = overlay_8bit.shape
+            bytes_per_line = w * c
+            overlay_qimage = QImage(overlay_8bit.data, w, h, bytes_per_line, QImage.Format_RGBA8888)
             overlay_pixmap = QPixmap.fromImage(overlay_qimage)
         else:
             print(f"Unsupported overlay shape: {overlay_8bit.shape}")
@@ -355,6 +392,10 @@ class ImageViewer(QWidget):
         # Draw overlay with composition mode
         if len(overlay_8bit.shape) == 2:
             # For grayscale overlays, we already handled alpha in RGBA conversion
+            painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
+            painter.drawPixmap(0, 0, overlay_pixmap)
+        elif len(overlay_8bit.shape) == 3 and overlay_8bit.shape[2] == 4:
+            # For RGBA overlays, alpha is already in the image
             painter.setCompositionMode(QPainter.CompositionMode_SourceOver)
             painter.drawPixmap(0, 0, overlay_pixmap)
         else:
@@ -420,31 +461,35 @@ class ImageViewer(QWidget):
     def _draw_point_markers(self, painter):
         """Draw visual markers for selected points."""
         if not self._image_rect.isEmpty():
-            # Draw SEM points in blue
-            painter.setPen(QPen(QColor(100, 150, 255), 3))
-            painter.setBrush(QBrush(QColor(100, 150, 255, 150)))
+            # Draw SEM points - solid blue pixel with transparent circle
             for i, (x, y) in enumerate(self._sem_points):
                 screen_point = self._image_to_screen_coords(QPoint(x, y))
-                if self._image_rect.contains(screen_point):
-                    # Draw circle
-                    painter.drawEllipse(screen_point.x() - 8, screen_point.y() - 8, 16, 16)
-                    # Draw number
-                    painter.setPen(QPen(QColor(255, 255, 255), 2))
-                    painter.drawText(screen_point.x() - 5, screen_point.y() + 5, str(i + 1))
-                    painter.setPen(QPen(QColor(100, 150, 255), 3))
+                # Draw transparent circle
+                painter.setPen(QPen(QColor(0, 100, 255, 100), 2))
+                painter.setBrush(QBrush(QColor(0, 100, 255, 50)))
+                painter.drawEllipse(screen_point.x() - 8, screen_point.y() - 8, 16, 16)
+                # Draw solid center pixel
+                painter.setPen(QPen(QColor(0, 100, 255), 1))
+                painter.setBrush(QBrush(QColor(0, 100, 255)))
+                painter.drawRect(screen_point.x(), screen_point.y(), 1, 1)
+                # Draw number
+                painter.setPen(QPen(QColor(255, 255, 255), 2))
+                painter.drawText(screen_point.x() + 10, screen_point.y() - 5, str(i + 1))
             
-            # Draw GDS points in orange
-            painter.setPen(QPen(QColor(255, 150, 50), 3))
-            painter.setBrush(QBrush(QColor(255, 150, 50, 150)))
+            # Draw GDS points - solid red pixel with transparent square
             for i, (x, y) in enumerate(self._gds_points):
                 screen_point = self._image_to_screen_coords(QPoint(x, y))
-                if self._image_rect.contains(screen_point):
-                    # Draw square
-                    painter.drawRect(screen_point.x() - 8, screen_point.y() - 8, 16, 16)
-                    # Draw number
-                    painter.setPen(QPen(QColor(255, 255, 255), 2))
-                    painter.drawText(screen_point.x() - 5, screen_point.y() + 5, str(i + 1))
-                    painter.setPen(QPen(QColor(255, 150, 50), 3))
+                # Draw transparent square
+                painter.setPen(QPen(QColor(255, 50, 50, 100), 2))
+                painter.setBrush(QBrush(QColor(255, 50, 50, 50)))
+                painter.drawRect(screen_point.x() - 8, screen_point.y() - 8, 16, 16)
+                # Draw solid center pixel
+                painter.setPen(QPen(QColor(255, 50, 50), 1))
+                painter.setBrush(QBrush(QColor(255, 50, 50)))
+                painter.drawRect(screen_point.x(), screen_point.y(), 1, 1)
+                # Draw number
+                painter.setPen(QPen(QColor(255, 255, 255), 2))
+                painter.drawText(screen_point.x() + 10, screen_point.y() - 5, str(i + 1))
 
     def _draw_difference_overlay(self, painter):
         pass
@@ -460,7 +505,7 @@ class ImageViewer(QWidget):
         old_zoom = self._zoom_factor
         new_zoom = old_zoom * zoom_factor
         
-        new_zoom = max(0.1, min(10.0, new_zoom))
+        new_zoom = max(0.01, min(100.0, new_zoom))
         
         if new_zoom != old_zoom:
             mouse_pos = event.position().toPoint()
@@ -483,7 +528,7 @@ class ImageViewer(QWidget):
     
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.LeftButton:
-            # Left click for panning only
+            # Left click for panning
             self._dragging = True
             self._drag_start = event.position().toPoint()
             self._drag_offset = self._pan_offset
@@ -509,7 +554,7 @@ class ImageViewer(QWidget):
         event.accept()
     
     def mouseMoveEvent(self, event: QMouseEvent):
-        if self._dragging and not self._point_selection_mode:
+        if self._dragging:
             current_pos = event.position().toPoint()
             delta = current_pos - self._drag_start
             self._pan_offset = self._drag_offset + delta

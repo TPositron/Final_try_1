@@ -50,7 +50,8 @@ from typing import Optional, Union, Dict, Any
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QMenuBar, QMenu, QFileDialog, QMessageBox, QDockWidget,
                                QApplication, QStatusBar, QSplitter, QPushButton, QComboBox, QLabel,
-                               QToolBar, QButtonGroup, QGroupBox, QTextEdit, QTabWidget, QStackedWidget)
+                               QToolBar, QButtonGroup, QGroupBox, QTextEdit, QTabWidget, QStackedWidget,
+                               QDialog, QGridLayout, QColorDialog)
 from PySide6.QtCore import Qt, QTimer, Signal, QPoint
 from pathlib import Path
 from PySide6.QtGui import QAction, QIcon, QKeySequence
@@ -137,6 +138,13 @@ class MainWindow(QMainWindow):
         self.current_scoring_results = {}
         self.current_scoring_method = "SSIM"
         
+        # Import theme manager
+        from src.ui.styles.theme import theme_manager
+        self.theme_manager = theme_manager
+        
+        # Load and apply settings
+        self._load_and_apply_settings()
+        
         # Sequential processing state
         self.sequential_images = {}
         self.current_processing_stage = None
@@ -155,9 +163,35 @@ class MainWindow(QMainWindow):
         self._connect_signals()
         
         # Setup error handling
-        self.setup_error_handling()
+        self._setup_error_handling()
         
         logger.info("Unified main window initialized successfully")
+    
+    def _load_and_apply_settings(self):
+        """Load application settings and apply them."""
+        try:
+            from src.ui.settings_dialog import load_app_settings
+            settings = load_app_settings()
+            
+            # Apply GDS color settings to image viewer
+            if hasattr(self, 'image_viewer'):
+                bg_color = settings.get('gds_bg_color', [0, 0, 0])
+                bg_alpha = settings.get('gds_bg_alpha', 0)
+                struct_color = settings.get('gds_struct_color', [0, 0, 0])
+                struct_alpha = settings.get('gds_struct_alpha', 255)
+                
+                background_rgba = (bg_color[0], bg_color[1], bg_color[2], bg_alpha)
+                structure_rgba = (struct_color[0], struct_color[1], struct_color[2], struct_alpha)
+                
+                self.image_viewer.set_gds_colors(background_rgba, structure_rgba)
+                
+                logger.info(f"Applied GDS colors - Background: {background_rgba}, Structure: {structure_rgba}")
+            
+            # Apply UI theme settings
+            self._apply_ui_theme(settings)
+            
+        except Exception as e:
+            logger.error(f"Error loading settings: {e}")
     
     def _on_manual_alignment_changed(self, params):
         """Handle manual alignment parameter changes."""
@@ -280,18 +314,25 @@ class MainWindow(QMainWindow):
             new_center_x = center_x + x_offset_coord
             new_center_y = center_y + y_offset_coord
             
-            # 2. Scale from new center
-            scaled_width = bounds_width / scale  # Inverse scale for bounds
-            scaled_height = bounds_height / scale
-            
-            # 3. Calculate new bounds
-            new_bounds = [
+           # 2. Scale from new center (direct scaling, not inverse)
+            scaled_width = bounds_width * scale  # Direct scale for bounds
+            scaled_height = bounds_height * scale
+
+            # 3. Calculate scaled bounds centered at new position
+            scaled_bounds = [
                 new_center_x - scaled_width/2,   # min_x
                 new_center_y - scaled_height/2,  # min_y
                 new_center_x + scaled_width/2,   # max_x
                 new_center_y + scaled_height/2   # max_y
             ]
-            
+
+            # 4. Apply translation to all bounds (move the entire extraction window)
+            new_bounds = [
+                scaled_bounds[0] + x_offset_coord,  # min_x
+                scaled_bounds[1] + y_offset_coord,  # min_y
+                scaled_bounds[2] + x_offset_coord,  # max_x
+                scaled_bounds[3] + y_offset_coord   # max_y
+            ]
             print(f"DEBUG: Original bounds: {original_bounds}")
             print(f"DEBUG: Params: x={x_offset_pixels}, y={y_offset_pixels}, scale={scale}, rot={rotation}")
             print(f"DEBUG: New bounds: {new_bounds}")
@@ -329,25 +370,7 @@ class MainWindow(QMainWindow):
                 }
             """)
     
-    def _auto_load_default_gds(self):
-        """Auto-load the default GDS file and select Structure 1."""
-        try:
-            print("Auto-loading default GDS file...")
-            default_gds_path = Path("Data/GDS/Institute_Project_GDS1.gds")
-            
-            if default_gds_path.exists():
-                # Load GDS file
-                self.gds_operations_manager.load_gds_file_from_path(str(default_gds_path))
-                
-                # Auto-select Structure 1 after a short delay
-                QTimer.singleShot(500, lambda: self.gds_operations_manager.select_structure_by_id(1))
-                
-                print(f"Auto-loaded GDS file: {default_gds_path}")
-            else:
-                print(f"Default GDS file not found: {default_gds_path}")
-                
-        except Exception as e:
-            print(f"Error auto-loading default GDS: {e}")
+
     
     def _initialize_managers(self):
         """Initialize all manager modules."""
@@ -384,11 +407,19 @@ class MainWindow(QMainWindow):
             self.image_viewer.point_selected.connect(self._on_point_selected)
             self.main_splitter.addWidget(self.image_viewer)
             
+            # Apply settings after image viewer is created
+            self._load_and_apply_settings()
+            
             # Right panel
             self._setup_right_panel()
             
-            # Set splitter sizes
-            self.main_splitter.setSizes([400, 1000, 350])
+            # Set splitter sizes - smaller left panel, larger range
+            self.main_splitter.setSizes([200, 1000, 350])
+            self.main_splitter.setCollapsible(0, True)
+            self.main_splitter.setCollapsible(2, True)
+            # Allow much smaller minimum sizes
+            self.left_panel_container.setMinimumWidth(50)
+            self.right_panel_container.setMinimumWidth(50)
             
             # Setup menus and status bar
             self._setup_menus()
@@ -408,31 +439,6 @@ class MainWindow(QMainWindow):
         
         # Main tab widget
         self.main_tab_widget = QTabWidget()
-        self.main_tab_widget.setStyleSheet("""
-            QTabWidget::pane {
-                border: 1px solid #444444;
-                background-color: #2b2b2b;
-                color: #ffffff;
-            }
-            QTabBar::tab {
-                background-color: #3c3c3c;
-                border: 1px solid #444444;
-                padding: 8px 12px;
-                margin-right: 2px;
-                color: #ffffff;
-                border-top-left-radius: 4px;
-                border-top-right-radius: 4px;
-            }
-            QTabBar::tab:selected {
-                background-color: #2b2b2b;
-                border-bottom-color: #2b2b2b;
-                color: #ffffff;
-            }
-            QTabBar::tab:hover {
-                background-color: #4a4a4a;
-                color: #ffffff;
-            }
-        """)
         
         # Create tabs
         self.alignment_tab = QWidget()
@@ -470,24 +476,114 @@ class MainWindow(QMainWindow):
         self.file_selector.gds_structure_selected.connect(self._handle_structure_selection)
         self.right_panel_layout.addWidget(self.file_selector)
         
-        # Histogram view
-        self.histogram_view = HistogramView()
-        self.histogram_view.setMaximumHeight(200)
-        self.histogram_view.setMinimumHeight(150)
-        self.right_panel_layout.addWidget(self.histogram_view)
+        # Create vertical splitter for resizable sections (filtering modes only)
+        right_splitter = QSplitter(Qt.Orientation.Vertical)
+        self.right_panel_layout.addWidget(right_splitter)
         
-        # View-specific content area
-        self.view_specific_widget = QWidget()
-        self.view_specific_layout = QVBoxLayout(self.view_specific_widget)
-        self.right_panel_layout.addWidget(self.view_specific_widget)
+        # Histogram section (filtering modes only)
+        self.histogram_group = QGroupBox("📊 Image Histogram")
+        self.histogram_group.setStyleSheet(self._get_group_style())
+        histogram_layout = QVBoxLayout(self.histogram_group)
+        
+        self.histogram_view = HistogramView()
+        histogram_layout.addWidget(self.histogram_view)
+        right_splitter.addWidget(self.histogram_group)
+        
+        # Statistics section (filtering modes only)
+        self.stats_group = QGroupBox("📈 Image Statistics")
+        self.stats_group.setStyleSheet(self._get_group_style())
+        stats_layout = QVBoxLayout(self.stats_group)
+        
+        self.stats_text = QTextEdit()
+        self.stats_text.setStyleSheet("""
+            QTextEdit {
+                background-color: #2b2b2b;
+                color: #ffffff;
+                border: 1px solid #555555;
+                border-radius: 4px;
+                font-family: 'Consolas', 'Monaco', monospace;
+                font-size: 9px;
+                padding: 4px;
+            }
+        """)
+        stats_layout.addWidget(self.stats_text)
+        right_splitter.addWidget(self.stats_group)
+        
+        # Processing status section (filtering modes only)
+        self.status_group = QGroupBox("⚡ Processing Status")
+        self.status_group.setStyleSheet(self._get_group_style())
+        status_layout = QVBoxLayout(self.status_group)
+        
+        self.status_label = QLabel("Ready")
+        self.status_label.setStyleSheet("""
+            QLabel {
+                color: #ffffff;
+                background-color: #2a2a2a;
+                padding: 8px;
+                border-radius: 4px;
+                font-weight: bold;
+                border: 2px solid #555555;
+                font-size: 11px;
+            }
+        """)
+        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        status_layout.addWidget(self.status_label)
+        right_splitter.addWidget(self.status_group)
+        
+        # Hide these components by default (only show in filtering modes)
+        self.histogram_group.hide()
+        self.stats_group.hide()
+        self.status_group.hide()
+        
+        # Sequential progress section (for sequential filtering mode)
+        progress_group = QGroupBox("🔄 Processing Progress")
+        progress_group.setStyleSheet(self._get_group_style())
+        progress_layout = QVBoxLayout(progress_group)
+        
+        self.stage_progress = {}
+        stages_layout = QVBoxLayout()
+        
+        from src.ui.panels.sequential_filtering_panels import ProcessingStage, SequentialFilterConfigManager
+        for stage in ProcessingStage:
+            stage_config = SequentialFilterConfigManager().get_stage_config(stage)
+            
+            stage_layout = QHBoxLayout()
+            
+            indicator = QLabel("○")
+            indicator.setStyleSheet("color: #666666; font-size: 12px; font-weight: bold; min-width: 16px;")
+            
+            label = QLabel(f"{stage_config.icon} {stage_config.display_name}")
+            label.setStyleSheet(f"color: {stage_config.color}; font-size: 10px; font-weight: bold;")
+            
+            status = QLabel("Pending")
+            status.setStyleSheet("color: #cccccc; font-size: 9px; font-style: italic;")
+            
+            stage_layout.addWidget(indicator)
+            stage_layout.addWidget(label)
+            stage_layout.addStretch()
+            stage_layout.addWidget(status)
+            
+            self.stage_progress[stage] = {'indicator': indicator, 'label': label, 'status': status}
+            stages_layout.addLayout(stage_layout)
+        
+        progress_layout.addLayout(stages_layout)
+        right_splitter.addWidget(progress_group)
+        self.progress_group = progress_group
+        progress_group.hide()  # Hidden by default
+        
+        # Set initial splitter sizes
+        right_splitter.setSizes([200, 140, 80, 120])
+        self.right_splitter = right_splitter
         
         self.main_splitter.addWidget(self.right_panel_container)
         
         # Initialize file scanning
         self.file_selector.scan_directories()
         
-        # Auto-load default GDS file after a short delay
-        QTimer.singleShot(1000, self._auto_load_default_gds)
+        # Initialize histogram and stats
+        self._initialize_right_panel_displays()
+        
+        # File scanning completed
     
     def _setup_alignment_tab(self):
         """Setup alignment tab with manual and hybrid modes."""
@@ -510,10 +606,23 @@ class MainWindow(QMainWindow):
         self._setup_hybrid_alignment_content()
         self.alignment_sub_tabs.addTab(self.hybrid_alignment_tab, "Hybrid")
         
-        layout.addWidget(self.alignment_sub_tabs)
+        # This will be added to splitter instead
         
-        # Action buttons
-        self._setup_alignment_action_buttons(layout)
+        # Create vertical splitter for alignment sections
+        alignment_splitter = QSplitter(Qt.Orientation.Vertical)
+        
+        # Add sub-tabs to splitter
+        alignment_splitter.addWidget(self.alignment_sub_tabs)
+        
+        # Action buttons in separate section
+        actions_widget = QWidget()
+        actions_layout = QVBoxLayout(actions_widget)
+        self._setup_alignment_action_buttons(actions_layout)
+        alignment_splitter.addWidget(actions_widget)
+        
+        # Set initial sizes and add to main layout
+        alignment_splitter.setSizes([300, 150])
+        layout.addWidget(alignment_splitter)
         
         # Connect sub-tab changes
         self.alignment_sub_tabs.currentChanged.connect(self._on_alignment_subtab_changed)
@@ -529,25 +638,17 @@ class MainWindow(QMainWindow):
         # Instructions
         instructions = QLabel("Select 3 corresponding points on SEM and GDS images for alignment.")
         instructions.setWordWrap(True)
-        instructions.setStyleSheet("""
-            QLabel {
-                background-color: #3c3c3c;
-                color: #ffffff;
-                padding: 8px;
-                border-radius: 4px;
-                font-size: 12px;
-            }
-        """)
+        instructions.setStyleSheet("padding: 8px; border-radius: 4px; font-size: 12px;")
         layout.addWidget(instructions)
         
         # Point status
         self.points_status_label = QLabel("SEM Points: 0/3  |  GDS Points: 0/3")
-        self.points_status_label.setStyleSheet("color: #ffffff; font-size: 12px;")
+        self.points_status_label.setStyleSheet("font-size: 12px;")
         layout.addWidget(self.points_status_label)
         
         # Ready status
         self.ready_status_label = QLabel("Status: Not Ready")
-        self.ready_status_label.setStyleSheet("color: #f39c12; font-weight: bold;")
+        self.ready_status_label.setStyleSheet("font-weight: bold;")
         layout.addWidget(self.ready_status_label)
         
         # Point selection mode buttons
@@ -557,13 +658,13 @@ class MainWindow(QMainWindow):
         self.select_sem_btn.setCheckable(True)
         self.select_sem_btn.setChecked(True)
         self.select_sem_btn.clicked.connect(self._set_sem_mode)
-        self.select_sem_btn.setStyleSheet("QPushButton:checked { background-color: #e74c3c; color: white; }")
+
         mode_layout.addWidget(self.select_sem_btn)
         
         self.select_gds_btn = QPushButton("Select GDS Points")
         self.select_gds_btn.setCheckable(True)
         self.select_gds_btn.clicked.connect(self._set_gds_mode)
-        self.select_gds_btn.setStyleSheet("QPushButton:checked { background-color: #3498db; color: white; }")
+
         mode_layout.addWidget(self.select_gds_btn)
         
         self.current_point_mode = "sem"  # "sem" or "gds"
@@ -594,6 +695,15 @@ class MainWindow(QMainWindow):
         calc_layout.addWidget(self.calculate_alignment_btn)
         
         layout.addLayout(calc_layout)
+        
+        # Show GDS toggle button
+        gds_layout = QHBoxLayout()
+        self.show_gds_hybrid_btn = QPushButton("Show GDS")
+        self.show_gds_hybrid_btn.setCheckable(True)
+        self.show_gds_hybrid_btn.clicked.connect(self._on_show_gds_hybrid_clicked)
+        gds_layout.addWidget(self.show_gds_hybrid_btn)
+        
+        layout.addLayout(gds_layout)
         layout.addStretch()
     
     def _setup_advanced_filtering_tab(self):
@@ -601,54 +711,44 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(self.advanced_filtering_tab)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Left panel: Advanced filtering controls
+        # Advanced filtering controls only
         self.advanced_filtering_left_panel = AdvancedFilteringLeftPanel()
         self.advanced_filtering_left_panel.filter_applied.connect(self._on_advanced_filter_applied)
         self.advanced_filtering_left_panel.filter_previewed.connect(self._on_advanced_filter_previewed)
         self.advanced_filtering_left_panel.filter_reset.connect(self._on_advanced_filter_reset)
         self.advanced_filtering_left_panel.save_image_requested.connect(self._save_filtered_image)
-        splitter.addWidget(self.advanced_filtering_left_panel)
-        
-        # Right panel: Info display
-        self.advanced_filtering_right_panel = AdvancedFilteringRightPanel()
-        splitter.addWidget(self.advanced_filtering_right_panel)
-        
-        splitter.setSizes([450, 300])
-        layout.addWidget(splitter)
+        layout.addWidget(self.advanced_filtering_left_panel)
     
     def _setup_sequential_filtering_tab(self):
         """Setup sequential filtering tab."""
         layout = QHBoxLayout(self.sequential_filtering_tab)
         splitter = QSplitter(Qt.Orientation.Horizontal)
         
-        # Left panel: Sequential controls
+        # Sequential filtering controls only
         self.sequential_filtering_left_panel = SequentialFilteringLeftPanel()
         self.sequential_filtering_left_panel.stage_preview_requested.connect(self._on_stage_preview_requested)
         self.sequential_filtering_left_panel.stage_apply_requested.connect(self._on_stage_apply_requested)
         self.sequential_filtering_left_panel.stage_reset_requested.connect(self._on_stage_reset_requested)
-        splitter.addWidget(self.sequential_filtering_left_panel)
-        
-        # Right panel: Progress display
-        self.sequential_filtering_right_panel = SequentialFilteringRightPanel()
-        splitter.addWidget(self.sequential_filtering_right_panel)
-        
-        splitter.setSizes([450, 300])
-        layout.addWidget(splitter)
+        layout.addWidget(self.sequential_filtering_left_panel)
     
     def _setup_scoring_tab(self):
         """Setup scoring tab."""
         layout = QVBoxLayout(self.scoring_tab)
+        
+        # Create vertical splitter for scoring sections
+        scoring_splitter = QSplitter(Qt.Orientation.Vertical)
         
         from src.ui.panels.scoring_tab_panel import ScoringTabPanel
         self.scoring_tab_panel = ScoringTabPanel()
         self.scoring_tab_panel.scoring_method_changed.connect(self._on_scoring_method_changed)
         self.scoring_tab_panel.calculate_scores_requested.connect(self._on_calculate_scores_requested)
         
-        layout.addWidget(self.scoring_tab_panel)
+        scoring_splitter.addWidget(self.scoring_tab_panel)
+        scoring_splitter.setSizes([400])
+        layout.addWidget(scoring_splitter)
     
     def _setup_alignment_action_buttons(self, parent_layout):
         """Setup action buttons for alignment tab."""
-        parent_layout.addSpacing(20)
         
         action_group = QGroupBox("Actions")
         action_layout = QVBoxLayout(action_group)
@@ -693,6 +793,7 @@ class MainWindow(QMainWindow):
         action_layout.addWidget(self.generate_aligned_gds_btn)
         
         parent_layout.addWidget(action_group)
+        parent_layout.addStretch()
     
     def _setup_menus(self):
         """Setup application menus."""
@@ -745,6 +846,15 @@ class MainWindow(QMainWindow):
         auto_align_action.setShortcut(QKeySequence("Ctrl+A"))
         auto_align_action.triggered.connect(self.run_auto_alignment)
         tools_menu.addAction(auto_align_action)
+        
+        tools_menu.addSeparator()
+        
+        settings_action = QAction("&Settings...", self)
+        settings_action.setShortcut(QKeySequence("Ctrl+,"))
+        settings_action.triggered.connect(self.show_settings)
+        tools_menu.addAction(settings_action)
+        
+
         
         # Help menu
         help_menu = menubar.addMenu("&Help")
@@ -808,16 +918,20 @@ class MainWindow(QMainWindow):
                 self.current_sem_image_obj = result
                 
                 if 'cropped_array' in result:
-                    self.current_sem_image = result['cropped_array']
-                    # Store original for filter reset
-                    self.original_sem_image = self.current_sem_image.copy()
+                    # Set both current and original to the loaded image
+                    self.current_sem_image = result['cropped_array'].copy()
+                    self.original_sem_image = result['cropped_array'].copy()
                     
                     # Set image in image processing service
                     if hasattr(self, 'image_processing_service'):
                         self.image_processing_service.set_image(self.current_sem_image)
                     
                     self.image_viewer.set_sem_image(self.current_sem_image)
-                    self.histogram_view.update_histogram(self.current_sem_image)
+                    
+                    print(f"✓ SEM image loaded - Original and current reference set")
+                    # Update reference status when new image is loaded
+                    if hasattr(self, 'advanced_filtering_right_panel') and hasattr(self.advanced_filtering_right_panel, 'update_reference_status'):
+                        self.advanced_filtering_right_panel.update_reference_status(is_original=True)
                 
                 logger.info(f"SEM file loaded: {filepath}")
                 return result
@@ -923,6 +1037,41 @@ class MainWindow(QMainWindow):
             logger.error(f"Error in auto alignment: {e}")
             QMessageBox.critical(self, "Error", f"Auto alignment failed: {e}")
     
+    def show_settings(self):
+        """Show settings dialog."""
+        try:
+            from src.ui.settings_dialog import SettingsDialog, load_app_settings, save_app_settings
+            
+            current_settings = load_app_settings()
+            dialog = SettingsDialog(self, current_settings)
+            
+            if dialog.exec() == QDialog.DialogCode.Accepted:
+                new_settings = dialog.get_settings()
+                save_app_settings(new_settings)
+                
+                # Apply new settings immediately
+                if hasattr(self, 'image_viewer'):
+                    bg_color = new_settings.get('gds_bg_color', [0, 0, 0])
+                    bg_alpha = new_settings.get('gds_bg_alpha', 0)
+                    struct_color = new_settings.get('gds_struct_color', [0, 0, 0])
+                    struct_alpha = new_settings.get('gds_struct_alpha', 255)
+                    
+                    background_rgba = (bg_color[0], bg_color[1], bg_color[2], bg_alpha)
+                    structure_rgba = (struct_color[0], struct_color[1], struct_color[2], struct_alpha)
+                    
+                    self.image_viewer.set_gds_colors(background_rgba, structure_rgba)
+                    
+                    logger.info(f"Updated GDS colors - Background: {background_rgba}, Structure: {structure_rgba}")
+                
+                # Apply UI theme settings
+                self._apply_ui_theme(new_settings)
+                
+                QMessageBox.information(self, "Settings", "Settings saved successfully!")
+                
+        except Exception as e:
+            logger.error(f"Error showing settings: {e}")
+            QMessageBox.critical(self, "Error", f"Failed to show settings: {e}")
+    
     def show_about(self):
         """Show about dialog."""
         QMessageBox.about(
@@ -938,19 +1087,22 @@ class MainWindow(QMainWindow):
             "Version 2.0"
         )
     
+
+    
     # Signal handlers
     def on_sem_image_loaded(self, file_path, image_data):
         """Handle SEM image loaded."""
         logger.info(f"SEM image loaded: {file_path}")
         if 'cropped_array' in image_data:
-            self.current_sem_image = image_data['cropped_array']
-            self.original_sem_image = self.current_sem_image.copy()
+            # Set both current and original to the loaded image
+            self.current_sem_image = image_data['cropped_array'].copy()
+            self.original_sem_image = image_data['cropped_array'].copy()
             
             # Set image in image processing service
             if hasattr(self, 'image_processing_service'):
                 self.image_processing_service.set_image(self.current_sem_image)
             
-            self.histogram_view.update_histogram(self.current_sem_image)
+            print(f"✓ SEM image loaded via signal - Original and current reference set")
     
     def on_gds_file_loaded(self, file_path):
         """Handle GDS file loaded."""
@@ -965,8 +1117,14 @@ class MainWindow(QMainWindow):
             if overlay.dtype != np.uint8:
                 overlay = (overlay * 255).astype(np.uint8)
             
-            self.current_gds_overlay = overlay
-            self.image_viewer.set_gds_overlay(overlay)
+            # Process GDS overlay to black and white for scoring mode
+            if self.main_tab_widget.currentIndex() == 3:  # Scoring tab
+                processed_overlay = self._process_gds_for_scoring(overlay)
+                self.current_gds_overlay = processed_overlay
+                self.image_viewer.set_gds_overlay(processed_overlay)
+            else:
+                self.current_gds_overlay = overlay
+                self.image_viewer.set_gds_overlay(overlay)
             self.image_viewer.set_overlay_visible(True)
             
             self.status_bar.showMessage(f"Structure loaded: {structure_name}")
@@ -978,13 +1136,17 @@ class MainWindow(QMainWindow):
         """Handle filter applied."""
         logger.info(f"Filter applied: {filter_name}")
         if hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
-            self.histogram_view.update_histogram(self.current_sem_image)
+            # Update histogram and statistics in main right panel
+            self._update_right_panel_displays(self.current_sem_image)
+            self._update_status(f"Applied: {filter_name}")
     
     def on_filters_reset(self):
         """Handle filters reset."""
         logger.info("Filters reset")
         if hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
-            self.histogram_view.update_histogram(self.current_sem_image)
+            # Update histogram and statistics in main right panel
+            self._update_right_panel_displays(self.current_sem_image)
+            self._update_status("Filters Reset")
     
     def on_alignment_completed(self, alignment_result):
         """Handle alignment completed."""
@@ -1069,14 +1231,39 @@ class MainWindow(QMainWindow):
             self.image_viewer.set_gds_overlay(self.current_gds_overlay)
             self.image_viewer.set_overlay_visible(True)
             print(f"Alignment display: GDS overlay visible={self.image_viewer.get_overlay_visible()}")
+        
+        # Hide histogram, statistics, and processing status for alignment
+        if hasattr(self, 'histogram_group'):
+            self.histogram_group.hide()
+        if hasattr(self, 'stats_group'):
+            self.stats_group.hide()
+        if hasattr(self, 'status_group'):
+            self.status_group.hide()
+        if hasattr(self, 'progress_group'):
+            self.progress_group.hide()
     
     def _switch_to_advanced_filtering_display(self):
         """Switch to advanced filtering display mode."""
         if self.current_sem_image is not None:
             self.image_viewer.set_sem_image(self.current_sem_image)
+            # Update histogram and statistics in main right panel
+            self._update_right_panel_displays(self.current_sem_image)
+            self._update_status("Advanced Filtering Mode")
+            print(f"✓ Switched to filtering mode - showing current reference image")
         # Hide GDS overlay in filtering mode
         if hasattr(self.image_viewer, 'set_overlay_visible'):
             self.image_viewer.set_overlay_visible(False)
+        
+        # Show histogram, statistics, and processing status for advanced filtering
+        if hasattr(self, 'histogram_group'):
+            self.histogram_group.show()
+        if hasattr(self, 'stats_group'):
+            self.stats_group.show()
+        if hasattr(self, 'status_group'):
+            self.status_group.show()
+        # Hide progress section for advanced mode
+        if hasattr(self, 'progress_group'):
+            self.progress_group.hide()
     
     def _switch_to_sequential_filtering_display(self):
         """Switch to sequential filtering display mode."""
@@ -1085,8 +1272,22 @@ class MainWindow(QMainWindow):
             latest_stage = max(self.sequential_images.keys())
             latest_image = self.sequential_images[latest_stage]
             self.image_viewer.set_sem_image(latest_image)
+            self._update_right_panel_displays(latest_image)
         elif self.current_sem_image is not None:
             self.image_viewer.set_sem_image(self.current_sem_image)
+            self._update_right_panel_displays(self.current_sem_image)
+        self._update_status("Sequential Filtering Mode")
+        
+        # Show histogram, statistics, and processing status for sequential filtering
+        if hasattr(self, 'histogram_group'):
+            self.histogram_group.show()
+        if hasattr(self, 'stats_group'):
+            self.stats_group.show()
+        if hasattr(self, 'status_group'):
+            self.status_group.show()
+        # Show progress section for sequential mode
+        if hasattr(self, 'progress_group'):
+            self.progress_group.show()
     
     def _switch_to_scoring_display(self):
         """Switch to scoring display mode."""
@@ -1096,6 +1297,16 @@ class MainWindow(QMainWindow):
             self.image_viewer.set_gds_overlay(self.current_gds_overlay)
             self.image_viewer.set_overlay_visible(True)
             print(f"Scoring display: GDS overlay visible={self.image_viewer.get_overlay_visible()}")
+        
+        # Hide histogram, statistics, and processing status for scoring
+        if hasattr(self, 'histogram_group'):
+            self.histogram_group.hide()
+        if hasattr(self, 'stats_group'):
+            self.stats_group.hide()
+        if hasattr(self, 'status_group'):
+            self.status_group.hide()
+        if hasattr(self, 'progress_group'):
+            self.progress_group.hide()
     
     # Hybrid alignment methods
     def _on_alignment_subtab_changed(self, index):
@@ -1147,13 +1358,24 @@ class MainWindow(QMainWindow):
     def _on_point_selected(self, x, y, point_type):
         """Handle point selection based on current mode."""
         try:
+            # Handle point removal (negative coordinates indicate removal)
+            if x == -1 and y == -1:
+                self._update_hybrid_status()
+                return
+            
             # Use current mode instead of point_type
             if self.current_point_mode == "sem":
                 if len(self.sem_points) < 3:
-                    self.sem_points.append((x, y))
+                    self.sem_points.append((int(x), int(y)))
+                    print(f"Added SEM point {len(self.sem_points)}: ({x}, {y})")
             elif self.current_point_mode == "gds":
                 if len(self.gds_points) < 3:
-                    self.gds_points.append((x, y))
+                    self.gds_points.append((int(x), int(y)))
+                    print(f"Added GDS point {len(self.gds_points)}: ({x}, {y})")
+            
+            # Update points in image viewer
+            self.image_viewer.set_points(self.sem_points, "sem")
+            self.image_viewer.set_points(self.gds_points, "gds")
             
             self._update_hybrid_status()
             
@@ -1170,11 +1392,11 @@ class MainWindow(QMainWindow):
             
             if sem_count == 3 and gds_count == 3:
                 self.ready_status_label.setText("Status: Ready for Alignment")
-                self.ready_status_label.setStyleSheet("color: #27ae60; font-weight: bold;")
+                self.ready_status_label.setStyleSheet("font-weight: bold;")
                 self.calculate_alignment_btn.setEnabled(True)
             else:
                 self.ready_status_label.setText("Status: Not Ready")
-                self.ready_status_label.setStyleSheet("color: #f39c12; font-weight: bold;")
+                self.ready_status_label.setStyleSheet("font-weight: bold;")
                 self.calculate_alignment_btn.setEnabled(False)
                 
         except Exception as e:
@@ -1184,11 +1406,19 @@ class MainWindow(QMainWindow):
         """Clear all selected points."""
         self._clear_sem_points()
         self._clear_gds_points()
+        
+        # Update image viewer
+        self.image_viewer.set_points([], "sem")
+        self.image_viewer.set_points([], "gds")
     
     def _calculate_alignment(self):
         """Calculate alignment from selected points."""
         try:
             if len(self.sem_points) == 3 and len(self.gds_points) == 3:
+                print(f"Calculating alignment with:")
+                print(f"  SEM points: {self.sem_points}")
+                print(f"  GDS points: {self.gds_points}")
+                
                 # Calculate transformation parameters from 3 points
                 from src.utils.three_point_alignment import calculate_transformation_parameters, apply_transformation_to_manual_alignment
                 
@@ -1198,6 +1428,10 @@ class MainWindow(QMainWindow):
                 # Apply to manual alignment system
                 apply_transformation_to_manual_alignment(self, transform_params)
                 
+                # Enable save button
+                if hasattr(self, 'generate_aligned_gds_btn'):
+                    self.generate_aligned_gds_btn.setEnabled(True)
+                
                 logger.info("3-point alignment calculation completed")
             else:
                 QMessageBox.warning(self, "Warning", "Need exactly 3 points on both SEM and GDS images")
@@ -1205,6 +1439,17 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.error(f"Error calculating alignment: {e}")
             QMessageBox.critical(self, "Error", f"Alignment calculation failed: {e}")
+    
+    def _on_show_gds_hybrid_clicked(self):
+        """Toggle GDS overlay visibility in hybrid mode."""
+        if hasattr(self, 'image_viewer'):
+            if self.show_gds_hybrid_btn.isChecked():
+                self.image_viewer.set_overlay_visible(True)
+                self.image_viewer.set_overlay_alpha(0.7)  # 30% transparency
+                self.show_gds_hybrid_btn.setText("Hide GDS")
+            else:
+                self.image_viewer.set_overlay_visible(False)
+                self.show_gds_hybrid_btn.setText("Show GDS")
     
     # Action button handlers
     def _on_auto_align_clicked(self):
@@ -1294,13 +1539,28 @@ class MainWindow(QMainWindow):
                 QMessageBox.warning(self, "Save Error", "Failed to generate transformed GDS image")
                 return
             
-            # Final image is already transformed by UnifiedTransformationService
-            final_image = transformed_gds_image
+            # Convert to black structures on transparent background for saving
+            if len(transformed_gds_image.shape) == 3:
+                gray = cv2.cvtColor(transformed_gds_image, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = transformed_gds_image.copy()
             
-            # Save as PNG image
+            # Create RGBA image with black structures and transparent background
+            rgba_image = np.zeros((gray.shape[0], gray.shape[1], 4), dtype=np.uint8)
+            structure_mask = gray >= 127
+            rgba_image[structure_mask] = [0, 0, 0, 255]  # Black opaque structures
+            # Background remains transparent (alpha = 0)
+            
+            # Save as PNG with alpha channel
             png_filename = f"aligned_gds_{timestamp}.png"
             png_path = output_dir / png_filename
-            cv2.imwrite(str(png_path), final_image)
+            cv2.imwrite(str(png_path), rgba_image)
+            
+            # Display the aligned GDS in the UI with alpha transparency
+            processed_final = self.theme_manager.process_gds_overlay(transformed_gds_image)
+            self.current_gds_overlay = processed_final
+            self.image_viewer.set_gds_overlay(processed_final)
+            self.image_viewer.set_overlay_visible(True)
             
             # Save transformation parameters
             params_filename = f"alignment_params_{timestamp}.txt"
@@ -1345,25 +1605,24 @@ class MainWindow(QMainWindow):
     
     # Filtering signal handlers
     def _on_advanced_filter_applied(self, filter_name: str, parameters: dict):
-        """Handle advanced filter applied."""
+        """Handle advanced filter applied - makes filtered result the new reference."""
         try:
             if not hasattr(self, 'current_sem_image') or self.current_sem_image is None:
                 print("❌ ERROR: No SEM image loaded")
                 return
             
-            # Use original image as base for applying filters
-            base_image = getattr(self, 'original_sem_image', self.current_sem_image)
-            filtered_image = self._apply_filter_directly(filter_name, parameters, base_image)
+            # Apply filter to current image (which becomes the new reference)
+            filtered_image = self._apply_filter_directly(filter_name, parameters, self.current_sem_image)
             if filtered_image is not None:
-                self.current_sem_image = filtered_image
+                # Update current image to be the new reference for subsequent filters
+                self.current_sem_image = filtered_image.copy()
                 self.image_viewer.set_sem_image(filtered_image)
-                self.histogram_view.update_histogram(filtered_image)
                 
-                if hasattr(self, 'advanced_filtering_right_panel'):
-                    self.advanced_filtering_right_panel.update_histogram(filtered_image)
-                    self.advanced_filtering_right_panel.show_status(f"✓ Applied {filter_name}", "success")
+                # Update main right panel displays
+                self._update_right_panel_displays(filtered_image)
+                self._update_status(f"✓ Applied {filter_name}")
                 
-                print(f"✓ Filter applied: {filter_name}")
+                print(f"✓ Filter applied: {filter_name} - Now using as reference for next filter")
             else:
                 print(f"❌ Filter failed: {filter_name}")
                     
@@ -1371,25 +1630,24 @@ class MainWindow(QMainWindow):
             print(f"Error in filter application: {e}")
     
     def _on_advanced_filter_previewed(self, filter_name: str, parameters: dict):
-        """Handle advanced filter preview."""
+        """Handle advanced filter preview - shows preview without changing reference."""
         try:
             if not hasattr(self, 'current_sem_image') or self.current_sem_image is None:
                 print("❌ ERROR: No SEM image loaded for preview")
                 return
             
-            # Always use original image for preview
-            base_image = getattr(self, 'original_sem_image', self.current_sem_image)
-            preview_result = self._apply_filter_directly(filter_name, parameters, base_image)
+            # Use current image (which may be a previously applied filter result) for preview
+            preview_result = self._apply_filter_directly(filter_name, parameters, self.current_sem_image)
             
             if preview_result is not None:
+                # Only update display, don't change the reference image
                 self.image_viewer.set_sem_image(preview_result)
-                self.histogram_view.update_histogram(preview_result)
                 
-                if hasattr(self, 'advanced_filtering_right_panel'):
-                    self.advanced_filtering_right_panel.update_histogram(preview_result)
-                    self.advanced_filtering_right_panel.show_status(f"👁️ Preview: {filter_name}", "info")
+                # Update main right panel displays
+                self._update_right_panel_displays(preview_result)
+                self._update_status(f"👁️ Preview: {filter_name}")
                 
-                print(f"✓ Filter preview: {filter_name}")
+                print(f"✓ Filter preview: {filter_name} (applied to current reference)")
             else:
                 print(f"❌ Preview failed: {filter_name}")
                     
@@ -1397,18 +1655,18 @@ class MainWindow(QMainWindow):
             print(f"Error previewing advanced filter: {e}")
     
     def _on_advanced_filter_reset(self):
-        """Handle advanced filter reset."""
+        """Handle advanced filter reset - restores original image as reference."""
         try:
             if hasattr(self, 'original_sem_image') and self.original_sem_image is not None:
+                # Reset current image back to original, making it the new reference
                 self.current_sem_image = self.original_sem_image.copy()
                 self.image_viewer.set_sem_image(self.current_sem_image)
-                self.histogram_view.update_histogram(self.current_sem_image)
                 
-                if hasattr(self, 'advanced_filtering_right_panel'):
-                    self.advanced_filtering_right_panel.update_histogram(self.current_sem_image)
-                    self.advanced_filtering_right_panel.show_status("✓ Filters reset", "success")
+                # Update main right panel displays
+                self._update_right_panel_displays(self.current_sem_image)
+                self._update_status("✓ Filters reset to original")
                 
-                print("✓ Reset to original image")
+                print("✓ Reset to original image - Original is now the reference")
             else:
                 print("❌ No original image available")
                     
@@ -1423,24 +1681,38 @@ class MainWindow(QMainWindow):
                 preview_result = self._apply_filter_directly(filter_name, parameters, input_image)
                 if preview_result is not None:
                     self.image_viewer.set_sem_image(preview_result)
+                    # Update main right panel displays
+                    self._update_right_panel_displays(preview_result)
+                    self._update_status(f"👁️ Preview Stage {stage_index}: {filter_name}")
         except Exception as e:
             logger.error(f"Error in stage preview: {e}")
     
     def _on_stage_apply_requested(self, stage_index: int, filter_name: str, parameters: dict):
-        """Handle sequential stage apply."""
+        """Handle sequential stage apply - result becomes new reference for next stage."""
         try:
             input_image = self._get_stage_input_image(stage_index)
             if input_image is not None:
                 result_image = self._apply_filter_directly(filter_name, parameters, input_image)
                 if result_image is not None:
+                    # Store result for this stage
                     self.sequential_images[stage_index] = result_image.copy()
+                    # Update display and current reference
                     self.image_viewer.set_sem_image(result_image)
-                    self.current_sem_image = result_image
+                    self.current_sem_image = result_image.copy()
+                    # Update main right panel displays
+                    self._update_right_panel_displays(result_image)
+                    self._update_status(f"✓ Stage {stage_index} applied: {filter_name}")
+                    # Update stage completion status
+                    if hasattr(self, 'sequential_filtering_left_panel'):
+                        self.sequential_filtering_left_panel.set_stage_completed(stage_index, True)
+                    print(f"✓ Stage {stage_index} applied: {filter_name} - Result is reference for next stage")
         except Exception as e:
             logger.error(f"Error in stage apply: {e}")
+            if hasattr(self, 'sequential_filtering_left_panel'):
+                self.sequential_filtering_left_panel.set_stage_completed(stage_index, False)
     
     def _on_stage_reset_requested(self, stage_index: int):
-        """Handle sequential stage reset."""
+        """Handle sequential stage reset - reverts to previous stage result as reference."""
         try:
             # Remove this stage and subsequent stages
             stages_to_remove = [i for i in self.sequential_images.keys() if i >= stage_index]
@@ -1448,27 +1720,38 @@ class MainWindow(QMainWindow):
                 if stage_idx in self.sequential_images:
                     del self.sequential_images[stage_idx]
             
-            # Revert to input image for the reset stage
+            # Revert to input image for the reset stage (becomes new reference)
             input_image = self._get_stage_input_image(stage_index)
             if input_image is not None:
                 self.image_viewer.set_sem_image(input_image)
-                self.current_sem_image = input_image
+                self.current_sem_image = input_image.copy()
+                # Update main right panel displays
+                self._update_right_panel_displays(input_image)
+                self._update_status(f"✓ Stage {stage_index} reset")
+                print(f"✓ Stage {stage_index} reset - Previous result is now reference")
                 
         except Exception as e:
             logger.error(f"Error in stage reset: {e}")
     
     def _get_stage_input_image(self, stage_index: int):
-        """Get input image for a sequential stage."""
+        """Get input image for a sequential stage - uses previous stage result as reference."""
         try:
             if stage_index == 0:
-                # First stage uses original image
-                if hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj:
+                # First stage uses original image as reference
+                if hasattr(self, 'original_sem_image') and self.original_sem_image is not None:
+                    return self.original_sem_image
+                elif hasattr(self, 'current_sem_image_obj') and self.current_sem_image_obj:
                     return getattr(self.current_sem_image_obj, 'cropped_array', self.current_sem_image)
                 return self.current_sem_image
             else:
-                # Subsequent stages use previous stage result
+                # Subsequent stages use previous stage result as reference
                 previous_stage = stage_index - 1
-                return self.sequential_images.get(previous_stage)
+                previous_result = self.sequential_images.get(previous_stage)
+                if previous_result is not None:
+                    return previous_result
+                else:
+                    # If previous stage not found, fall back to stage 0 input
+                    return self._get_stage_input_image(0)
         except Exception as e:
             logger.error(f"Error getting stage input image: {e}")
             return None
@@ -1517,10 +1800,14 @@ class MainWindow(QMainWindow):
             elif filter_name == "canny" or filter_name == "edge_detection":
                 low_threshold = parameters.get('low_threshold', 50)
                 high_threshold = parameters.get('high_threshold', 150)
+                sigma = parameters.get('sigma', 1.0)
                 if len(image.shape) == 3:
                     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
                 else:
                     gray = image
+                # Apply Gaussian blur before Canny if sigma > 0
+                if sigma > 0:
+                    gray = cv2.GaussianBlur(gray, (0, 0), sigma)
                 return cv2.Canny(gray.astype(np.uint8), int(low_threshold), int(high_threshold))
             
             elif filter_name == "threshold":
@@ -1687,13 +1974,21 @@ class MainWindow(QMainWindow):
             logger.error(f"Error calculating scores: {e}")
     
     def _save_filtered_image(self):
-        """Save current filtered image."""
+        """Save current filtered image to appropriate SEM_Filters subfolder."""
         try:
             if self.current_sem_image is not None:
                 from pathlib import Path
                 from datetime import datetime
                 
-                output_dir = Path("Results/Filtered")
+                # Determine which tab is active
+                current_tab = self.main_tab_widget.currentIndex()
+                if current_tab == 1:  # Advanced filtering
+                    output_dir = Path("Results/SEM_Filters/manual")
+                elif current_tab == 2:  # Sequential filtering
+                    output_dir = Path("Results/SEM_Filters/auto")
+                else:
+                    output_dir = Path("Results/SEM_Filters/manual")  # Default
+                
                 output_dir.mkdir(parents=True, exist_ok=True)
                 
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -1703,14 +1998,257 @@ class MainWindow(QMainWindow):
                 cv2.imwrite(str(filepath), self.current_sem_image)
                 
                 self.status_bar.showMessage(f"Image saved: {filepath}")
-                print(f"Filtered image saved: {filepath}")
+                print(f"✓ Filtered image saved: {filepath}")
             else:
-                print("No image to save")
+                print("❌ No image to save")
         except Exception as e:
             print(f"Error saving image: {e}")
     
+    def _process_gds_for_scoring(self, image):
+        """Convert GDS image with alpha transparency background."""
+        return self.theme_manager.process_gds_overlay(image)
+    
+    def _refresh_gds_overlay(self):
+        """Refresh GDS overlay with current colors."""
+        if hasattr(self, 'gds_operations_manager') and self.gds_operations_manager.current_gds_overlay is not None:
+            original_overlay = self.gds_operations_manager.current_gds_overlay
+            processed_overlay = self.theme_manager.process_gds_overlay(original_overlay)
+            self.current_gds_overlay = processed_overlay
+            self.image_viewer.set_gds_overlay(processed_overlay)
+    
+
+    
+    def _apply_ui_theme(self, settings):
+        """Apply UI theme settings to all components."""
+        try:
+            panel_color = settings.get('ui_panel_color', [43, 43, 43])
+            button_color = settings.get('ui_button_color', [70, 130, 180])
+            text_color = settings.get('ui_text_color', [255, 255, 255])
+            
+            panel_rgb = f"rgb({panel_color[0]}, {panel_color[1]}, {panel_color[2]})"
+            button_rgb = f"rgb({button_color[0]}, {button_color[1]}, {button_color[2]})"
+            text_rgb = f"rgb({text_color[0]}, {text_color[1]}, {text_color[2]})"
+            
+            # Create comprehensive stylesheet
+            stylesheet = f"""
+            * {{
+                background-color: {panel_rgb};
+                color: {text_rgb};
+            }}
+            QMainWindow, QWidget, QDialog, QFrame, QScrollArea {{
+                background-color: {panel_rgb};
+                color: {text_rgb};
+            }}
+            QGroupBox {{
+                background-color: {panel_rgb};
+                color: {text_rgb};
+                border: 1px solid #555;
+                border-radius: 4px;
+                margin-top: 10px;
+                padding-top: 10px;
+            }}
+            QGroupBox::title {{
+                color: {text_rgb};
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }}
+            QPushButton {{
+                background-color: {button_rgb};
+                color: white;
+                border: 1px solid #555;
+                padding: 6px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background-color: rgb({min(255, button_color[0]+20)}, {min(255, button_color[1]+20)}, {min(255, button_color[2]+20)});
+            }}
+            QPushButton:pressed {{
+                background-color: rgb({max(0, button_color[0]-20)}, {max(0, button_color[1]-20)}, {max(0, button_color[2]-20)});
+            }}
+            QPushButton:checked {{
+                background-color: rgb({max(0, button_color[0]-10)}, {max(0, button_color[1]-10)}, {max(0, button_color[2]-10)});
+            }}
+            QLabel {{
+                color: {text_rgb};
+                background-color: transparent;
+            }}
+            QTabWidget, QTabWidget::pane {{
+                border: 1px solid #555;
+                background-color: {panel_rgb};
+            }}
+            QTabBar::tab {{
+                background-color: rgb({max(0, panel_color[0]-10)}, {max(0, panel_color[1]-10)}, {max(0, panel_color[2]-10)});
+                color: {text_rgb};
+                border: 1px solid #555;
+                padding: 8px 12px;
+                margin-right: 2px;
+                border-top-left-radius: 4px;
+                border-top-right-radius: 4px;
+            }}
+            QTabBar::tab:selected {{
+                background-color: {panel_rgb};
+                border-bottom-color: {panel_rgb};
+            }}
+            QComboBox {{
+                background-color: {button_rgb};
+                color: white;
+                border: 1px solid #555;
+                padding: 4px;
+                border-radius: 3px;
+            }}
+            QComboBox::drop-down {{
+                background-color: {button_rgb};
+                border: none;
+            }}
+            QComboBox QAbstractItemView {{
+                background-color: {panel_rgb};
+                color: {text_rgb};
+                border: 1px solid #555;
+            }}
+            QSpinBox, QDoubleSpinBox, QLineEdit {{
+                background-color: rgb({min(255, panel_color[0]+20)}, {min(255, panel_color[1]+20)}, {min(255, panel_color[2]+20)});
+                color: {text_rgb};
+                border: 1px solid #555;
+                padding: 4px;
+                border-radius: 3px;
+            }}
+            QSlider::groove:horizontal {{
+                background-color: rgb({max(0, panel_color[0]-20)}, {max(0, panel_color[1]-20)}, {max(0, panel_color[2]-20)});
+                height: 6px;
+                border-radius: 3px;
+            }}
+            QSlider::handle:horizontal {{
+                background-color: {button_rgb};
+                border: 1px solid #555;
+                width: 16px;
+                margin: -5px 0;
+                border-radius: 8px;
+            }}
+            QCheckBox {{
+                color: {text_rgb};
+                background-color: transparent;
+            }}
+            QCheckBox::indicator {{
+                background-color: rgb({min(255, panel_color[0]+20)}, {min(255, panel_color[1]+20)}, {min(255, panel_color[2]+20)});
+                border: 1px solid #555;
+                border-radius: 2px;
+            }}
+            QCheckBox::indicator:checked {{
+                background-color: {button_rgb};
+            }}
+            QTextEdit, QPlainTextEdit {{
+                background-color: rgb({min(255, panel_color[0]+10)}, {min(255, panel_color[1]+10)}, {min(255, panel_color[2]+10)});
+                color: {text_rgb};
+                border: 1px solid #555;
+                border-radius: 3px;
+            }}
+            QScrollBar:vertical {{
+                background-color: rgb({max(0, panel_color[0]-10)}, {max(0, panel_color[1]-10)}, {max(0, panel_color[2]-10)});
+                width: 12px;
+                border-radius: 6px;
+            }}
+            QScrollBar::handle:vertical {{
+                background-color: {button_rgb};
+                border-radius: 6px;
+                min-height: 20px;
+            }}
+            QSplitter::handle {{
+                background-color: rgb({max(0, panel_color[0]-20)}, {max(0, panel_color[1]-20)}, {max(0, panel_color[2]-20)});
+            }}
+            """
+            
+            self.setStyleSheet(stylesheet)
+            
+            # Apply to all child widgets recursively
+            for widget in self.findChildren(QWidget):
+                widget.setStyleSheet("")
+                widget.update()
+            logger.info(f"Applied UI theme - Panel: {panel_rgb}, Button: {button_rgb}, Text: {text_rgb}")
+            
+        except Exception as e:
+            logger.error(f"Error applying UI theme: {e}")
+    
+    def _get_group_style(self):
+        """Get group box style for right panel."""
+        return """
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #555555;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 10px;
+                color: #ffffff;
+                background-color: #2b2b2b;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """
+    
+    def _initialize_right_panel_displays(self):
+        """Initialize right panel histogram and statistics."""
+        try:
+            if hasattr(self, 'current_sem_image') and self.current_sem_image is not None:
+                self._update_right_panel_displays(self.current_sem_image)
+        except Exception as e:
+            logger.error(f"Error initializing right panel displays: {e}")
+    
+    def _update_right_panel_displays(self, image_data):
+        """Update histogram and statistics in right panel."""
+        try:
+            if hasattr(self, 'histogram_view') and image_data is not None:
+                self.histogram_view.update_histogram(image_data)
+                self._update_statistics(image_data)
+        except Exception as e:
+            logger.error(f"Error updating right panel displays: {e}")
+    
+    def _update_statistics(self, image_data):
+        """Update image statistics in right panel."""
+        try:
+            if not hasattr(self, 'stats_text'):
+                return
+                
+            stats = {
+                'Shape': f"{image_data.shape}",
+                'Data type': str(image_data.dtype),
+                'Min value': f"{np.min(image_data):.2f}",
+                'Max value': f"{np.max(image_data):.2f}",
+                'Mean': f"{np.mean(image_data):.2f}",
+                'Std dev': f"{np.std(image_data):.2f}",
+                'Range': f"{np.max(image_data) - np.min(image_data):.2f}",
+                'Non-zero pixels': f"{np.count_nonzero(image_data):,}"
+            }
+            
+            stats_text = "📊 IMAGE STATISTICS\n"
+            stats_text += "═" * 25 + "\n"
+            
+            for key, value in stats.items():
+                stats_text += f"▶ {key:<14}: {value}\n"
+            
+            stats_text += "═" * 25 + "\n"
+            from datetime import datetime
+            stats_text += f"✓ Updated: {datetime.now().strftime('%H:%M:%S')}"
+            
+            self.stats_text.setText(stats_text)
+            
+        except Exception as e:
+            if hasattr(self, 'stats_text'):
+                self.stats_text.setText(f"❌ Error calculating stats:\n{e}")
+    
+    def _update_status(self, message: str):
+        """Update processing status in right panel."""
+        try:
+            if hasattr(self, 'status_label'):
+                self.status_label.setText(message)
+        except Exception as e:
+            logger.error(f"Error updating status: {e}")
+    
     # Error handling
-    def setup_error_handling(self):
+    def _setup_error_handling(self):
         """Setup comprehensive error handling."""
         try:
             import sys
@@ -1732,6 +2270,183 @@ class MainWindow(QMainWindow):
                                    f"An unexpected error occurred:\n\n{exc_value}")
         except Exception as e:
             print(f"Critical error in error handler: {e}")
+
+
+class ColorPaletteDialog(QDialog):
+    """Dialog for selecting colors from a 16-color palette."""
+    
+    def __init__(self, title, current_color, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle(title)
+        self.setModal(True)
+        self.selected_color = current_color
+        self.setup_ui()
+    
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        # Color palette (16 colors)
+        colors_group = QGroupBox("Select Color")
+        colors_layout = QGridLayout(colors_group)
+        
+        # 16 color palette
+        self.colors = [
+            (255, 0, 0),     # Red
+            (0, 255, 0),     # Green
+            (0, 0, 255),     # Blue
+            (255, 255, 0),   # Yellow
+            (255, 0, 255),   # Magenta
+            (0, 255, 255),   # Cyan
+            (255, 128, 0),   # Orange
+            (128, 0, 255),   # Purple
+            (255, 192, 203), # Pink
+            (0, 128, 0),     # Dark Green
+            (128, 128, 128), # Gray
+            (255, 255, 255), # White
+            (0, 0, 0),       # Black
+            (139, 69, 19),   # Brown
+            (255, 20, 147),  # Deep Pink
+            (70, 130, 180)   # Steel Blue
+        ]
+        
+        for i, color in enumerate(self.colors):
+            btn = QPushButton()
+            btn.setFixedSize(40, 40)
+            btn.setStyleSheet(f"""
+                QPushButton {{
+                    background-color: rgb({color[0]}, {color[1]}, {color[2]});
+                    border: 2px solid #333;
+                    border-radius: 5px;
+                }}
+                QPushButton:hover {{
+                    border: 3px solid #fff;
+                }}
+            """)
+            btn.clicked.connect(lambda checked, c=color: self.set_color(c))
+            colors_layout.addWidget(btn, i // 4, i % 4)
+        
+        layout.addWidget(colors_group)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        buttons_layout.addWidget(ok_btn)
+        buttons_layout.addWidget(cancel_btn)
+        layout.addLayout(buttons_layout)
+    
+    def set_color(self, color):
+        self.selected_color = color
+    
+    def get_selected_color(self):
+        return self.selected_color
+
+
+class BackgroundThemeDialog(QDialog):
+    """Dialog for selecting background theme."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Background Theme")
+        self.setModal(True)
+        self.selected_theme = "dark"
+        self.setup_ui()
+    
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        theme_group = QGroupBox("Select Background Theme")
+        theme_layout = QVBoxLayout(theme_group)
+        
+        # Theme options
+        self.light_btn = QPushButton("Light")
+        self.light_btn.setFixedHeight(50)
+        self.light_btn.setStyleSheet("background-color: #f0f0f0; color: black; font-size: 14px;")
+        self.light_btn.clicked.connect(lambda: self.set_theme("light"))
+        theme_layout.addWidget(self.light_btn)
+        
+        self.dark_btn = QPushButton("Dark (Current)")
+        self.dark_btn.setFixedHeight(50)
+        self.dark_btn.setStyleSheet("background-color: #2b2b2b; color: white; font-size: 14px;")
+        self.dark_btn.clicked.connect(lambda: self.set_theme("dark"))
+        theme_layout.addWidget(self.dark_btn)
+        
+        self.ultra_dark_btn = QPushButton("Ultra Dark")
+        self.ultra_dark_btn.setFixedHeight(50)
+        self.ultra_dark_btn.setStyleSheet("background-color: #000000; color: white; font-size: 14px;")
+        self.ultra_dark_btn.clicked.connect(lambda: self.set_theme("ultra_dark"))
+        theme_layout.addWidget(self.ultra_dark_btn)
+        
+        layout.addWidget(theme_group)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        buttons_layout.addWidget(ok_btn)
+        buttons_layout.addWidget(cancel_btn)
+        layout.addLayout(buttons_layout)
+    
+    def set_theme(self, theme):
+        self.selected_theme = theme
+    
+    def get_selected_theme(self):
+        return self.selected_theme
+
+
+class TextColorDialog(QDialog):
+    """Dialog for selecting text color."""
+    
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.setWindowTitle("Text Color")
+        self.setModal(True)
+        self.selected_color = "white"
+        self.setup_ui()
+    
+    def setup_ui(self):
+        layout = QVBoxLayout(self)
+        
+        color_group = QGroupBox("Select Text Color")
+        color_layout = QVBoxLayout(color_group)
+        
+        # Color options
+        self.white_btn = QPushButton("White")
+        self.white_btn.setFixedHeight(50)
+        self.white_btn.setStyleSheet("background-color: white; color: black; font-size: 14px;")
+        self.white_btn.clicked.connect(lambda: self.set_color("white"))
+        color_layout.addWidget(self.white_btn)
+        
+        self.black_btn = QPushButton("Black")
+        self.black_btn.setFixedHeight(50)
+        self.black_btn.setStyleSheet("background-color: black; color: white; font-size: 14px;")
+        self.black_btn.clicked.connect(lambda: self.set_color("black"))
+        color_layout.addWidget(self.black_btn)
+        
+        layout.addWidget(color_group)
+        
+        # Buttons
+        buttons_layout = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        ok_btn.clicked.connect(self.accept)
+        cancel_btn = QPushButton("Cancel")
+        cancel_btn.clicked.connect(self.reject)
+        
+        buttons_layout.addWidget(ok_btn)
+        buttons_layout.addWidget(cancel_btn)
+        layout.addLayout(buttons_layout)
+    
+    def set_color(self, color):
+        self.selected_color = color
+    
+    def get_selected_color(self):
+        return self.selected_color
     
     def closeEvent(self, event):
         """Handle window close event."""

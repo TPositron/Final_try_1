@@ -56,7 +56,7 @@ from PySide6.QtGui import QPixmap, QImage, QPainter
 from ..components.slider_input import SliderInput
 from ..components.three_point_selection_controller import ThreePointSelectionController
 from ..components.transformation_preview_widget import TransformationPreviewWidget
-from ..components.file_selector import FileSelector
+# FileSelector removed - no longer needed
 from .alignment_sub_mode_switcher import AlignmentSubModeSwitcher
 from typing import Dict, Any, Optional
 import numpy as np
@@ -137,8 +137,8 @@ class AlignmentPanel(QWidget):
         self.setup_ui()
         # Signal connections now happen in _create_hybrid_controls() when components are created
         
-        # Initialize FileSelector after UI is set up
-        self._initialize_file_selector()
+        # Initialize structure list
+        self._initialize_structure_list()
         
     def setup_ui(self):
         """Initialize the UI components with new 3-panel layout."""
@@ -236,21 +236,15 @@ class AlignmentPanel(QWidget):
         self.overlay_canvas.setMinimumSize(400, 400)
         center_layout.addWidget(self.overlay_canvas)
         
-        # Status bar
+        # Minimal status only
         self.status_label = QLabel("Ready")
         self.status_label.setStyleSheet("color: #CCCCCC; font-style: italic;")
-        self.progress_bar = QProgressBar()
-        self.progress_bar.setRange(0, 100)
-        self.progress_bar.setValue(0)
-        self.progress_bar.setVisible(False)
-        
         center_layout.addWidget(self.status_label)
-        center_layout.addWidget(self.progress_bar)
         
         return center_widget
     
     def _create_right_panel(self) -> QWidget:
-        """Create the right panel with integrated FileSelector."""
+        """Create the right panel with GDS structure selection only."""
         right_widget = QWidget()
         right_widget.setMaximumWidth(300)
         right_widget.setMinimumWidth(250)
@@ -258,19 +252,32 @@ class AlignmentPanel(QWidget):
         right_layout.setContentsMargins(5, 5, 5, 5)
         right_layout.setSpacing(10)
         
-        # Integrated FileSelector - single source of truth for file selection
-        file_group = QGroupBox("File Selection")
-        file_layout = QVBoxLayout(file_group)
+        # GDS Structure Selection with vertical slider
+        structure_group = QGroupBox("GDS Structure Selection")
+        structure_layout = QVBoxLayout(structure_group)
         
-        self.file_selector = FileSelector()
+        # Create resizable splitter for structure list with slider
+        from PySide6.QtWidgets import QScrollArea, QListWidget, QSlider
         
-        # Connect FileSelector signals to AlignmentPanel logic
-        self.file_selector.sem_file_selected.connect(self._on_sem_file_selected)
-        self.file_selector.gds_structure_selected.connect(self._on_structure_selected)
-        self.file_selector.refresh_requested.connect(self._on_files_refreshed)
+        # Vertical slider to control structure list height
+        height_label = QLabel("List Height:")
+        self.height_slider = QSlider(Qt.Orientation.Horizontal)
+        self.height_slider.setRange(100, 400)
+        self.height_slider.setValue(200)
+        self.height_slider.valueChanged.connect(self._on_height_slider_changed)
         
-        file_layout.addWidget(self.file_selector)
-        right_layout.addWidget(file_group)
+        structure_layout.addWidget(height_label)
+        structure_layout.addWidget(self.height_slider)
+        
+        # Structure list with scrollable area
+        self.structure_scroll = QScrollArea()
+        self.structure_list = QListWidget()
+        self.structure_list.setMaximumHeight(200)
+        self.structure_scroll.setWidget(self.structure_list)
+        self.structure_scroll.setWidgetResizable(True)
+        
+        structure_layout.addWidget(self.structure_scroll)
+        right_layout.addWidget(structure_group)
         
         # Generate Controls Section
         generate_group = QGroupBox("Generate")
@@ -403,15 +410,20 @@ class AlignmentPanel(QWidget):
         
         return hybrid_widget
     
-    def _initialize_file_selector(self):
-        """Initialize FileSelector with default directories."""
-        if hasattr(self, 'file_selector'):
+    def _initialize_structure_list(self):
+        """Initialize structure list widget."""
+        if hasattr(self, 'structure_list'):
             try:
-                # Scan default directories for SEM files and auto-load GDS
-                self.file_selector.scan_directories()
-                logger.info("FileSelector initialized with default directories")
+                self.structure_list.itemClicked.connect(self._on_structure_item_clicked)
+                logger.info("Structure list initialized")
             except Exception as e:
-                logger.error(f"Failed to initialize FileSelector: {e}")
+                logger.error(f"Failed to initialize structure list: {e}")
+    
+    def _on_height_slider_changed(self, value):
+        """Handle height slider change for structure list."""
+        if hasattr(self, 'structure_list'):
+            self.structure_list.setMaximumHeight(value)
+            self.structure_list.setMinimumHeight(value)
     
     def _create_automatic_controls(self) -> QWidget:
         """Create automatic alignment controls."""
@@ -652,17 +664,16 @@ class AlignmentPanel(QWidget):
         self.current_gds_image = image_array
         self._display_gds_image(image_array)
     
-    def _on_sem_file_selected(self, file_path: str):
-        """Handle SEM file selection from FileSelector."""
-        # Store the selected file
-        self.current_sem_file_path = file_path
+    def _on_structure_item_clicked(self, item):
+        """Handle structure item selection."""
+        structure_name = item.text()
+        structure_id = item.data(32)  # Qt.UserRole
         
-        # Emit signal for external handling (loading image, etc.)
-        self.sem_file_selected.emit(file_path)
-        logger.info(f"SEM file selected: {file_path}")
-        
-        # Update generate button state
-        self._update_generate_button_state()
+        if structure_id is not None:
+            self.current_structure_id = structure_id
+            self.gds_structure_selected.emit(self.current_gds_path or "", structure_id)
+            logger.info(f"Structure selected: {structure_name} (ID: {structure_id})")
+            self._update_generate_button_state()
     
     def _on_structure_selected(self, gds_path: str, structure_id: int):
         """Handle GDS structure selection from FileSelector."""
@@ -677,11 +688,14 @@ class AlignmentPanel(QWidget):
         # Update generate button state
         self._update_generate_button_state()
     
-    def _on_files_refreshed(self):
-        """Handle file refresh from FileSelector."""
-        logger.info("File listings refreshed")
-        # Update generate button state in case selections changed
-        self._update_generate_button_state()
+    def update_structure_list(self, structures):
+        """Update the structure list with available structures."""
+        self.structure_list.clear()
+        for i, structure in enumerate(structures):
+            from PySide6.QtWidgets import QListWidgetItem
+            item = QListWidgetItem(structure.get('name', f'Structure {i}'))
+            item.setData(32, i)  # Store structure ID
+            self.structure_list.addItem(item)
     
     def _generate_aligned_gds(self):
         """Generate aligned GDS file using automatic alignment parameters."""
@@ -691,8 +705,6 @@ class AlignmentPanel(QWidget):
             from src.services.gds_transformation_service import GdsTransformationService
             
             self.status_label.setText("Generating aligned GDS...")
-            self.progress_bar.setVisible(True)
-            self.progress_bar.setValue(25)
             
             # Check if we have GDS model and auto alignment parameters
             if not hasattr(self, '_current_gds_model') or self._current_gds_model is None:
@@ -703,7 +715,7 @@ class AlignmentPanel(QWidget):
                 self._auto_alignment_params = self.transform_params.copy()
                 logger.warning("Using current transform params instead of auto alignment results")
             
-            self.progress_bar.setValue(50)
+            # Processing...
             
             # Create output directory
             output_dir = Path("Results/Aligned/auto")
@@ -714,7 +726,7 @@ class AlignmentPanel(QWidget):
             filename = f"aligned_auto_{timestamp}.gds"
             output_path = output_dir / filename
             
-            self.progress_bar.setValue(75)
+            # Finalizing...
             
             # Use GdsTransformationService to create new GDS file
             transformation_service = GdsTransformationService()
@@ -738,9 +750,7 @@ class AlignmentPanel(QWidget):
             # Save the transformed GDS file
             transformation_service.save_transformed_gds(transformed_cell, str(output_path))
             
-            self.progress_bar.setValue(100)
             self.status_label.setText("Aligned GDS generated successfully")
-            self.progress_bar.setVisible(False)
             
             QMessageBox.information(self, "Success", f"Aligned GDS file generated successfully!\nSaved to: {output_path}")
             logger.info(f"Auto-aligned GDS generated: {output_path}")
@@ -748,26 +758,21 @@ class AlignmentPanel(QWidget):
         except Exception as e:
             logger.error(f"Error generating aligned GDS: {e}")
             self.status_label.setText("Error generating aligned GDS")
-            self.progress_bar.setVisible(False)
             QMessageBox.critical(self, "Error", f"Failed to generate aligned GDS: {e}")
     
     def _update_generate_button_state(self):
-        """Update generate button state based on FileSelector selections and auto alignment."""
-        # Check FileSelector state
-        sem_selected = self.file_selector.get_selected_sem_file() is not None
-        structure_selected = self.file_selector.get_selected_structure_id() is not None
+        """Update generate button state based on structure selection and GDS model."""
+        structure_selected = self.current_structure_id is not None
         has_gds_model = hasattr(self, '_current_gds_model') and self._current_gds_model is not None
         
-        # Enable generate button if we have files and GDS model
-        self.generate_button.setEnabled(sem_selected and structure_selected and has_gds_model)
+        # Enable generate button if we have structure and GDS model
+        self.generate_button.setEnabled(structure_selected and has_gds_model)
         
-        if sem_selected and structure_selected and has_gds_model:
+        if structure_selected and has_gds_model:
             self.generate_button.setToolTip("Generate aligned GDS file using automatic alignment")
             logger.debug("Generate button enabled - ready for auto alignment")
         else:
             missing = []
-            if not sem_selected:
-                missing.append("SEM file")
             if not structure_selected:
                 missing.append("GDS structure")
             if not has_gds_model:
@@ -818,9 +823,9 @@ class AlignmentPanel(QWidget):
         self._update_controls()
         self._update_image_display()
         
-        # Reset file selections through FileSelector
-        if hasattr(self, 'file_selector'):
-            self.file_selector.clear_files()
+        # Reset structure selection
+        if hasattr(self, 'structure_list'):
+            self.structure_list.clearSelection()
         
         # Reset tracked file paths
         self.current_sem_file_path = None
@@ -914,13 +919,11 @@ class AlignmentPanel(QWidget):
         if self.preset_selector:
             config['selected_preset'] = self.preset_selector.currentText()
         
-        # Get current file selections from integrated FileSelector
-        if hasattr(self, 'file_selector'):
-            config['file_selections'] = {
-                'sem_file': self.file_selector.get_selected_sem_file(),
-                'gds_file': self.file_selector.get_selected_gds_file(),
-                'structure_id': self.file_selector.get_selected_structure_id()
-            }
+        # Get current structure selection
+        config['structure_selection'] = {
+            'gds_path': self.current_gds_path,
+            'structure_id': self.current_structure_id
+        }
         
         return config
         
@@ -928,30 +931,20 @@ class AlignmentPanel(QWidget):
         """Show pipeline progress information in the alignment panel."""
         stage = progress_info.get('stage', '')
         status = progress_info.get('status', '')
-        progress = progress_info.get('progress', 0)
 
         if hasattr(self, 'status_label'):
             self.status_label.setText(f"Pipeline: {stage.title()} - {status}")
-        if hasattr(self, 'progress_bar'):
-            self.progress_bar.setValue(progress)
-            self.progress_bar.setVisible(True if progress < 100 else False)
     
-    def get_file_selector(self) -> Optional[FileSelector]:
-        """Get reference to the integrated FileSelector component."""
-        return getattr(self, 'file_selector', None)
+    def get_structure_list(self):
+        """Get reference to the structure list widget."""
+        return getattr(self, 'structure_list', None)
     
-    def get_current_file_selections(self) -> Dict[str, Any]:
-        """Get current file selections from FileSelector."""
-        if hasattr(self, 'file_selector'):
-            return {
-                'sem_file': self.file_selector.get_selected_sem_file(),
-                'gds_file': self.file_selector.get_selected_gds_file(),
-                'structure_id': self.file_selector.get_selected_structure_id(),
-                'sem_file_path': self.current_sem_file_path,
-                'gds_path': self.current_gds_path,
-                'structure_id_tracked': self.current_structure_id
-            }
-        return {}
+    def get_current_structure_selection(self) -> Dict[str, Any]:
+        """Get current structure selection."""
+        return {
+            'gds_path': self.current_gds_path,
+            'structure_id': self.current_structure_id
+        }
         
 class OverlayCanvas(QGraphicsView):
     """Simple overlay canvas for displaying SEM and GDS images."""

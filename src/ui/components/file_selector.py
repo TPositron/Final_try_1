@@ -97,9 +97,7 @@ class FileSelector(QWidget):
         gds_frame = self._create_gds_section()
         splitter.addWidget(gds_frame)
         
-        # File information panel
-        info_frame = self._create_info_section()
-        main_layout.addWidget(info_frame)
+        # File information panel removed
         
         # Set splitter proportions - adjusted for only SEM and structure
         splitter.setSizes([125, 75])
@@ -151,49 +149,18 @@ class FileSelector(QWidget):
         
         gds_layout.addLayout(gds_header)
         
-        # Info label about auto-loaded GDS
-        info_label = QLabel("GDS File: Institute_Project_GDS1.gds (auto-loaded)")
-        info_label.setStyleSheet("color: #666666; font-size: 11px; font-style: italic;")
-        gds_layout.addWidget(info_label)
+        # GDS file info removed
         
-        # Structure selection combo (always enabled since GDS is auto-loaded)
-        structure_label = QLabel("Structure:")
-        structure_label.setStyleSheet("font-weight: bold; color: #A23B72; margin-top: 5px;")
-        gds_layout.addWidget(structure_label)
-        
+        # Structure dropdown (resizable)
         self.structure_combo = QComboBox()
         self.structure_combo.addItem("Select structure...", None)
-        # The dropdown will be populated dynamically when GDS file is loaded
         self.structure_combo.currentIndexChanged.connect(self._on_structure_selection_changed)
-        self.structure_combo.setEnabled(True)  # Always enabled since GDS is auto-loaded
+        self.structure_combo.setEnabled(True)
         gds_layout.addWidget(self.structure_combo)
         
         return gds_frame
         
-    def _create_info_section(self) -> QFrame:
-        """Create the file information section."""
-        info_frame = QFrame()
-        info_frame.setFrameStyle(QFrame.Shape.StyledPanel)
-        info_layout = QVBoxLayout(info_frame)
-        
-        # Info header
-        info_label = QLabel("File Information:")
-        info_label.setStyleSheet("font-weight: bold; color: #F18F01;")
-        info_layout.addWidget(info_label)
-        
-        # Info display
-        self.info_display = QLabel("No file selected")
-        self.info_display.setStyleSheet("color: gray; font-family: monospace; padding: 5px;")
-        self.info_display.setWordWrap(True)
-        self.info_display.setAlignment(Qt.AlignmentFlag.AlignTop)
-        info_layout.addWidget(self.info_display)
-        
-        # Status label
-        self.status_label = QLabel("Status: Ready")
-        self.status_label.setStyleSheet("font-size: 9pt; color: #666666; padding: 2px;")
-        info_layout.addWidget(self.status_label)
-        
-        return info_frame
+
     
     def update_sem_files(self, files: List[Path]) -> None:
         """Update the list of available SEM files."""
@@ -306,11 +273,8 @@ class FileSelector(QWidget):
         return self.structure_combo.currentData()
     
     def _update_status(self) -> None:
-        """Update the status label."""
-        sem_count = len(self._sem_files)
-        gds_count = len(self._gds_files)
-        
-        self.status_label.setText(f"Available: {sem_count} SEM files, {gds_count} GDS files")
+        """Update the status label - removed."""
+        pass
     
     def get_selected_sem_file(self) -> Optional[str]:
         """Get the currently selected SEM file path."""
@@ -407,11 +371,5 @@ class FileSelector(QWidget):
         self._update_status()
     
     def _update_info_display(self) -> None:
-        """Update the file information display."""
-        # GDS file is always Institute_Project_GDS1.gds (auto-loaded)
-        if self.selected_sem_file:
-            info_text = f"SEM: {Path(self.selected_sem_file).name}\nGDS: Institute_Project_GDS1.gds (auto-loaded)"
-        else:
-            info_text = f"SEM: Not selected\nGDS: Institute_Project_GDS1.gds (auto-loaded)"
-        
-        self.info_display.setText(info_text)
+        """Update the file information display - removed."""
+        pass

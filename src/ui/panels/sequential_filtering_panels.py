@@ -548,7 +548,7 @@ class StageControlPanel(QWidget):
         filter_layout.addWidget(filter_label)
         
         self.filter_combo = QComboBox()
-        self.filter_combo.addItem("-- Select Filter --", None)
+        self.filter_combo.addItem("None", None)
         
         # Add filters for this stage
         filters = self.config_manager.get_filters_for_stage(self.stage)
@@ -569,36 +569,7 @@ class StageControlPanel(QWidget):
         
         main_layout.addWidget(self.param_widget)
         
-        # Stage controls
-        controls_layout = QGridLayout()
-        
-        # Row 1: Preview and Apply
-        self.preview_btn = QPushButton("👁️ Preview")
-        self.preview_btn.setStyleSheet(self._get_button_style("#0078d4", "#106ebe"))
-        self.preview_btn.clicked.connect(lambda: self.preview_requested.emit(self.stage.value))
-        self.preview_btn.setEnabled(False)
-        
-        self.apply_btn = QPushButton("✓ Apply")
-        self.apply_btn.setStyleSheet(self._get_button_style("#28a745", "#218838"))
-        self.apply_btn.clicked.connect(lambda: self._on_apply_clicked())
-        self.apply_btn.setEnabled(False)
-        
-        controls_layout.addWidget(self.preview_btn, 0, 0)
-        controls_layout.addWidget(self.apply_btn, 0, 1)
-        
-        # Row 2: Reset and Save
-        self.reset_btn = QPushButton("🔄 Reset")
-        self.reset_btn.setStyleSheet(self._get_button_style("#dc3545", "#c82333"))
-        self.reset_btn.clicked.connect(lambda: self.reset_requested.emit(self.stage.value))
-        
-        self.save_btn = QPushButton("💾 Save")
-        self.save_btn.setStyleSheet(self._get_button_style("#17a2b8", "#138496"))
-        self.save_btn.clicked.connect(lambda: self.save_requested.emit(self.stage.value))
-        
-        controls_layout.addWidget(self.reset_btn, 1, 0)
-        controls_layout.addWidget(self.save_btn, 1, 1)
-        
-        main_layout.addLayout(controls_layout)
+        # No individual stage buttons - removed as requested
         
         # Stage status
         self.stage_status = QLabel("Ready")
@@ -812,27 +783,8 @@ class SequentialFilteringLeftPanel(QWidget):
             }
         """)
         
-        # Global reset button
-        self.global_reset_btn = QPushButton("Reset All Stages")
-        self.global_reset_btn.setStyleSheet("""
-            QPushButton {
-                background-color: #dc3545;
-                color: white;
-                border: none;
-                padding: 6px 12px;
-                border-radius: 4px;
-                font-weight: bold;
-                font-size: 10px;
-            }
-            QPushButton:hover {
-                background-color: #c82333;
-            }
-        """)
-        self.global_reset_btn.clicked.connect(self.reset_all_requested)
-        
         header_layout.addWidget(title_label)
         header_layout.addStretch()
-        header_layout.addWidget(self.global_reset_btn)
         
         main_layout.addLayout(header_layout)
         
@@ -854,33 +806,8 @@ class SequentialFilteringLeftPanel(QWidget):
         desc_label.setWordWrap(True)
         main_layout.addWidget(desc_label)
         
-        # Scroll area for stage panels
-        scroll_area = QScrollArea()
-        scroll_area.setWidgetResizable(True)
-        scroll_area.setStyleSheet("""
-            QScrollArea {
-                border: none;
-                background-color: transparent;
-            }
-            QScrollBar:vertical {
-                background-color: #2b2b2b;
-                width: 12px;
-                border-radius: 6px;
-            }
-            QScrollBar::handle:vertical {
-                background-color: #555555;
-                border-radius: 6px;
-                min-height: 20px;
-            }
-            QScrollBar::handle:vertical:hover {
-                background-color: #666666;
-            }
-        """)
-        
-        # Container for stage panels
-        stages_container = QWidget()
-        stages_layout = QVBoxLayout(stages_container)
-        stages_layout.setSpacing(10)
+        # Create vertical splitter for stage panels
+        stages_splitter = QSplitter(Qt.Orientation.Vertical)
         
         # Create stage panels in order
         for stage in ProcessingStage:
@@ -909,15 +836,83 @@ class SequentialFilteringLeftPanel(QWidget):
             stage_group_layout.addWidget(panel)
             
             self.stage_panels[stage] = panel
-            stages_layout.addWidget(stage_group)
+            stages_splitter.addWidget(stage_group)
         
-        # Add stretch at the end
-        stages_layout.addStretch()
+        # Set initial sizes for stages
+        stages_splitter.setSizes([150, 150, 150, 150])
+        main_layout.addWidget(stages_splitter)
         
-        scroll_area.setWidget(stages_container)
-        main_layout.addWidget(scroll_area)
+        # Bottom action buttons
+        bottom_layout = QHBoxLayout()
         
-        print("✓ Sequential Filtering Left Panel initialized")
+        self.preview_btn = QPushButton("👁️ Preview")
+        self.preview_btn.setStyleSheet(self._get_button_style("#0078d4", "#106ebe"))
+        self.preview_btn.clicked.connect(self._on_preview_all)
+        
+        self.apply_btn = QPushButton("✓ Apply")
+        self.apply_btn.setStyleSheet(self._get_button_style("#28a745", "#218838"))
+        self.apply_btn.clicked.connect(self._on_apply_all)
+        
+        self.reset_btn = QPushButton("🔄 Reset")
+        self.reset_btn.setStyleSheet(self._get_button_style("#dc3545", "#c82333"))
+        self.reset_btn.clicked.connect(self.reset_all_requested)
+        
+        self.save_btn = QPushButton("💾 Save")
+        self.save_btn.setStyleSheet(self._get_button_style("#17a2b8", "#138496"))
+        self.save_btn.clicked.connect(self._on_save_all)
+        
+        bottom_layout.addWidget(self.preview_btn)
+        bottom_layout.addWidget(self.apply_btn)
+        bottom_layout.addWidget(self.reset_btn)
+        bottom_layout.addWidget(self.save_btn)
+        
+        main_layout.addLayout(bottom_layout)
+        
+        print("Sequential Filtering Left Panel initialized")
+    
+    def _get_button_style(self, bg_color: str, hover_color: str):
+        return f"""
+            QPushButton {{
+                background-color: {bg_color};
+                color: white;
+                border: 1px solid #555555;
+                padding: 8px 12px;
+                border-radius: 4px;
+                font-weight: bold;
+                font-size: 10px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_color};
+                border-color: #777777;
+            }}
+            QPushButton:disabled {{
+                background-color: #2d2d30;
+                color: #999999;
+                border-color: #444444;
+            }}
+        """
+    
+    def _on_preview_all(self):
+        """Preview all selected filters in sequence."""
+        for stage_index in range(4):
+            stage = ProcessingStage(stage_index)
+            panel = self.stage_panels[stage]
+            if panel.current_filter:
+                parameters = panel.get_current_parameters()
+                self.stage_preview_requested.emit(stage_index, panel.current_filter, parameters)
+    
+    def _on_apply_all(self):
+        """Apply all selected filters in sequence."""
+        for stage_index in range(4):
+            stage = ProcessingStage(stage_index)
+            panel = self.stage_panels[stage]
+            if panel.current_filter:
+                parameters = panel.get_current_parameters()
+                self.stage_apply_requested.emit(stage_index, panel.current_filter, parameters)
+    
+    def _on_save_all(self):
+        """Save final result."""
+        self.stage_save_requested.emit(3)  # Save final stage result
     
     def _on_stage_preview(self, stage_index: int):
         """Handle stage preview request."""
@@ -981,130 +976,27 @@ class SequentialFilteringRightPanel(QWidget):
         self.init_panel()
     
     def init_panel(self):
-        """Initialize the sequential filtering right panel."""
+        """Initialize the sequential filtering right panel - no file information or GDS structure."""
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(12)
         
-        # Processing Progress Section
-        progress_group = QGroupBox("🔄 Processing Progress")
-        progress_group.setStyleSheet(self._get_group_style())
-        progress_layout = QVBoxLayout(progress_group)
-        
-        # Stage progress indicators
-        self.stage_progress = {}
-        stages_layout = QVBoxLayout()
-        
-        for stage in ProcessingStage:
-            stage_config = SequentialFilterConfigManager().get_stage_config(stage)
-            
-            stage_layout = QHBoxLayout()
-            
-            # Stage indicator
-            indicator = QLabel("○")
-            indicator.setStyleSheet(f"""
-                QLabel {{
-                    color: #666666;
-                    font-size: 12px;
-                    font-weight: bold;
-                    min-width: 16px;
-                }}
-            """)
-            
-            # Stage label
-            label = QLabel(f"{stage_config.icon} {stage_config.display_name}")
-            label.setStyleSheet(f"""
-                QLabel {{
-                    color: {stage_config.color};
-                    font-size: 10px;
-                    font-weight: bold;
-                }}
-            """)
-            
-            # Status label
-            status = QLabel("Pending")
-            status.setStyleSheet("""
-                QLabel {
-                    color: #cccccc;
-                    font-size: 9px;
-                    font-style: italic;
-                }
-            """)
-            
-            stage_layout.addWidget(indicator)
-            stage_layout.addWidget(label)
-            stage_layout.addStretch()
-            stage_layout.addWidget(status)
-            
-            self.stage_progress[stage] = {
-                'indicator': indicator,
-                'label': label,
-                'status': status
-            }
-            
-            stages_layout.addLayout(stage_layout)
-        
-        progress_layout.addLayout(stages_layout)
-        main_layout.addWidget(progress_group)
-        
-        # Current Stage Histogram
-        histogram_group = QGroupBox("📊 Current Stage Histogram")
-        histogram_group.setStyleSheet(self._get_group_style())
-        histogram_layout = QVBoxLayout(histogram_group)
-        
-        self.histogram_view = HistogramView()
-        histogram_layout.addWidget(self.histogram_view)
-        
-        main_layout.addWidget(histogram_group)
-        
-        # Stage Statistics
-        stats_group = QGroupBox("📈 Stage Statistics")
-        stats_group.setStyleSheet(self._get_group_style())
-        stats_layout = QVBoxLayout(stats_group)
-        
-        self.stats_text = QTextEdit()
-        self.stats_text.setMaximumHeight(120)
-        self.stats_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #2b2b2b;
-                color: #ffffff;
-                border: 1px solid #555555;
-                border-radius: 4px;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 9px;
-                padding: 4px;
-            }
-        """)
-        stats_layout.addWidget(self.stats_text)
-        
-        main_layout.addWidget(stats_group)
-        
-        # Processing Status
-        status_group = QGroupBox("⚡ Processing Status")
-        status_group.setStyleSheet(self._get_group_style())
-        status_layout = QVBoxLayout(status_group)
-        
-        self.processing_status = QLabel("Ready for sequential processing")
-        self.processing_status.setStyleSheet("""
+        # Empty right panel - all content moved to main right panel
+        empty_label = QLabel("Sequential filtering controls are in the left panel")
+        empty_label.setStyleSheet("""
             QLabel {
-                color: #ffffff;
-                background-color: #2a2a2a;
-                padding: 8px;
-                border-radius: 4px;
-                font-weight: bold;
-                border: 2px solid #555555;
-                font-size: 10px;
+                color: #666666;
+                font-style: italic;
+                text-align: center;
+                padding: 20px;
             }
         """)
-        self.processing_status.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        empty_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        main_layout.addWidget(empty_label)
         
-        status_layout.addWidget(self.processing_status)
-        main_layout.addWidget(status_group)
-        
-        # Add stretch
         main_layout.addStretch()
         
-        print("✓ Sequential Filtering Right Panel initialized")
+        print("Sequential Filtering Right Panel initialized - no file information or GDS structure")
     
     def update_stage_progress(self, stage_index: int, status: str, success: bool = True):
         """Update progress for a specific stage."""

@@ -46,8 +46,15 @@ import cv2
 import os
 from typing import Dict, List, Tuple, Optional
 
+def get_project_gds_path():
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # Navigate up to find the Image_analysis project root
+    while os.path.basename(current_dir) != 'Image_analysis' and current_dir != os.path.dirname(current_dir):
+        current_dir = os.path.dirname(current_dir)
+    return os.path.join(current_dir, "Data", "GDS", "Institute_Project_GDS1.gds")
+
 def generate_display_gds(structure_num: int, target_size: Tuple[int, int] = (1024, 666)) -> np.ndarray:
-    GDS_PATH = "C:\\Users\\tarik\\Image_analysis\\Data\\GDS\\Institute_Project_GDS1.gds"
+    GDS_PATH = get_project_gds_path()
     
     structures = {
         1: {'bounds': (688.55, 5736.55, 760.55, 5807.1), 'layers': [14]},
@@ -136,14 +143,14 @@ def get_structure_info(structure_num: int) -> Optional[Dict]:
     }
 
 def get_gds_path() -> str:
-    return "C:\\Users\\tarik\\Image_analysis\\Data\\GDS\\Institute_Project_GDS1.gds"
+    GDS_PATH = get_project_gds_path()
 
 def list_available_structures() -> List[int]:
     return [1, 2, 3, 4, 5]
 
 def generate_display_gds_with_bounds(structure_num: int, target_size: Tuple[int, int], custom_bounds: List[float]) -> np.ndarray:
     """Generate GDS display with custom bounds."""
-    GDS_PATH = "C:\\Users\\tarik\\Image_analysis\\Data\\GDS\\Institute_Project_GDS1.gds"
+    GDS_PATH = get_project_gds_path()
     
     structures = {
         1: {'layers': [14]},
@@ -193,6 +200,38 @@ def generate_display_gds_with_bounds(structure_num: int, target_size: Tuple[int,
     
     print(f"Custom bounds generator rendered {polygon_count} polygons for structure {structure_num}")
     return image
+
+def calculate_transformed_bounds(original_bounds, rotation, zoom, move_x, move_y, pixel_size):
+    """Calculate bounds for GDS extraction - zoom from center, then translate."""
+    xmin, ymin, xmax, ymax = original_bounds
+    center_x = (xmin + xmax) / 2
+    center_y = (ymin + ymax) / 2
+    width = xmax - xmin
+    height = ymax - ymin
+    
+    # Apply zoom from center (inverse for bounds - zoom in = smaller extraction area)
+    zoom_factor = zoom / 100.0
+    new_width = width / zoom_factor
+    new_height = height / zoom_factor
+    
+    # Apply translation (convert pixels to GDS units)
+    dx_gds = move_x * pixel_size
+    dy_gds = -move_y * pixel_size  # Y-axis flip
+    new_center_x = center_x + dx_gds
+    new_center_y = center_y + dy_gds
+    
+    # Calculate final bounds
+    final_bounds = (
+        new_center_x - new_width/2,
+        new_center_y - new_height/2,
+        new_center_x + new_width/2,
+        new_center_y + new_height/2
+    )
+    
+    # All rotation handled at image level for better quality
+    needs_fine_rotation = abs(rotation) > 0.1
+    
+    return final_bounds, needs_fine_rotation
 
 def get_all_structures_info() -> Dict[int, Dict]:
     result = {}

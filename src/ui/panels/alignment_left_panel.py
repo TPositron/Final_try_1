@@ -1115,6 +1115,9 @@ class ManualAlignmentTab(QWidget):
         finally:
             # Always re-enable signals
             self._block_signals(False)
+            
+            # Emit alignment changed after setting parameters
+            self.emit_alignment_changed()
     
     def _validate_and_convert_value(self, value, target_type, param_name):
         """Validate and convert a parameter value to the target type."""

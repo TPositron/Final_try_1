@@ -109,12 +109,11 @@ class HistogramView(QWidget):
         # Plot histogram with improved styling
         self.hist_ax.bar(bins[:-1], hist, width=1, alpha=0.8, color='#4a90e2', edgecolor='none')
         self.hist_ax.set_title('SEM Image Histogram', color='white', fontsize=10)
-        self.hist_ax.set_xlabel('Pixel Intensity (0-255)', color='white', fontsize=8)
-        self.hist_ax.set_ylabel('Frequency', color='white', fontsize=8)
         self.hist_ax.grid(True, alpha=0.3, color='gray')
         
-        # Style the axes for dark theme
-        self.hist_ax.tick_params(colors='white', labelsize=7)
+        # Remove axis labels and tick marks
+        self.hist_ax.set_xticks([])
+        self.hist_ax.set_yticks([])
         self.hist_ax.spines['bottom'].set_color('white')
         self.hist_ax.spines['top'].set_color('white')
         self.hist_ax.spines['right'].set_color('white')

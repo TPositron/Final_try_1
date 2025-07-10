@@ -54,22 +54,18 @@ class UnifiedTransformationService:
         model.set_residual_rotation(rotation)
     
     def generate_aligned_image(self, structure_num: int) -> np.ndarray:
-        """Generate aligned GDS image using exact draft version approach."""
-        # Step 1: Generate base GDS image (same as display)
-        from src.core.gds_display_generator import generate_display_gds
-        base_gds = generate_display_gds(structure_num, (1024, 666))
+        """Generate aligned GDS image using new bounds-based approach."""
+        # Use the new bounds-based approach
+        transform_params = {
+            'rotation': self.current_params['rotation'],
+            'zoom': self.current_params['zoom'],
+            'move_x': self.current_params['move_x'],
+            'move_y': self.current_params['move_y']
+        }
         
-        # Step 2: Apply zoom transformation (same as zoom_image function)
-        if self.current_params['zoom'] != 100:
-            base_gds = self._apply_zoom_transform(base_gds, self.current_params['zoom'])
-            
-        # Step 3: Apply move transformation (same as move_image function)
-        if self.current_params['move_x'] != 0 or self.current_params['move_y'] != 0:
-            base_gds = self._apply_move_transform(base_gds, 
-                                                self.current_params['move_x'], 
-                                                self.current_params['move_y'])
-        
-        return base_gds
+        # Generate using new approach
+        aligned_image, bounds = generate_aligned_gds(structure_num, transform_params, (1024, 666))
+        return aligned_image
     
     def _apply_zoom_transform(self, image: np.ndarray, zoom_percent: float) -> np.ndarray:
         """Apply zoom using draft version formula."""

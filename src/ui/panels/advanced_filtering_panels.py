@@ -122,7 +122,8 @@ class AdvancedFilterConfigManager:
             category="Edge Detection",
             parameters=[
                 FilterParameter("low_threshold", "int", 50, 1, 255, 1, description="Lower threshold"),
-                FilterParameter("high_threshold", "int", 150, 1, 255, 1, description="Upper threshold")
+                FilterParameter("high_threshold", "int", 150, 1, 255, 1, description="Upper threshold"),
+                FilterParameter("sigma", "float", 1.0, 0.1, 5.0, 0.1, description="Gaussian blur sigma")
             ]
         ))
         
@@ -134,7 +135,8 @@ class AdvancedFilterConfigManager:
             category="Edge Detection",
             parameters=[
                 FilterParameter("low_threshold", "int", 50, 1, 255, 1, description="Lower threshold"),
-                FilterParameter("high_threshold", "int", 150, 1, 255, 1, description="Upper threshold")
+                FilterParameter("high_threshold", "int", 150, 1, 255, 1, description="Upper threshold"),
+                FilterParameter("sigma", "float", 1.0, 0.1, 5.0, 0.1, description="Gaussian blur sigma")
             ]
         ))
         
@@ -313,20 +315,39 @@ class SimpleParameterWidget(QWidget):
         layout.addWidget(self.combo)
     
     def _setup_int_control(self, layout):
-        """Setup integer parameter with spinbox only."""
+        """Setup integer parameter with separate up/down buttons."""
         self.spinbox = QSpinBox()
         min_val = int(self.parameter.min_value or 0)
         max_val = int(self.parameter.max_value or 100)
         self.spinbox.setRange(min_val, max_val)
         self.spinbox.setValue(int(self.parameter.default_value))
         self.spinbox.setSingleStep(int(self.parameter.step))
+        self.spinbox.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.spinbox.valueChanged.connect(self._on_int_changed)
-        self.spinbox.setStyleSheet(self._get_spinbox_style())
-        self.spinbox.setMinimumWidth(80)
+        self.spinbox.setStyleSheet(self._get_input_style())
+        self.spinbox.setMinimumWidth(60)
+        
+        # Add spinbox
         layout.addWidget(self.spinbox)
+        
+        # Add up/down buttons
+        btn_layout = QVBoxLayout()
+        btn_layout.setSpacing(2)
+        
+        up_btn = QPushButton("▲")
+        up_btn.setStyleSheet(self._get_arrow_button_style())
+        up_btn.clicked.connect(lambda: self.spinbox.stepUp())
+        
+        down_btn = QPushButton("▼")
+        down_btn.setStyleSheet(self._get_arrow_button_style())
+        down_btn.clicked.connect(lambda: self.spinbox.stepDown())
+        
+        btn_layout.addWidget(up_btn)
+        btn_layout.addWidget(down_btn)
+        layout.addLayout(btn_layout)
     
     def _setup_float_control(self, layout):
-        """Setup float parameter with double spinbox only."""
+        """Setup float parameter with separate up/down buttons."""
         self.double_spinbox = QDoubleSpinBox()
         min_val = float(self.parameter.min_value or 0.0)
         max_val = float(self.parameter.max_value or 10.0)
@@ -334,21 +355,43 @@ class SimpleParameterWidget(QWidget):
         self.double_spinbox.setValue(float(self.parameter.default_value))
         self.double_spinbox.setSingleStep(float(self.parameter.step))
         self.double_spinbox.setDecimals(2)
+        self.double_spinbox.setButtonSymbols(QDoubleSpinBox.ButtonSymbols.NoButtons)
         self.double_spinbox.valueChanged.connect(self._on_float_changed)
-        self.double_spinbox.setStyleSheet(self._get_spinbox_style())
-        self.double_spinbox.setMinimumWidth(80)
+        self.double_spinbox.setStyleSheet(self._get_input_style())
+        self.double_spinbox.setMinimumWidth(60)
+        
+        # Add spinbox
         layout.addWidget(self.double_spinbox)
+        
+        # Add up/down buttons
+        btn_layout = QVBoxLayout()
+        btn_layout.setSpacing(2)
+        
+        up_btn = QPushButton("▲")
+        up_btn.setStyleSheet(self._get_arrow_button_style())
+        up_btn.clicked.connect(lambda: self.double_spinbox.stepUp())
+        
+        down_btn = QPushButton("▼")
+        down_btn.setStyleSheet(self._get_arrow_button_style())
+        down_btn.clicked.connect(lambda: self.double_spinbox.stepDown())
+        
+        btn_layout.addWidget(up_btn)
+        btn_layout.addWidget(down_btn)
+        layout.addLayout(btn_layout)
     
     def _on_choice_changed(self, text: str):
         self.current_value = text
+        print(f"Choice parameter {self.parameter.name} changed to {text}")
         self.value_changed.emit(self.parameter.name, self.current_value)
     
     def _on_int_changed(self, value: int):
         self.current_value = value
+        print(f"Int parameter {self.parameter.name} changed to {value}")
         self.value_changed.emit(self.parameter.name, self.current_value)
     
     def _on_float_changed(self, value: float):
         self.current_value = value
+        print(f"Float parameter {self.parameter.name} changed to {value}")
         self.value_changed.emit(self.parameter.name, self.current_value)
     
     def get_value(self):
@@ -373,9 +416,26 @@ class SimpleParameterWidget(QWidget):
                 padding: 4px;
                 min-height: 16px;
             }
+            QComboBox::drop-down {
+                background-color: #555555;
+                border: none;
+                width: 20px;
+                border-radius: 2px;
+            }
+            QComboBox::down-arrow {
+                border-left: 4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top: 4px solid #ffffff;
+            }
+            QComboBox QAbstractItemView {
+                background-color: #3c3c3c;
+                color: #ffffff;
+                selection-background-color: #0078d4;
+                border: 1px solid #555555;
+            }
         """
     
-    def _get_spinbox_style(self):
+    def _get_input_style(self):
         return """
             QSpinBox, QDoubleSpinBox {
                 background-color: #3c3c3c;
@@ -384,6 +444,27 @@ class SimpleParameterWidget(QWidget):
                 border-radius: 4px;
                 padding: 4px;
                 min-height: 16px;
+            }
+        """
+    
+    def _get_arrow_button_style(self):
+        return """
+            QPushButton {
+                background-color: #0078d4;
+                color: white;
+                border: none;
+                padding: 4px 8px;
+                border-radius: 3px;
+                font-weight: bold;
+                min-height: 12px;
+                min-width: 20px;
+                font-size: 10px;
+            }
+            QPushButton:hover {
+                background-color: #106ebe;
+            }
+            QPushButton:pressed {
+                background-color: #005a9e;
             }
         """
 
@@ -471,7 +552,7 @@ class UnifiedActionPanel(QWidget):
             QPushButton {{
                 background-color: {bg_color};
                 color: white;
-                border: none;
+                border: 1px solid #555555;
                 padding: 10px 16px;
                 border-radius: 6px;
                 font-weight: bold;
@@ -480,10 +561,12 @@ class UnifiedActionPanel(QWidget):
             }}
             QPushButton:hover {{
                 background-color: {hover_color};
+                border-color: #777777;
             }}
             QPushButton:disabled {{
-                background-color: #555555;
+                background-color: #2d2d30;
                 color: #999999;
+                border-color: #444444;
             }}
         """
 
@@ -522,17 +605,28 @@ class AdvancedFilteringLeftPanel(QWidget):
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(12)
         
-        # Create tab widget for better organization
+        # Create resizable splitter for tab widget
+        main_splitter = QSplitter(Qt.Orientation.Vertical)
+        
+        # Tab widget in resizable container
         self.tab_widget = QTabWidget()
         self.tab_widget.setStyleSheet(self._get_tab_style())
+        main_splitter.addWidget(self.tab_widget)
         
-        # Set content widget to scroll area
-        scroll_area.setWidget(content_widget)
+        # Add stretch widget to make tabs resizable
+        stretch_widget = QWidget()
+        main_splitter.addWidget(stretch_widget)
+        
+        # Set initial sizes (tabs take most space)
+        main_splitter.setSizes([400, 100])
+        main_splitter.setCollapsible(0, False)  # Don't allow tabs to collapse
+        
+        main_layout.addWidget(main_splitter)
         
         # Create layout for this panel
         panel_layout = QVBoxLayout(self)
         panel_layout.setContentsMargins(0, 0, 0, 0)
-        panel_layout.addWidget(scroll_area)
+        panel_layout.addWidget(content_widget)
         
         # Tab 1: Filter Controls
         self.controls_tab = QWidget()
@@ -543,10 +637,10 @@ class AdvancedFilteringLeftPanel(QWidget):
         self.history_tab = QWidget()
         self._setup_history_tab()
         self.tab_widget.addTab(self.history_tab, "History & Actions")
+    
+
         
-        main_layout.addWidget(self.tab_widget)
-        
-        print("✓ Advanced Filtering Left Panel initialized")
+        print("Advanced Filtering Left Panel initialized")
     
     def _setup_controls_tab(self):
         """Setup the filter controls tab with unified actions."""
@@ -568,7 +662,7 @@ class AdvancedFilteringLeftPanel(QWidget):
             if filter_config:
                 self.filter_combo.addItem(filter_config.display_name, filter_config.name)
         
-        self.filter_combo.currentTextChanged.connect(self._on_filter_selected)
+        self.filter_combo.currentIndexChanged.connect(self._on_filter_selected)
         self.filter_combo.setStyleSheet(self._get_combo_style())
         
         filter_layout.addWidget(QLabel("Filter Type:"))
@@ -626,16 +720,18 @@ class AdvancedFilteringLeftPanel(QWidget):
         history_group.setStyleSheet(self._get_group_style())
         history_layout = QVBoxLayout(history_group)
         
-        # History list with improved styling
+        # History list in resizable container
+        history_splitter = QSplitter(Qt.Orientation.Vertical)
+        
         self.history_list = QListWidget()
         self.history_list.setStyleSheet("""
             QListWidget {
-                background-color: #2b2b2b;
+                background-color: #1e1e1e;
                 color: #ffffff;
                 border: 1px solid #555555;
                 border-radius: 4px;
                 font-size: 10px;
-                alternate-background-color: #333333;
+                alternate-background-color: #2d2d30;
             }
             QListWidget::item {
                 padding: 6px;
@@ -648,9 +744,18 @@ class AdvancedFilteringLeftPanel(QWidget):
                 color: white;
             }
             QListWidget::item:hover {
-                background-color: #4a4a4a;
+                background-color: #3e3e42;
             }
         """)
+        
+        history_splitter.addWidget(self.history_list)
+        
+        # Add stretch for resizing
+        stretch_history = QWidget()
+        history_splitter.addWidget(stretch_history)
+        history_splitter.setSizes([200, 50])
+        
+        history_layout.addWidget(history_splitter)
         self.history_list.itemDoubleClicked.connect(self._reapply_from_history)
         
         # History controls
@@ -667,7 +772,7 @@ class AdvancedFilteringLeftPanel(QWidget):
         history_controls_layout.addWidget(clear_history_btn)
         history_controls_layout.addWidget(export_history_btn)
         
-        history_layout.addWidget(self.history_list)
+
         history_layout.addLayout(history_controls_layout)
         
         layout.addWidget(history_group)
@@ -756,36 +861,39 @@ class AdvancedFilteringLeftPanel(QWidget):
         if has_filter and self.current_filter:
             filter_config = self.config_manager.get_filter(self.current_filter)
             if filter_config is not None:
-                self.unified_actions.set_status(f"Ready: {filter_config.display_name}", "#00ff00")
+                self.unified_actions.set_status(f"Ready: {filter_config.display_name} → Current Ref", "#00ff00")
                 if hasattr(self, 'unified_actions_history'):
-                    self.unified_actions_history.set_status(f"Ready: {filter_config.display_name}", "#00ff00")
+                    self.unified_actions_history.set_status(f"Ready: {filter_config.display_name} → Current Ref", "#00ff00")
             else:
                 # Fallback if filter_config is None
-                self.unified_actions.set_status(f"Ready: {self.current_filter}", "#00ff00")
+                self.unified_actions.set_status(f"Ready: {self.current_filter} → Current Ref", "#00ff00")
                 if hasattr(self, 'unified_actions_history'):
-                    self.unified_actions_history.set_status(f"Ready: {self.current_filter}", "#00ff00")
+                    self.unified_actions_history.set_status(f"Ready: {self.current_filter} → Current Ref", "#00ff00")
         else:
-            self.unified_actions.set_status("Select a filter", "#cccccc")
+            self.unified_actions.set_status("Select filter to apply to current reference", "#cccccc")
             if hasattr(self, 'unified_actions_history'):
-                self.unified_actions_history.set_status("Select a filter", "#cccccc")
+                self.unified_actions_history.set_status("Select filter to apply to current reference", "#cccccc")
 
     
     def _on_parameter_changed(self, param_name: str, value: Any):
-        """Handle parameter changes."""
+        """Handle parameter changes - enables real-time preview."""
         print(f"Parameter {param_name} changed to {value}")
+        # Automatically trigger preview when parameters change
+        if self.current_filter:
+            self._preview_filter()
     
     def _preview_filter(self):
-        """Preview current filter with current parameters."""
+        """Preview current filter with current parameters on current reference."""
         if self.current_filter:
             parameters = self._get_current_parameters()
-            print(f"Previewing filter: {self.current_filter} with params: {parameters}")
+            print(f"Previewing filter: {self.current_filter} with params: {parameters} (on current reference)")
             self.unified_actions.set_status("Previewing...", "#ffa500")
             if hasattr(self, 'unified_actions_history'):
                 self.unified_actions_history.set_status("Previewing...", "#ffa500")
             self.filter_previewed.emit(self.current_filter, parameters)
     
     def _apply_filter(self):
-        """Apply current filter with current parameters."""
+        """Apply current filter with current parameters - makes result the new reference."""
         if self.current_filter and isinstance(self.current_filter, str):
             parameters = self._get_current_parameters()
             print(f"Applying filter: {self.current_filter} with params: {parameters}")
@@ -802,15 +910,17 @@ class AdvancedFilteringLeftPanel(QWidget):
                 display_name = filter_config.display_name
                 category = filter_config.category
                 param_str = ", ".join([f"{k}={v}" for k, v in parameters.items()])
-                history_text = f"[{category}] {display_name}"
+                history_text = f"[{category}] {display_name} ✓ APPLIED"
                 if param_str:
                     history_text += f"\n    Parameters: {param_str}"
+                history_text += f"\n    → Now reference for next filter"
             else:
                 # Fallback if filter_config is None
                 param_str = ", ".join([f"{k}={v}" for k, v in parameters.items()])
-                history_text = f"[Unknown] {self.current_filter}"
+                history_text = f"[Unknown] {self.current_filter} ✓ APPLIED"
                 if param_str:
                     history_text += f"\n    Parameters: {param_str}"
+                history_text += f"\n    → Now reference for next filter"
             
             item = QListWidgetItem(history_text)
             item.setData(Qt.ItemDataRole.UserRole, {"filter": self.current_filter, "params": parameters})
@@ -818,12 +928,19 @@ class AdvancedFilteringLeftPanel(QWidget):
             self.history_list.scrollToBottom()
     
     def _reset_filters(self):
-        """Reset all filters."""
-        print("Resetting all filters")
+        """Reset all filters - restores original as reference."""
+        print("Resetting all filters - restoring original as reference")
         self.unified_actions.set_status("Resetting...", "#ff6600")
         if hasattr(self, 'unified_actions_history'):
             self.unified_actions_history.set_status("Resetting...", "#ff6600")
         self.filter_reset.emit()
+        
+        # Add reset entry to history
+        history_text = "🔄 RESET TO ORIGINAL\n    → Original image is now reference"
+        item = QListWidgetItem(history_text)
+        item.setData(Qt.ItemDataRole.UserRole, {"filter": "reset", "params": {}})
+        self.history_list.addItem(item)
+        self.history_list.scrollToBottom()
     
     def _save_image(self):
         """Save current filtered image."""
@@ -910,11 +1027,11 @@ class AdvancedFilteringLeftPanel(QWidget):
         return """
             QTabWidget::pane {
                 border: 1px solid #555555;
-                background-color: #2b2b2b;
+                background-color: #1e1e1e;
                 color: #ffffff;
             }
             QTabBar::tab {
-                background-color: #3c3c3c;
+                background-color: #2d2d30;
                 border: 1px solid #555555;
                 padding: 8px 16px;
                 margin-right: 2px;
@@ -923,12 +1040,12 @@ class AdvancedFilteringLeftPanel(QWidget):
                 border-top-right-radius: 4px;
             }
             QTabBar::tab:selected {
-                background-color: #2b2b2b;
-                border-bottom-color: #2b2b2b;
+                background-color: #1e1e1e;
+                border-bottom-color: #1e1e1e;
                 color: #ffffff;
             }
             QTabBar::tab:hover {
-                background-color: #4a4a4a;
+                background-color: #3e3e42;
                 color: #ffffff;
             }
         """
@@ -942,7 +1059,7 @@ class AdvancedFilteringLeftPanel(QWidget):
                 margin-top: 10px;
                 padding-top: 10px;
                 color: #ffffff;
-                background-color: #2b2b2b;
+                background-color: #1e1e1e;
             }
             QGroupBox::title {
                 subcontrol-origin: margin;
@@ -954,7 +1071,7 @@ class AdvancedFilteringLeftPanel(QWidget):
     def _get_combo_style(self):
         return """
             QComboBox {
-                background-color: #3c3c3c;
+                background-color: #2d2d30;
                 color: #ffffff;
                 border: 2px solid #555555;
                 border-radius: 4px;
@@ -971,6 +1088,12 @@ class AdvancedFilteringLeftPanel(QWidget):
                 width: 12px;
                 height: 12px;
             }
+            QComboBox QAbstractItemView {
+                background-color: #2d2d30;
+                color: #ffffff;
+                selection-background-color: #0078d4;
+                border: 1px solid #555555;
+            }
         """
     
     def _get_small_button_style(self, bg_color: str, hover_color: str):
@@ -978,7 +1101,7 @@ class AdvancedFilteringLeftPanel(QWidget):
             QPushButton {{
                 background-color: {bg_color};
                 color: white;
-                border: none;
+                border: 1px solid #555555;
                 padding: 6px 12px;
                 border-radius: 4px;
                 font-weight: bold;
@@ -986,6 +1109,7 @@ class AdvancedFilteringLeftPanel(QWidget):
             }}
             QPushButton:hover {{
                 background-color: {hover_color};
+                border-color: #777777;
             }}
         """
 
@@ -999,88 +1123,57 @@ class AdvancedFilteringRightPanel(QWidget):
         self.init_panel()
     
     def init_panel(self):
-        """Initialize the Phase 2 right panel UI."""
+        """Initialize the Phase 2 right panel UI - no file information."""
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(8, 8, 8, 8)
         main_layout.setSpacing(12)
         
-        # 1. Histogram Section with improved layout
-        histogram_group = QGroupBox("📊 Image Histogram")
-        histogram_group.setStyleSheet(self._get_group_style())
-        histogram_layout = QVBoxLayout(histogram_group)
+        # GDS Structure Selection in resizable container
+        structure_group = QGroupBox("GDS Structure Selection")
+        structure_group.setStyleSheet(self._get_group_style())
+        structure_layout = QVBoxLayout(structure_group)
         
-        self.histogram_view = HistogramView()
-        histogram_layout.addWidget(self.histogram_view)
+        # Create resizable splitter for structure list
+        structure_splitter = QSplitter(Qt.Orientation.Vertical)
         
-        main_layout.addWidget(histogram_group)
-        
-        # 2. Image Statistics with improved formatting
-        stats_group = QGroupBox("📈 Image Statistics")
-        stats_group.setStyleSheet(self._get_group_style())
-        stats_layout = QVBoxLayout(stats_group)
-        
-        self.stats_text = QTextEdit()
-        self.stats_text.setMaximumHeight(140)
-        self.stats_text.setStyleSheet("""
-            QTextEdit {
-                background-color: #2b2b2b;
+        # Structure list
+        from PySide6.QtWidgets import QScrollArea, QListWidget
+        self.structure_scroll = QScrollArea()
+        self.structure_list = QListWidget()
+        self.structure_list.setStyleSheet("""
+            QListWidget {
+                background-color: #1e1e1e;
                 color: #ffffff;
                 border: 1px solid #555555;
                 border-radius: 4px;
-                font-family: 'Consolas', 'Monaco', monospace;
-                font-size: 9px;
+            }
+            QListWidget::item {
                 padding: 4px;
+                border-bottom: 1px solid #404040;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+            QListWidget::item:hover {
+                background-color: #3e3e42;
             }
         """)
-        stats_layout.addWidget(self.stats_text)
+        self.structure_scroll.setWidget(self.structure_list)
+        self.structure_scroll.setWidgetResizable(True)
         
-        main_layout.addWidget(stats_group)
+        structure_splitter.addWidget(self.structure_scroll)
         
-        # 3. Processing Status with visual indicators
-        status_group = QGroupBox("⚡ Processing Status")
-        status_group.setStyleSheet(self._get_group_style())
-        status_layout = QVBoxLayout(status_group)
+        # Add stretch for resizing
+        stretch_structure = QWidget()
+        structure_splitter.addWidget(stretch_structure)
+        structure_splitter.setSizes([200, 50])
         
-        self.status_label = QLabel("Ready")
-        self.status_label.setStyleSheet("""
-            QLabel {
-                color: #ffffff;
-                background-color: #2a2a2a;
-                padding: 8px;
-                border-radius: 4px;
-                font-weight: bold;
-                border: 2px solid #555555;
-                font-size: 11px;
-            }
-        """)
-        self.status_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        structure_layout.addWidget(structure_splitter)
+        main_layout.addWidget(structure_group)
         
-        # Processing indicator
-        self.processing_indicator = QLabel("●")
-        self.processing_indicator.setStyleSheet("""
-            QLabel {
-                color: #00ff00;
-                font-size: 16px;
-                font-weight: bold;
-                background: transparent;
-                border: none;
-                padding: 0px;
-            }
-        """)
-        self.processing_indicator.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        
-        # Status layout
-        status_info_layout = QHBoxLayout()
-        status_info_layout.addWidget(self.processing_indicator)
-        status_info_layout.addWidget(self.status_label, 1)
-        
-        status_layout.addLayout(status_info_layout)
-        main_layout.addWidget(status_group)
-        
-        # Add stretch
         main_layout.addStretch()
         
-        print("✓ Advanced Filtering Right Panel initialized")
+        print("Advanced Filtering Right Panel initialized - no file information")
     
     def update_histogram(self, image_data: np.ndarray):
         """Update histogram display."""
@@ -1141,12 +1234,22 @@ class AdvancedFilteringRightPanel(QWidget):
             }}
         """)
     
+    def update_reference_status(self, is_original: bool = True, filter_name: str = None):
+        """Update the reference status indicator (placeholder for now)."""
+        # This method will be implemented when we add the reference status widget
+        if is_original:
+            print("📷 Reference: Original Image")
+        else:
+            filter_display = filter_name if filter_name else "Filtered"
+            print(f"⚙️ Reference: {filter_display} Result")
+    
     def clear_displays(self):
         """Clear all displays."""
         if hasattr(self.histogram_view, 'clear_displays'):
             self.histogram_view.clear_displays()
         self.stats_text.clear()
         self.show_status("Ready")
+        self.update_reference_status(is_original=True)
     
     def _get_timestamp(self):
         """Get current timestamp for statistics."""

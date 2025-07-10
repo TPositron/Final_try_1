@@ -66,36 +66,52 @@ class ImageProcessingService:
             self.load_image(sem_image)
     
     def load_image(self, sem_image):
+        """Load new image, setting both original and current references."""
         self.original_image = deepcopy(sem_image)
         self.current_image = deepcopy(sem_image)
         self._history = []
+        print("✓ Image loaded - Original and current references set")
         
     def preview_filter(self, filter_name: str, parameters: Dict[str, Any]) -> np.ndarray:
+        """Preview filter on current reference image without changing the reference."""
         if self.current_image is None:
             raise ValueError("No image loaded")
             
         temp_image = deepcopy(self.current_image)
         filtered_image = self._apply_filter_internal(temp_image, filter_name, parameters)
-        return filtered_image.image_data if hasattr(filtered_image, 'image_data') else filtered_image
+        result = filtered_image.image_data if hasattr(filtered_image, 'image_data') else filtered_image
+        print(f"✓ Filter preview: {filter_name} (applied to current reference)")
+        return result
     
     def apply_filter(self, filter_name: str, parameters: Dict[str, Any]):
+        """Apply filter and make result the new reference image."""
         if self.current_image is None:
             raise ValueError("No image loaded")
             
         self._history.append(deepcopy(self.current_image))  # Save for undo
         self.current_image = self._apply_filter_internal(self.current_image, filter_name, parameters)
+        print(f"✓ Filter applied: {filter_name} - Current image updated as new reference")
         
     def reset_to_original(self):
+        """Reset current image back to original, making original the new reference."""
         if self.original_image is None:
             raise ValueError("No original image available")
             
         self.current_image = deepcopy(self.original_image)
+        self._history = []  # Clear history since we're back to original
+        print("✓ Reset to original - Original is now the current reference")
         
     def get_current_image(self):
+        """Get the current reference image (may be filtered)."""
         return self.current_image
     
     def get_original_image(self):
+        """Get the original unprocessed image."""
         return self.original_image
+    
+    def get_reference_image(self):
+        """Get the current reference image for applying new filters."""
+        return self.current_image
     
     def _apply_filter_internal(self, image, filter_name: str, parameters: Dict[str, Any]):
         filter_module = self._get_filter_module(filter_name)
@@ -338,8 +354,10 @@ class ImageProcessingService:
     def undo(self):
         """
         Undo the last filter application, reverting to the previous image state.
+        The previous state becomes the new current reference.
         """
         if not self._history:
             raise ValueError("No more actions to undo.")
         self.current_image = self._history.pop()
+        print("✓ Undo completed - Previous state is now the current reference")
         return self.current_image

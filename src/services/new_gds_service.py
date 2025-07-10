@@ -132,8 +132,7 @@ from ..core.gds_display_generator import (
 )
 from ..core.gds_aligned_generator import (
     generate_aligned_gds,
-    generate_transformed_gds,
-    generate_base_gds_image
+    generate_transformed_gds
 )
 
 

@@ -35,7 +35,7 @@ Features:
 
 from PySide6.QtWidgets import (QWidget, QVBoxLayout, QHBoxLayout, 
                               QGroupBox, QPushButton, QLabel)
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Signal, Qt
 from src.ui.base_panels import BaseViewPanel
 from src.ui.components.image_viewer import ImageViewer
 from src.ui.view_manager import ViewMode
@@ -52,32 +52,73 @@ class ScoringRightPanel(BaseViewPanel):
         self.init_panel()
         
     def init_panel(self):
-        """Initialize the panel layout and widgets."""
+        """Initialize the panel layout and widgets - no file information, processing status, histogram, or statistics."""
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 8, 8, 8)
+        layout.setSpacing(12)
         
-        # GDS image group
-        gds_group = QGroupBox("GDS Image")
-        gds_layout = QVBoxLayout(gds_group)
-        self.gds_viewer = ImageViewer()
-        gds_layout.addWidget(self.gds_viewer)
-        layout.addWidget(gds_group)
+        # GDS Structure Selection with vertical slider (same as alignment and filtering)
+        structure_group = QGroupBox("GDS Structure Selection")
+        structure_group.setStyleSheet(self._get_group_style())
+        structure_layout = QVBoxLayout(structure_group)
         
-        # SEM image group
-        sem_group = QGroupBox("SEM Image")
-        sem_layout = QVBoxLayout(sem_group)
-        self.sem_viewer = ImageViewer()
-        sem_layout.addWidget(self.sem_viewer)
-        layout.addWidget(sem_group)
+        # Create resizable splitter for structure list
+        from PySide6.QtWidgets import QScrollArea, QListWidget, QSplitter
+        structure_splitter = QSplitter(Qt.Orientation.Vertical)
         
-        # Comparison controls
-        controls_layout = QHBoxLayout()
-        self.toggle_comparison_btn = QPushButton("Toggle Comparison")
-        self.toggle_comparison_btn.setCheckable(True)
-        controls_layout.addWidget(self.toggle_comparison_btn)
-        layout.addLayout(controls_layout)
+        # Structure list
+        self.structure_scroll = QScrollArea()
+        self.structure_list = QListWidget()
+        self.structure_list.setStyleSheet("""
+            QListWidget {
+                background-color: #1e1e1e;
+                color: #ffffff;
+                border: 1px solid #555555;
+                border-radius: 4px;
+            }
+            QListWidget::item {
+                padding: 4px;
+                border-bottom: 1px solid #404040;
+            }
+            QListWidget::item:selected {
+                background-color: #0078d4;
+            }
+            QListWidget::item:hover {
+                background-color: #3e3e42;
+            }
+        """)
+        self.structure_scroll.setWidget(self.structure_list)
+        self.structure_scroll.setWidgetResizable(True)
         
-        # Connect signals
-        self.toggle_comparison_btn.toggled.connect(self.comparison_toggled)
+        structure_splitter.addWidget(self.structure_scroll)
+        
+        # Add stretch for resizing
+        stretch_structure = QWidget()
+        structure_splitter.addWidget(stretch_structure)
+        structure_splitter.setSizes([200, 50])
+        
+        structure_layout.addWidget(structure_splitter)
+        layout.addWidget(structure_group)
+        
+        layout.addStretch()
+    
+    def _get_group_style(self):
+        return """
+            QGroupBox {
+                font-weight: bold;
+                border: 2px solid #555555;
+                border-radius: 8px;
+                margin-top: 10px;
+                padding-top: 10px;
+                color: #ffffff;
+                background-color: #1e1e1e;
+            }
+            QGroupBox::title {
+                subcontrol-origin: margin;
+                left: 10px;
+                padding: 0 5px 0 5px;
+            }
+        """
         
     def update_gds_image(self, image_data):
         """Update the GDS image display."""

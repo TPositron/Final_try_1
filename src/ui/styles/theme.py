@@ -23,6 +23,68 @@ COLORS = {
     'hover': '#E3F2FD'         # Light blue hover
 }
 
+# GDS color palette (16 colors)
+GDS_COLORS = [
+    (255, 255, 255), (0, 0, 0), (255, 0, 0), (0, 255, 0),
+    (0, 0, 255), (255, 255, 0), (255, 0, 255), (0, 255, 255),
+    (128, 128, 128), (128, 0, 0), (128, 128, 0), (0, 128, 0),
+    (128, 0, 128), (0, 128, 128), (0, 0, 128), (255, 128, 0)
+]
+
+# Default GDS structure color
+DEFAULT_GDS_STRUCTURE = (255, 255, 255)  # White
+
+# Theme manager class
+class ThemeManager:
+    def __init__(self):
+        self.gds_structure_color = DEFAULT_GDS_STRUCTURE
+        self.ui_background_theme = "dark"
+        self.ui_text_color = "white"
+        self.ui_button_color = (70, 130, 180)
+    
+    def set_gds_structure_color(self, color):
+        self.gds_structure_color = color
+    
+    def get_gds_structure_color(self):
+        return self.gds_structure_color
+    
+    def set_ui_background_theme(self, theme):
+        self.ui_background_theme = theme
+    
+    def set_ui_text_color(self, color):
+        self.ui_text_color = color
+    
+    def set_ui_button_color(self, color):
+        self.ui_button_color = color
+    
+    def process_gds_overlay(self, image):
+        """Process GDS overlay with transparent background and colored structures."""
+        try:
+            import numpy as np
+            import cv2
+            
+            if len(image.shape) == 3:
+                gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            else:
+                gray = image.copy()
+            
+            # Create RGBA image with alpha channel
+            rgba_image = np.zeros((gray.shape[0], gray.shape[1], 4), dtype=np.uint8)
+            
+            # GDS generator creates: white background (255), black structures (0)
+            # Set structure color where pixels are structures (black/dark pixels)
+            structure_mask = gray < 127  # Black pixels are structures
+            rgba_image[structure_mask] = [*self.gds_structure_color, 255]  # Opaque colored structures
+            # Background (white pixels) remains transparent (alpha = 0)
+            
+            return rgba_image
+        except Exception as e:
+            print(f"Error processing GDS overlay: {e}")
+            return image
+
+# Global theme manager instance
+theme_manager = ThemeManager()
+
 # Main application stylesheet
 MAIN_STYLE = f"""
 QMainWindow {{
@@ -192,3 +254,21 @@ def get_color(color_name: str) -> str:
         Hex color string
     """
     return COLORS.get(color_name, COLORS['text_primary'])
+
+def get_gds_colors():
+    """
+    Get the list of available GDS colors.
+    
+    Returns:
+        List of RGB tuples
+    """
+    return GDS_COLORS
+
+def get_default_gds_structure_color():
+    """
+    Get default GDS structure color.
+    
+    Returns:
+        RGB tuple for structure color
+    """
+    return DEFAULT_GDS_STRUCTURE
